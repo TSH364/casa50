@@ -118,9 +118,9 @@ const MONTH_NAMES: Record<string, string> = {
 /**
  * Descobre o mês pelo nome do arquivo.
  *
- * Reconhece `2026-08`, `08-2026`, `202608` e nomes de mês em português
- * ("agosto-2026", "ago_2026"). Devolve `null` quando não há certeza - e aí a
- * tela pede o mês, em vez de chutar.
+ * Reconhece `2026-08`, `08-2026`, `202608`, `20260105` e nomes de mês em
+ * português ("agosto-2026", "ago_2026"). Devolve `null` quando não há certeza
+ * - e aí a tela pede o mês, em vez de chutar.
  */
 export function monthFromFilename(fileName: string): MonthKey | null {
   const name = stripAccents(fileName.replace(/\.[a-z0-9]+$/i, "")).toLowerCase();
@@ -144,6 +144,14 @@ export function monthFromFilename(fileName: string): MonthKey | null {
     const month = MONTH_NAMES[word];
     if (month && year) return `${year}-${month}`;
   }
+
+  // 20260105 colado, o nome que o Itaú dá ao arquivo: é a data de vencimento,
+  // e o mês dela é o mês da fatura. Vem antes do formato de 6 dígitos porque
+  // "202601" também casaria com o começo de "20260105", pelo mês errado.
+  const compactDay = name.match(
+    /(?<!\d)(20\d{2})(0[1-9]|1[0-2])(?:0[1-9]|[12]\d|3[01])(?!\d)/,
+  );
+  if (compactDay) return `${compactDay[1]}-${compactDay[2]}`;
 
   // 202608 colado - exige que não seja pedaço de um número maior.
   const compact = name.match(/(?<!\d)(20\d{2})(0[1-9]|1[0-2])(?!\d)/);
@@ -185,17 +193,59 @@ const HEADER_HINTS: Record<keyof ColumnMap, readonly string[]> = {
   amount: ["amount", "valor", "value", "valor (r$)", "montante"],
   category: ["category", "categoria"],
   installment: ["installment", "parcela", "parcelas"],
+  card: ["final do cartao", "final cartao", "cartao final", "final", "card"],
 };
 
 function normalizeHeader(header: string): string {
   return stripAccents(header)
     .toLowerCase()
-    .replace(/[^a-z0-9 ()]/g, " ")
+    // O "$" sobrevive de propósito: é ele que separa "Valor (em R$)" de
+    // "Valor (em US$)" numa fatura internacional.
+    .replace(/[^a-z0-9 ()$]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
 }
 
-/** Casa os cabeçalhos do arquivo com os papéis que o importador entende. */
+/** Marcas de que a coluna está em real - a moeda que o app registra. */
+const LOCAL_CURRENCY = /(?:^|[^a-z])r\$|\breais?\b|\bbrl\b/;
+/**
+ * Marcas de moeda estrangeira ou de câmbio.
+ *
+ * É o caso que zerava a fatura inteira: a fatura do Itaú traz
+ * "Valor (em US$)" ANTES de "Valor (em R$)", e as duas começam com "valor".
+ * Pegando a primeira, toda compra nacional (US$ 0) virava R$ 0,00.
+ */
+const FOREIGN_CURRENCY =
+  /us\$|\busd?\b|\bdolar(?:es)?\b|\bdollars?\b|\beur\b|\beuros?\b|\bmoeda estrangeira\b|\binternacional\b/;
+/** Colunas que acompanham o valor sem serem o valor. */
+const RATE_COLUMN = /\bcotacao\b|\bcambio\b|\btaxa\b|\biof\b/;
+
+/**
+ * Quanto um cabeçalho combina com um papel. `null` = não é candidato.
+ *
+ * A pontuação existe porque um arquivo pode ter mais de uma coluna plausível
+ * para o mesmo papel, e a primeira nem sempre é a certa.
+ */
+function scoreHeader(role: keyof ColumnMap, key: string): number | null {
+  const hints = HEADER_HINTS[role];
+  let score: number;
+  if (hints.includes(key)) score = 10;
+  else if (hints.some((hint) => key.startsWith(hint))) score = 5;
+  else return null;
+
+  if (role === "amount") {
+    if (LOCAL_CURRENCY.test(key)) score += 4;
+    if (FOREIGN_CURRENCY.test(key)) score -= 8;
+    if (RATE_COLUMN.test(key)) score -= 12;
+  }
+  return score;
+}
+
+/**
+ * Casa os cabeçalhos do arquivo com os papéis que o importador entende.
+ *
+ * Empate resolve pela ordem do arquivo, para o resultado ser estável.
+ */
 export function detectColumns(headers: readonly string[]): ColumnMap {
   const map: ColumnMap = {
     date: null,
@@ -203,17 +253,67 @@ export function detectColumns(headers: readonly string[]): ColumnMap {
     amount: null,
     category: null,
     installment: null,
+    card: null,
   };
   const normalized = headers.map((h) => ({ raw: h, key: normalizeHeader(h) }));
 
   for (const role of Object.keys(HEADER_HINTS) as (keyof ColumnMap)[]) {
-    const hints = HEADER_HINTS[role];
-    const hit =
-      normalized.find((h) => hints.includes(h.key)) ??
-      normalized.find((h) => hints.some((hint) => h.key.startsWith(hint)));
-    if (hit) map[role] = hit.raw;
+    let best: { raw: string; score: number } | null = null;
+    for (const header of normalized) {
+      const score = scoreHeader(role, header.key);
+      if (score === null) continue;
+      if (best === null || score > best.score) {
+        best = { raw: header.raw, score };
+      }
+    }
+    if (best) map[role] = best.raw;
   }
   return map;
+}
+
+// --------------------------------------------------------------------------
+// Parcela e cartão em coluna própria
+// --------------------------------------------------------------------------
+
+/** "Única", "À vista", "-" e afins: compra sem parcelamento. */
+const SINGLE_PAYMENT = /^(unica|a vista|avista|-|0|nao|sem parcela)$/;
+
+/**
+ * Lê a parcela de uma coluna dedicada ("2/12", "2 de 12", "Única").
+ *
+ * Vale mais que a descrição quando existe: "ADAPTAORG" não diz nada, mas a
+ * coluna ao lado diz "2/12".
+ */
+export function parseInstallmentCell(
+  raw: string,
+): { current: number; total: number } | null {
+  const key = stripAccents(raw)
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .replace(/^parcela\s*/, "")
+    .trim();
+  if (key === "" || SINGLE_PAYMENT.test(key)) return null;
+
+  // Ancorado nas duas pontas: a célula é a parcela e nada mais. Sem isso
+  // "12/2026" numa coluna mal preenchida viraria a parcela 12 de 20.
+  const match = key.match(/^(\d{1,2})\s*(?:\/|de)\s*(\d{1,2})$/);
+  if (!match) return null;
+
+  const current = Number(match[1]);
+  const total = Number(match[2]);
+  if (current < 1 || total < 1 || current > total) return null;
+  return { current, total };
+}
+
+/**
+ * Últimos 4 dígitos de uma coluna de cartão ("2150", "**** 2150").
+ *
+ * Devolve `null` para qualquer coisa que não termine em 4 dígitos - o nome do
+ * titular, por exemplo, se a detecção de coluna tiver errado.
+ */
+export function parseCardLastFour(raw: string): string | null {
+  const digits = raw.replace(/\D/g, "");
+  return digits.length >= 4 ? digits.slice(-4) : null;
 }
 
 // --------------------------------------------------------------------------
@@ -264,6 +364,9 @@ const PAYMENT_PATTERNS = [
   /\bpgto\s+recebido/i,
   /pagamento\s+de\s+fatura/i,
   /saldo\s+em\s+aberto\s+anterior/i,
+  // Como o Itaú escreve a quitação da fatura anterior.
+  /inclus[aã]o\s+de\s+pagamento/i,
+  /^\s*pagamento\s*$/i,
 ];
 
 const REFUND_PATTERNS = [
@@ -289,6 +392,14 @@ export function classifyType(
   signed: number,
   convention: SignConvention,
 ): TransactionType {
+  // Valor zero não tem lado: é uma cobrança de R$ 0,00, não dinheiro de
+  // volta. Sem este caso o sinal ">" jogava toda linha zerada em `refund`.
+  if (signed === 0) {
+    if (PAYMENT_PATTERNS.some((p) => p.test(description))) return "payment";
+    if (REFUND_PATTERNS.some((p) => p.test(description))) return "refund";
+    return FEE_PATTERNS.some((p) => p.test(description)) ? "fee" : "expense";
+  }
+
   const isExpenseSide =
     convention === "expense_positive" ? signed > 0 : signed < 0;
 

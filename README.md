@@ -72,13 +72,27 @@ tela não o lê.
 Fluxo de importação em `/importar`, com o arquivo lido **no navegador** — nada
 sai da máquina antes de você revisar e confirmar.
 
-- **CSV do Nubank** (`date,title,amount`) e variantes em português.
+- **CSV do Nubank** (`date,title,amount`), do Itaú (separado por `;`, com
+  `Valor (em US$)`, `Cotação (em R$)` e `Valor (em R$)`) e variantes em
+  português.
+- **Coluna de valor escolhida pela moeda, não pela ordem.** Quando o arquivo
+  traz mais de uma coluna de valor, vence a que está em real; a de moeda
+  estrangeira e a de cotação são descartadas. Pegar a primeira coluna que
+  começasse com "valor" lia toda compra nacional como R$ 0,00. A tela deixa
+  trocar a coluna à mão, e uma fatura que vem inteira zerada vira erro em vez
+  de virar dezenas de lançamentos de R$ 0,00.
 - **Convenção de sinal detectada por arquivo.** O CSV real do Nubank traz
   despesa positiva; o exemplo da especificação usa negativa. O importador
   decide pela maioria das linhas, mostra a conclusão e deixa inverter.
-- **Mês pelo nome do arquivo** (`2026-08`, `08-2026`, `agosto-2026`, `202608`),
-  com as datas como segunda tentativa e confirmação manual sempre disponível.
-- **Parcela extraída da descrição** (`NETFLIX 3/12`), sem confundir `12/2026`.
+- **Mês pelo nome do arquivo** (`2026-08`, `08-2026`, `agosto-2026`, `202608`,
+  `20260105`), com as datas como segunda tentativa e confirmação manual sempre
+  disponível. Num arquivo nomeado pelo vencimento, o mês é o do vencimento — as
+  compras são do mês anterior.
+- **Parcela da coluna própria** (`Parcela` = `2/12`, `Única`) ou, quando não
+  existe, extraída da descrição (`NETFLIX 3/12`), sem confundir `12/2026`.
+- **Cartão por linha.** Quando o arquivo traz o final do cartão, cada final é
+  ligado ao cartão cadastrado com o mesmo número e cada lançamento é gravado no
+  seu — uma fatura com titular e adicionais não vai toda para um cartão só.
 - **Tipos classificados**: despesa, tarifa (anuidade, IOF, juros), pagamento de
   fatura e estorno. `Desconto` **nunca** vira pagamento — exigência da secao 6.
 - **Duplicidade por identidade completa**: mês, data, estabelecimento

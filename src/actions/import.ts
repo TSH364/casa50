@@ -33,6 +33,8 @@ const draftSchema = z.object({
   type: z.enum(["expense", "income", "payment", "refund", "fee", "adjustment"]),
   categoryHint: z.string().max(120).nullable(),
   categoryId: z.string().uuid().nullable(),
+  cardLastFour: z.string().regex(/^\d{4}$/).nullable(),
+  cardId: z.string().uuid().nullable(),
   installmentCurrent: z.number().int().min(1).max(99).nullable(),
   installmentTotal: z.number().int().min(1).max(99).nullable(),
   duplicateKey: z.string().max(600),
@@ -162,12 +164,15 @@ export async function reviewImport(
   let autoCategorized = 0;
 
   const reviewed: ReviewedDraft[] = drafts.map((draft) => {
+    // O cartão da linha vence o cartão escolhido para o arquivo todo: uma
+    // fatura do Itaú traz titular e adicionais no mesmo CSV.
+    const rowCardId = draft.cardId ?? cardId;
     const key = duplicateKey({
       invoiceMonth,
       date: draft.date,
       merchantNormalized: draft.merchantNormalized,
       amountCents: draft.amountCents,
-      cardId,
+      cardId: rowCardId,
       installmentCurrent: draft.installmentCurrent,
       installmentTotal: draft.installmentTotal,
     });
@@ -190,6 +195,7 @@ export async function reviewImport(
       ...draft,
       invoiceMonth,
       categoryId,
+      cardId: rowCardId,
       duplicateKey: key,
       decision: existingId || repeatedInFile ? "duplicate" : "new",
       ...(existingId ? { duplicateOfId: existingId } : {}),
@@ -207,8 +213,13 @@ export async function reviewImport(
       `${dupes} possível(is) repetição(ões). Confira antes de confirmar — a mesma compra pode aparecer legitimamente duas vezes.`,
     );
   }
-  if (cardId === null) {
-    notes.push("Nenhum cartão associado. Os lançamentos ficarão sem cartão.");
+  const semCartao = reviewed.filter(
+    (d) => d.decision === "new" && d.cardId === null,
+  ).length;
+  if (semCartao > 0) {
+    notes.push(
+      `${semCartao} lançamento(s) sem cartão associado. Dá para associar depois, no extrato.`,
+    );
   }
 
   return { reviewed, summary: summarize(reviewed, null), notes };
@@ -288,7 +299,7 @@ export async function commitImport(input: unknown): Promise<CommitResult> {
   const rows = toImport.map((d) => ({
     house_id: houseId,
     invoice_id: invoice.id,
-    card_id: data.cardId,
+    card_id: d.cardId ?? data.cardId,
     member_id: data.memberId,
     date: d.date,
     invoice_month: fromMonthKey(data.invoiceMonth),

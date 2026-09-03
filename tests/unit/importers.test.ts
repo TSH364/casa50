@@ -8,6 +8,8 @@ import {
   monthFromDates,
   monthFromFilename,
   normalizeMerchant,
+  parseCardLastFour,
+  parseInstallmentCell,
 } from "@/importers/detect";
 import { parseCsv, parseDate } from "@/importers/parse";
 
@@ -83,6 +85,19 @@ describe("monthFromFilename", () => {
   });
 });
 
+describe("monthFromFilename - vencimento colado", () => {
+  it("lê o nome que o Itaú dá ao arquivo", () => {
+    // "Fatura_20260105" é a data de vencimento: fatura de janeiro de 2026.
+    // Sem este caso o mês vinha das datas de compra (dezembro), um mês atrás.
+    expect(monthFromFilename("Fatura_20260105.csv")).toBe("2026-01");
+    expect(monthFromFilename("Fatura_20260812.csv")).toBe("2026-08");
+  });
+
+  it("continua lendo o formato de seis dígitos", () => {
+    expect(monthFromFilename("fatura_202608.csv")).toBe("2026-08");
+  });
+});
+
 describe("monthFromDates", () => {
   it("escolhe o mês mais frequente", () => {
     expect(
@@ -124,6 +139,82 @@ describe("detectColumns", () => {
     expect(map.description).toBe("Descrição");
     expect(map.amount).toBe("Valor");
     expect(map.category).toBe("Categoria");
+  });
+
+  it("prefere o valor em real ao valor em dólar", () => {
+    // O caso que zerava a fatura do Itaú: as duas colunas começam com "valor"
+    // e a de dólar vem primeiro. Em compra nacional ela é 0.
+    const map = detectColumns([
+      "Data de Compra",
+      "Nome no Cartão",
+      "Final do Cartão",
+      "Categoria",
+      "Descrição",
+      "Parcela",
+      "Valor (em US$)",
+      "Cotação (em R$)",
+      "Valor (em R$)",
+    ]);
+    expect(map.amount).toBe("Valor (em R$)");
+    expect(map.date).toBe("Data de Compra");
+    expect(map.description).toBe("Descrição");
+    expect(map.installment).toBe("Parcela");
+    expect(map.card).toBe("Final do Cartão");
+  });
+
+  it("nunca confunde a cotação com o valor", () => {
+    const map = detectColumns(["Data", "Descrição", "Cotação (em R$)", "Valor"]);
+    expect(map.amount).toBe("Valor");
+  });
+
+  it("aceita a coluna em dólar quando é a única que existe", () => {
+    // Ficar sem coluna de valor seria pior: melhor ler e deixar conferir.
+    const map = detectColumns(["Data", "Descrição", "Valor (em US$)"]);
+    expect(map.amount).toBe("Valor (em US$)");
+  });
+
+  it("não confunde o nome do titular com o final do cartão", () => {
+    const map = detectColumns(["Data", "Nome no Cartão", "Descrição", "Valor"]);
+    expect(map.card).toBeNull();
+  });
+});
+
+describe("parseInstallmentCell", () => {
+  it("lê a parcela da coluna dedicada", () => {
+    expect(parseInstallmentCell("2/12")).toEqual({ current: 2, total: 12 });
+    expect(parseInstallmentCell("2 de 12")).toEqual({ current: 2, total: 12 });
+  });
+
+  it("trata compra à vista como sem parcela", () => {
+    expect(parseInstallmentCell("Única")).toBeNull();
+    expect(parseInstallmentCell("À vista")).toBeNull();
+    expect(parseInstallmentCell("-")).toBeNull();
+    expect(parseInstallmentCell("")).toBeNull();
+  });
+
+  it("ignora parcela impossível", () => {
+    expect(parseInstallmentCell("13/12")).toBeNull();
+  });
+
+  it("não lê uma data como parcela", () => {
+    expect(parseInstallmentCell("12/2026")).toBeNull();
+  });
+
+  it("aceita a palavra 'parcela' antes do número", () => {
+    expect(parseInstallmentCell("Parcela 3/6")).toEqual({ current: 3, total: 6 });
+  });
+});
+
+describe("parseCardLastFour", () => {
+  it("lê os quatro últimos dígitos", () => {
+    expect(parseCardLastFour("2150")).toBe("2150");
+    expect(parseCardLastFour("**** 6869")).toBe("6869");
+    expect(parseCardLastFour("0162")).toBe("0162");
+  });
+
+  it("devolve nulo quando não há número de cartão", () => {
+    expect(parseCardLastFour("VINICIUS ROSELLI")).toBeNull();
+    expect(parseCardLastFour("")).toBeNull();
   });
 });
 
@@ -181,6 +272,21 @@ describe("classifyType", () => {
     const negativo = "expense_negative" as const;
     expect(classifyType("PG *99 RIDE", -32.9, negativo)).toBe("expense");
     expect(classifyType("Pagamento recebido", 1500, negativo)).toBe("payment");
+  });
+});
+
+describe("classifyType - casos da fatura do Itaú", () => {
+  it("reconhece a quitação da fatura anterior", () => {
+    expect(
+      classifyType("Inclusao de Pagamento    ", -18151.91, "expense_positive"),
+    ).toBe("payment");
+  });
+
+  it("trata valor zero como cobrança, não como estorno", () => {
+    // Zero não tem lado. Antes caía em `refund` porque não era "> 0".
+    expect(classifyType("GOOGLE YOUTUBE", 0, "expense_positive")).toBe("expense");
+    expect(classifyType("Anuidade", 0, "expense_positive")).toBe("fee");
+    expect(classifyType("Estorno de tarifa", 0, "expense_positive")).toBe("refund");
   });
 });
 
@@ -386,5 +492,112 @@ describe("parseCsv - dados problemáticos", () => {
       invoiceMonth: "2026-09",
     });
     expect(result.drafts[0]?.invoiceMonth).toBe("2026-09");
+  });
+});
+
+describe("parseCsv - formato Itaú (fatura que vinha zerada)", () => {
+  // Recorte fiel do CSV real: separador ";", duas colunas de valor, coluna de
+  // parcela e final do cartão próprios. Antes da correção, o importador pegava
+  // "Valor (em US$)" e as 96 linhas entravam como R$ 0,00.
+  const CSV = [
+    "Data de Compra;Nome no Cartão;Final do Cartão;Categoria;Descrição;Parcela;Valor (em US$);Cotação (em R$);Valor (em R$)",
+    "27/11/2025;VINICIUS ROSELLI;2150;Empresa serviços;GOOGLE YOUTUBE;Única;0;0;26.90",
+    "03/12/2025;VINICIUS ROSELLI;2150;Elétrico;OPENAI *CHATGPT SUBSCR SA;Única;20.00;5.63;112.53",
+    "14/10/2025;VINICIUS ROSELLI;6869;Educacional;ADAPTAORG;2/12;0;0;99.00",
+    '05/12/2025;VINICIUS ROSELLI;6869;-;"Inclusao de Pagamento    ";Única;0;0;-18151.91',
+    "23/12/2025;VINICIUS ROSELLI;6869;-;Anuidade Diferenciada;12/12;0;0;98.00",
+    "23/12/2025;VINICIUS ROSELLI;6869;-;Estorno Tarifa;Única;0;0;-98.00",
+    "04/06/2025;VINICIUS ROSELLI;0162;Transporte;AIRBNB * HMKHDBT8PZ;7/7;0;0;2163.58",
+  ].join("\n");
+
+  const result = parseCsv(CSV, { fileName: "Fatura_20260105.csv" });
+
+  it("lê o valor em real, não o valor em dólar", () => {
+    expect(result.columns.amount).toBe("Valor (em R$)");
+    expect(result.drafts[0]?.amountCents).toBe(2690);
+    // A compra internacional tem os dois valores; vale o convertido.
+    expect(result.drafts[1]?.amountCents).toBe(11253);
+    expect(result.drafts.every((d) => d.amountCents !== 0)).toBe(true);
+    expect(result.issues.filter((i) => i.level === "error")).toHaveLength(0);
+  });
+
+  it("lê todas as linhas do arquivo separado por ponto e vírgula", () => {
+    expect(result.drafts).toHaveLength(7);
+  });
+
+  it("tira o mês do vencimento no nome do arquivo", () => {
+    // As compras são de outubro a dezembro, mas a fatura é a de janeiro.
+    expect(result.detectedMonth).toBe("2026-01");
+    expect(result.monthSource).toBe("filename");
+  });
+
+  it("lê a parcela da coluna própria, que a descrição não traz", () => {
+    const adapta = result.drafts.find((d) => d.description === "ADAPTAORG");
+    expect(adapta?.installmentCurrent).toBe(2);
+    expect(adapta?.installmentTotal).toBe(12);
+
+    const youtube = result.drafts[0];
+    expect(youtube?.installmentTotal).toBeNull();
+  });
+
+  it("guarda o final do cartão de cada linha", () => {
+    expect(result.columns.card).toBe("Final do Cartão");
+    expect([...new Set(result.drafts.map((d) => d.cardLastFour))]).toEqual([
+      "2150",
+      "6869",
+      "0162",
+    ]);
+  });
+
+  it("classifica pagamento, tarifa e estorno da fatura", () => {
+    const byDescription = new Map(result.drafts.map((d) => [d.description, d]));
+    expect(byDescription.get("Inclusao de Pagamento")?.type).toBe("payment");
+    expect(byDescription.get("Anuidade Diferenciada")?.type).toBe("fee");
+    expect(byDescription.get("Estorno Tarifa")?.type).toBe("refund");
+    expect(byDescription.get("GOOGLE YOUTUBE")?.type).toBe("expense");
+  });
+
+  it("guarda o valor positivo mesmo quando o arquivo traz negativo", () => {
+    const pagamento = result.drafts.find((d) => d.type === "payment");
+    expect(pagamento?.amountCents).toBe(1815191);
+  });
+
+  it("usa a categoria do banco só como dica", () => {
+    expect(result.drafts[0]?.categoryHint).toBe("Empresa serviços");
+  });
+
+  it("aceita a coluna de valor escolhida à mão", () => {
+    const forced = parseCsv(CSV, {
+      fileName: "Fatura_20260105.csv",
+      columns: { amount: "Valor (em US$)" },
+    });
+    expect(forced.drafts[1]?.amountCents).toBe(2000);
+  });
+});
+
+describe("parseCsv - fatura toda zerada", () => {
+  it("recusa em vez de gravar dezenas de lançamentos de R$ 0,00", () => {
+    const csv = [
+      "Data;Descrição;Valor (em US$)",
+      "27/11/2025;GOOGLE YOUTUBE;0",
+      "29/11/2025;POSTO NATURAFLEX;0",
+    ].join("\n");
+    const result = parseCsv(csv, { fileName: "Fatura_20260105.csv" });
+
+    const erros = result.issues.filter((i) => i.level === "error");
+    expect(erros).toHaveLength(1);
+    expect(erros[0]?.message).toContain("Valor (em US$)");
+  });
+
+  it("não reclama de uma única linha zerada no meio de uma fatura normal", () => {
+    const csv = [
+      "Data;Descrição;Valor",
+      "27/11/2025;LOJA A;0",
+      "29/11/2025;LOJA B;120,00",
+    ].join("\n");
+    const result = parseCsv(csv, { fileName: "Fatura_20260105.csv" });
+
+    expect(result.issues.filter((i) => i.level === "error")).toHaveLength(0);
+    expect(result.drafts[0]?.type).toBe("expense");
   });
 });

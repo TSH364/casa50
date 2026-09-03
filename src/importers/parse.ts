@@ -10,6 +10,8 @@ import {
   monthFromDates,
   monthFromFilename,
   normalizeMerchant,
+  parseCardLastFour,
+  parseInstallmentCell,
 } from "./detect";
 import type {
   ColumnMap,
@@ -118,6 +120,8 @@ export function buildDrafts(
     description: string;
     signedCents: number;
     categoryHint: string | null;
+    installmentCell: string | null;
+    cardLastFour: string | null;
   }[] = [];
 
   rows.forEach((row, index) => {
@@ -168,8 +172,25 @@ export function buildDrafts(
       categoryHint: columns.category
         ? (String(row[columns.category] ?? "").trim() || null)
         : null,
+      installmentCell: columns.installment
+        ? (String(row[columns.installment] ?? "").trim() || null)
+        : null,
+      cardLastFour: columns.card
+        ? parseCardLastFour(String(row[columns.card] ?? ""))
+        : null,
     });
   });
+
+  // Uma fatura inteira zerada quase nunca é uma fatura zerada: é a coluna
+  // errada. Foi o que aconteceu com "Valor (em US$)", que vem antes de
+  // "Valor (em R$)" e é 0 em toda compra nacional. Avisar em vez de gravar 96
+  // lançamentos de R$ 0,00 (secao 6: nunca importar em silêncio).
+  if (staged.length > 0 && staged.every((s) => s.signedCents === 0)) {
+    issues.push({
+      level: "error",
+      message: `Todas as linhas vieram com valor zero lendo a coluna "${columns.amount}". Provavelmente não é a coluna certa — escolha outra abaixo.`,
+    });
+  }
 
   const convention =
     options.signConvention ??
@@ -192,7 +213,11 @@ export function buildDrafts(
 
   const drafts: DraftTransaction[] = invoiceMonth
     ? staged.map((s) => {
-        const installment = extractInstallment(s.description);
+        // A coluna de parcela, quando existe, vale mais que a descrição:
+        // "ADAPTAORG" não diz nada, mas a coluna ao lado diz "2/12".
+        const installment =
+          (s.installmentCell ? parseInstallmentCell(s.installmentCell) : null) ??
+          extractInstallment(s.description);
         const merchantNormalized = normalizeMerchant(s.description);
         const amountCents = Math.abs(s.signedCents);
         return {
@@ -206,6 +231,8 @@ export function buildDrafts(
           type: classifyType(s.description, s.signedCents, convention),
           categoryHint: s.categoryHint,
           categoryId: null,
+          cardLastFour: s.cardLastFour,
+          cardId: null,
           installmentCurrent: installment?.current ?? null,
           installmentTotal: installment?.total ?? null,
           duplicateKey: duplicateKey({
