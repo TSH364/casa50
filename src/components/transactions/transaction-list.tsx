@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { Pencil, Trash2 } from "lucide-react";
 import { deleteTransaction } from "@/actions/transactions";
 import { TransactionFormDialog } from "./transaction-form";
+import { CategoryPicker } from "./category-picker";
 import { ConfirmDialog } from "@/components/ui/dialog";
 import { EmptyState } from "@/components/states";
 import { Button } from "@/components/ui/button";
@@ -58,8 +59,6 @@ export function TransactionList({
   const [deleting, setDeleting] = useState<Transaction | undefined>();
   const [pending, startTransition] = useTransition();
 
-  const categoryName = (id: string | null) =>
-    id ? (categories.find((c) => c.id === id)?.name ?? null) : null;
   const categoryColor = (id: string | null) =>
     (id ? categories.find((c) => c.id === id)?.color : null) ?? "#8B8B94";
   const cardName = (id: string | null) =>
@@ -93,8 +92,8 @@ export function TransactionList({
       <ul className="divide-y divide-line">
         {transactions.map((t) => {
           const spend = spendingCents(t);
+          // A categoria saiu daqui: virou seletor, logo ao lado.
           const details = [
-            categoryName(t.categoryId),
             cardName(t.cardId),
             memberName(t.memberId),
             t.installment
@@ -126,9 +125,20 @@ export function TransactionList({
                 <p className="truncate text-sm text-ink">
                   {t.merchantAlias ?? t.description}
                 </p>
-                <p className="truncate text-[12px] text-ink-faint">
-                  {details.join(" · ")}
-                </p>
+                <div className="flex min-w-0 items-center gap-1.5">
+                  <CategoryPicker
+                    transactionId={t.id}
+                    description={t.merchantAlias ?? t.description}
+                    categories={categories}
+                    categoryId={t.categoryId}
+                    subcategoryId={t.subcategoryId}
+                  />
+                  {details.length > 0 ? (
+                    <span className="truncate text-[12px] text-ink-faint">
+                      · {details.join(" · ")}
+                    </span>
+                  ) : null}
+                </div>
               </div>
 
               <div className="shrink-0 text-right">

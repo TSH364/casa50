@@ -100,6 +100,8 @@ export interface TransactionFilter {
   toMonth?: MonthKey;
   memberId?: string | null;
   cardId?: string | null;
+  /** Categoria-pai. Inclui os lançamentos marcados na subcategoria dela. */
+  categoryId?: string | null;
   /** Busca livre em descrição e estabelecimento. */
   search?: string;
   limit?: number;
@@ -126,6 +128,10 @@ export async function listTransactions(
   }
   if (filter.memberId) query = query.eq("member_id", filter.memberId);
   if (filter.cardId) query = query.eq("card_id", filter.cardId);
+  // "sem" é o recorte que mais importa depois de importar uma fatura: é a
+  // lista do que ainda falta categorizar.
+  if (filter.categoryId === "sem") query = query.is("category_id", null);
+  else if (filter.categoryId) query = query.eq("category_id", filter.categoryId);
 
   if (filter.search?.trim()) {
     // Escapa vírgula e parêntese, que são separadores da sintaxe `or` do

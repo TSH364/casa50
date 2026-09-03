@@ -47,6 +47,11 @@ Estas são reais e nenhuma está escondida atrás de uma tela que finge funciona
 
 ### O que a Etapa 4 entrega
 
+- **Categoria trocada na própria linha** do lançamento, com um seletor nativo
+  — sem abrir o formulário inteiro só para classificar. Trocar ali também
+  ensina a regra para a próxima fatura.
+- **Filtro por categoria** em Extratos, com "Sem categoria" na frente: é o
+  recorte do que ainda falta classificar depois de importar.
 - **Faturas do mês** em Extratos: cada importação com arquivo, instituição,
   quem importou, quando, quantos lançamentos e o total — com **desfazer**.
   Quando o arquivo traz o total do banco, a divergência contra a soma

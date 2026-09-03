@@ -92,6 +92,9 @@ export function TransactionFormDialog({
   const [state, formAction] = useActionState<FormState, FormData>(action, {});
 
   const [categoryId, setCategoryId] = useState(transaction?.categoryId ?? "");
+  const [subcategoryId, setSubcategoryId] = useState(
+    transaction?.subcategoryId ?? "",
+  );
   const [visibility, setVisibility] = useState(transaction?.visibility ?? "shared");
   const [date, setDate] = useState(transaction?.date ?? todayIso());
 
@@ -188,31 +191,42 @@ export function TransactionFormDialog({
             </Field>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          {/* A subcategoria só aparece quando a categoria escolhida tem alguma.
+              Antes ela ficava sempre visível e desabilitada - e como nenhuma
+              das categorias iniciais tem filhas, era um campo permanentemente
+              inútil ocupando metade da linha. */}
+          <div className={children.length > 0 ? "grid grid-cols-2 gap-3" : ""}>
             <Field label="Categoria" htmlFor="categoryId" error={err.categoryId}>
               <Select
                 id="categoryId"
                 name="categoryId"
                 placeholder="Sem categoria"
                 value={categoryId}
-                onChange={(e) => setCategoryId(e.target.value)}
+                onChange={(e) => {
+                  setCategoryId(e.target.value);
+                  // A subcategoria pertencia à categoria anterior; mantê-la
+                  // gravaria uma filha sob outro pai.
+                  setSubcategoryId("");
+                }}
                 options={parents.map((c) => ({ value: c.id, label: c.name }))}
               />
             </Field>
-            <Field
-              label="Subcategoria"
-              htmlFor="subcategoryId"
-              error={err.subcategoryId}
-            >
-              <Select
-                id="subcategoryId"
-                name="subcategoryId"
-                placeholder={children.length ? "—" : "Sem subcategorias"}
-                disabled={children.length === 0}
-                defaultValue={transaction?.subcategoryId ?? ""}
-                options={children.map((c) => ({ value: c.id, label: c.name }))}
-              />
-            </Field>
+            {children.length > 0 ? (
+              <Field
+                label="Subcategoria"
+                htmlFor="subcategoryId"
+                error={err.subcategoryId}
+              >
+                <Select
+                  id="subcategoryId"
+                  name="subcategoryId"
+                  placeholder="—"
+                  value={subcategoryId}
+                  onChange={(e) => setSubcategoryId(e.target.value)}
+                  options={children.map((c) => ({ value: c.id, label: c.name }))}
+                />
+              </Field>
+            ) : null}
           </div>
 
           <div className="grid grid-cols-2 gap-3">

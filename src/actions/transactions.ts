@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient, getCurrentUser } from "@/lib/supabase/server";
+import { z } from "zod";
 import { transactionSchema } from "@/domain/schemas";
 import { fromMonthKey } from "@/data/mappers";
 import {
@@ -90,7 +91,11 @@ export async function createTransaction(
  */
 async function learnCategoryRule(
   supabase: Awaited<ReturnType<typeof createClient>>,
-  input: Parsed,
+  input: {
+    description: string;
+    categoryId: string | null;
+    subcategoryId: string | null;
+  },
 ): Promise<void> {
   if (input.categoryId === null) return;
 
@@ -176,4 +181,74 @@ export async function setTransactionHidden(
 
   revalidateTransactions();
   return { ok: true };
+}
+
+/**
+ * Troca a categoria de um lançamento direto na lista (secao 9).
+ *
+ * Existe para não obrigar a abrir o formulário inteiro só para categorizar:
+ * depois de importar uma fatura são dezenas de linhas para classificar, e
+ * catorze campos de diálogo por linha é trabalho que ninguém faz.
+ *
+ * Aceita tanto uma categoria quanto uma subcategoria: escolhendo uma filha, o
+ * pai vai junto, porque `category_id` é o que os totais somam.
+ */
+export async function setTransactionCategory(
+  transactionId: string,
+  categoryId: string | null,
+): Promise<{ error?: string }> {
+  const parsed = z
+    .object({
+      transactionId: z.string().uuid(),
+      categoryId: z.string().uuid().nullable(),
+    })
+    .safeParse({ transactionId, categoryId });
+  if (!parsed.success) return { error: "Seleção inválida." };
+
+  const houseId = await requireHouseId();
+  const supabase = await createClient();
+
+  // A categoria escolhida precisa ser da casa - o id vem do navegador.
+  let parentId: string | null = null;
+  let childId: string | null = null;
+
+  if (parsed.data.categoryId !== null) {
+    const { data: category, error } = await supabase
+      .from("categories")
+      .select("id, parent_id")
+      .eq("house_id", houseId)
+      .eq("id", parsed.data.categoryId)
+      .maybeSingle();
+
+    if (error || !category) return { error: "Categoria não encontrada." };
+
+    const parent = category.parent_id as string | null;
+    parentId = parent ?? (category.id as string);
+    childId = parent ? (category.id as string) : null;
+  }
+
+  const { data: updated, error } = await supabase
+    .from("transactions")
+    .update({ category_id: parentId, subcategory_id: childId })
+    .eq("id", parsed.data.transactionId)
+    .select("description")
+    .maybeSingle();
+
+  if (error) {
+    console.error("[lancamentos] falha ao trocar a categoria", {
+      code: error.code,
+    });
+    return { error: "Não foi possível trocar a categoria." };
+  }
+
+  if (updated) {
+    await learnCategoryRule(supabase, {
+      description: String(updated.description),
+      categoryId: parentId,
+      subcategoryId: childId,
+    });
+  }
+
+  revalidateTransactions();
+  return {};
 }
