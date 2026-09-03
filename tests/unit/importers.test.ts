@@ -8,6 +8,7 @@ import {
   monthFromDates,
   monthFromFilename,
   categoryFromHint,
+  categoryFromMerchant,
   normalizeMerchant,
   parseCardLastFour,
   parseInstallmentCell,
@@ -634,5 +635,58 @@ describe("categoryFromHint", () => {
     expect(categoryFromHint("-")).toBeNull();
     expect(categoryFromHint("")).toBeNull();
     expect(categoryFromHint("Categoria que não existe")).toBeNull();
+  });
+});
+
+describe("categoryFromMerchant", () => {
+  it("reconhece pelo nome o que o banco classificou errado", () => {
+    // Casos reais da fatura, com o que o Itaú dizia entre parênteses.
+    expect(categoryFromMerchant("ELETROGRAAL")).toBe("Transporte"); // Serviços Profissionais
+    expect(categoryFromMerchant("TUPINAMBAENER")).toBe("Transporte"); // Empresa para empresa
+    expect(categoryFromMerchant("DSA X LTDA RECARGA VEI")).toBe("Transporte"); // Aluguel
+    expect(categoryFromMerchant("ASSAI ATACADISTA LJ260")).toBe("Alimentacao"); // Associação
+    expect(categoryFromMerchant("RESTAURANTE E LANCHONE")).toBe("Alimentacao"); // Supermercados
+    expect(categoryFromMerchant("GOOGLE YOUTUBE")).toBe("Assinaturas"); // Empresa serviços
+    expect(categoryFromMerchant("AIRBNB HMKHDBT8PZ")).toBe("Viagens"); // Transporte
+  });
+
+  it("classifica supermercado, posto e estacionamento pela palavra", () => {
+    expect(categoryFromMerchant("PADARIA NOVA GLORIA")).toBe("Alimentacao");
+    expect(categoryFromMerchant("PASARGADA CONVENIENCI")).toBe("Alimentacao");
+    expect(categoryFromMerchant("PAO DE ACUCAR 2050")).toBe("Alimentacao");
+    expect(categoryFromMerchant("POSTO NATURAFLEX")).toBe("Transporte");
+    expect(categoryFromMerchant("TRACEDS ESTACIONAMENTO")).toBe("Transporte");
+    expect(categoryFromMerchant("RAIA DROGASIL SA")).toBe("Saude");
+  });
+
+  it("testa o específico antes do genérico", () => {
+    // As armadilhas de ordem: cada um destes contém o padrão do outro.
+    expect(categoryFromMerchant("MERCADOLIVRE MERCADOL")).toBe("Compras");
+    expect(categoryFromMerchant("SUPERMERCADO SAO JOSE")).toBe("Alimentacao");
+    expect(categoryFromMerchant("UBER EATS")).toBe("Alimentacao");
+    expect(categoryFromMerchant("UBER UBER TRIP HELP U")).toBe("Transporte");
+    // "CARREFOUR PRT" é o posto da rede, não o mercado.
+    expect(categoryFromMerchant("CARREFOUR PRT 420")).toBe("Transporte");
+    expect(categoryFromMerchant("CARREFOUR BAIRRO")).toBe("Alimentacao");
+  });
+
+  it("pega a tarifa pelo nome, que o tipo não alcança no estorno", () => {
+    expect(categoryFromMerchant("ANUIDADE DIFERENCIADA")).toBe("Tarifas");
+    expect(categoryFromMerchant("ESTORNO TARIFA")).toBe("Tarifas");
+  });
+
+  it("não chuta no que não reconhece", () => {
+    // Nome de pessoa e código de maquininha ficam para a dica do banco.
+    expect(categoryFromMerchant("MANOEL ALMEIDA DE JESU")).toBeNull();
+    expect(categoryFromMerchant("63595940LUCAS")).toBeNull();
+    expect(categoryFromMerchant("FPCOMERCIODE")).toBeNull();
+    expect(categoryFromMerchant("INCLUSAO DE PAGAMENTO")).toBeNull();
+    expect(categoryFromMerchant("")).toBeNull();
+  });
+
+  it("não confunde palavra curta com pedaço de outra", () => {
+    // "CASA AZUL" não é companhia aérea; "PLANETA" não é a operadora NET.
+    expect(categoryFromMerchant("CASA AZUL DECORACOES")).toBeNull();
+    expect(categoryFromMerchant("PLANETA DOS BRINQUEDOS")).toBeNull();
   });
 });

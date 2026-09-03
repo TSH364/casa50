@@ -7,6 +7,7 @@ import { requireHouseId } from "./shared";
 import { fromMonthKey } from "@/data/mappers";
 import {
   categoryFromHint,
+  categoryFromMerchant,
   duplicateKey,
   normalizeMerchant,
 } from "@/importers/detect";
@@ -186,20 +187,30 @@ export async function reviewImport(
 
     let categoryId = draft.categoryId;
     if (categoryId === null) {
+      // Ordem por confiança, da maior para a menor:
+      //
+      // 1. regra aprendida - a casa já disse, à mão, onde isto vai;
+      // 2. nome do estabelecimento - "ELETROGRAAL" é recarga de carro,
+      //    independente do que o banco ache;
+      // 3. categoria do banco, traduzida - cobre o que a tabela não conhece;
+      // 4. tipo do lançamento - só serve para tarifa.
+      //
+      // O nome da loja vem ANTES da dica do banco de propósito: a do banco sai
+      // do ramo cadastrado na maquininha e erra muito. Nesta fatura ela
+      // chamava supermercado de "Associação" e restaurante de "Supermercados".
       const fromRule = ruleByPattern.get(draft.merchantNormalized);
-      // Nome exato primeiro; depois a tradução do vocabulário do banco, que é
-      // o que salva a fatura em que nenhum nome coincide.
+      const fromMerchant = categoryByName.get(
+        normalizeMerchant(categoryFromMerchant(draft.merchantNormalized) ?? ""),
+      );
       const fromHint = draft.categoryHint
         ? (categoryByName.get(normalizeMerchant(draft.categoryHint)) ??
            categoryByName.get(
              normalizeMerchant(categoryFromHint(draft.categoryHint) ?? ""),
            ))
         : undefined;
-      // Tarifa do cartão não costuma vir com categoria no arquivo (anuidade,
-      // IOF, juros vêm com "-"), mas o tipo já diz o que ela é.
       const fromType =
         draft.type === "fee" ? categoryByName.get("TARIFAS") : undefined;
-      categoryId = fromRule ?? fromHint ?? fromType ?? null;
+      categoryId = fromRule ?? fromMerchant ?? fromHint ?? fromType ?? null;
       if (categoryId !== null) autoCategorized += 1;
     }
 
@@ -223,7 +234,7 @@ export async function reviewImport(
 
   if (autoCategorized > 0) {
     notes.push(
-      `${autoCategorized} lançamento(s) categorizados automaticamente por regra ou pela categoria do arquivo.`,
+      `${autoCategorized} lançamento(s) categorizados automaticamente pelo estabelecimento, por regra aprendida ou pela categoria do arquivo. Confira abaixo antes de gravar.`,
     );
   }
   const dupes = reviewed.filter((d) => d.decision === "duplicate").length;

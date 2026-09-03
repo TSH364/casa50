@@ -353,6 +353,101 @@ const CATEGORY_SYNONYMS: readonly { pattern: RegExp; category: string }[] = [
 ];
 
 /**
+ * Categoria pelo nome do estabelecimento.
+ *
+ * Vale MAIS que a categoria do banco, e não menos: a do banco vem do código
+ * de atividade da maquininha e erra muito. Na fatura que motivou esta tabela,
+ * o Itaú classificou "ELETROGRAAL" (recarga de carro elétrico) como Serviços
+ * Profissionais, "ASSAI ATACADISTA" como Associação, "CARREFOUR" como
+ * Automotivo e "RESTAURANTE E LANCHONE" como Supermercados. O nome da loja é
+ * o que a pessoa reconhece, e é o sinal mais confiável dos dois.
+ *
+ * A ordem é a regra: a primeira que casar vence, então o específico vem antes
+ * do genérico. "MERCADOLIVRE" tem que ser testado antes de "MERCADO", senão
+ * toda compra de marketplace viraria supermercado; "UBER EATS" antes de
+ * "UBER"; combustível antes de rede de supermercado, porque "CARREFOUR PRT" é
+ * o posto do Carrefour.
+ *
+ * Entra aqui só o que é reconhecível sem contexto. Nome de pessoa, sigla e
+ * código de maquininha ficam de fora - nesses casos a dica do banco assume, e
+ * se ela também não servir a linha fica sem categoria, que é melhor que
+ * catalogar errado. Corrigir à mão grava uma regra aprendida, e a partir daí
+ * aquele estabelecimento não erra mais.
+ *
+ * O texto recebido já passou por `normalizeMerchant`: maiúsculas, sem acento
+ * e sem pontuação. Por isso "EC *TUPINAMBAENER" chega como "TUPINAMBAENER".
+ */
+const MERCHANT_RULES: readonly { pattern: RegExp; category: string }[] = [
+  // --- Marketplaces e varejo, antes de qualquer palavra genérica ----------
+  { pattern: /MERCADO\s?LIVRE|MERCADOLIVRE|MERCADOPAGO/, category: "Compras" },
+  { pattern: /AMAZON|MAGAZINE\s?LUIZA|MAGALU|AMERICANAS|SHOPEE|ALIEXPRESS|SHEIN|TIKTOK\s?SHOP|POLISHOP|CASAS\s?BAHIA|PONTO\s?FRIO/, category: "Compras" },
+  { pattern: /\bPETZ\b|PETLOVE|COBASI|\bPETSHOP\b/, category: "Compras" },
+  { pattern: /UBIQUITI|KABUM|PICHAU|TERABYTE/, category: "Compras" },
+
+  // --- Comida: entrega e restaurante antes das redes de mercado ----------
+  { pattern: /UBER\s?EATS|IFOOD|RAPPI|ZE\s?DELIVERY|AIQFOME/, category: "Alimentacao" },
+  { pattern: /RESTAURANTE|LANCHONETE|PIZZA|BURGER|HAMBURG|SUSHI|CHURRASC|CANTINA|\bGRILL\b|\bBAR\b|\bBOTECO\b|\bPUB\b/, category: "Alimentacao" },
+  { pattern: /PADARIA|CONFEITARIA|\bCAFE\b|CAFETERIA|STARBUCKS|CHURROS|GELATO|SORVET|ACAI|DOCERIA/, category: "Alimentacao" },
+  { pattern: /OUTBACK|MCDONALD|BURGER\s?KING|SUBWAY|HABIBS|GIRAFFAS|SPOLETO|DIVINO\s?FOGAO/, category: "Alimentacao" },
+
+  // --- Transporte: combustível e recarga antes de rede de supermercado ---
+  { pattern: /RECARGA\s?VE|ELETROPOSTO|EZVOLT|ELETROGRAAL|TUPINAMBAENER|VOLTBRAS|WEG\s?MOBILIDADE/, category: "Transporte" },
+  // Posto de rede de supermercado: sem esta linha "CARREFOUR PRT" cairia na
+  // regra da rede, logo abaixo, e abastecer viraria compra de mercado.
+  { pattern: /CARREFOUR\s?PRT|POSTO\s?CARREFOUR|POSTO\s?EXTRA/, category: "Transporte" },
+  { pattern: /\bPOSTO\b|AUTO\s?POSTO|COMBUSTIVEL|IPIRANGA|\bSHELL\b|PETROBRAS|BR\s?MANIA|ALESAT/, category: "Transporte" },
+  { pattern: /ESTACIONAMENTO|ALLPARK|ESTAPAR|\bZUL\b|PARKING|\bPEDAGIO\b|SEM\s?PARAR|CONECTCAR|VELOE/, category: "Transporte" },
+  { pattern: /\bUBER\b|\b99\s?APP\b|\b99APP\b|CABIFY|\bTAXI\b|TEMBICI|YELLOW|BIKE\s?ITAU|METRO\s?SP|BILHETE\s?UNICO/, category: "Transporte" },
+  { pattern: /\bBYD\b|LOCALIZA|MOVIDA|UNIDAS|PORTO\s?SEGURO\s?AUTO|AUTO\s?PECAS|PNEU/, category: "Transporte" },
+
+  // --- Supermercado, depois de combustível e marketplace -----------------
+  { pattern: /SUPERMERCADO|MERCEARIA|HORTIFRUTI|ACOUGUE|EMPORIO|CONVENIENC|ATACADIST/, category: "Alimentacao" },
+  { pattern: /CARREFOUR|\bASSAI\b|ATACADAO|PAO\s?DE\s?ACUCAR|\bSENDAS\b|\bSONDA\b|\bMAMBO\b|ST\s?MARCHE|OXXO|\bZAFFARI\b|ANGELONI/, category: "Alimentacao" },
+
+  // --- Assinaturas -------------------------------------------------------
+  { pattern: /\bGOOGLE\b|\bAPPLE\b|ITUNES|MICROSOFT|OPENAI|ANTHROPIC|\bCLAUDE\b|CHATGPT/, category: "Assinaturas" },
+  { pattern: /NETFLIX|SPOTIFY|HBO\s?MAX|HBOMAX|DISNEY|PARAMOUNT|DEEZER|PRIME\s?VIDEO|CRUNCHYROLL|TWITCH|\bSTEAM\b|PLAYSTATION|\bXBOX\b/, category: "Assinaturas" },
+  { pattern: /HOME\s?ASSISTANT|DROPBOX|NOTION|CANVA|ADOBE|FIGMA|GITHUB|VERCEL|SUPABASE/, category: "Assinaturas" },
+
+  // --- Saúde -------------------------------------------------------------
+  { pattern: /DROGARIA|DROGASIL|DROGA\s?RAIA|FARMACIA|PACHECO|PAGUE\s?MENOS|\bVENANCIO\b/, category: "Saude" },
+  { pattern: /HOSPITAL|CLINICA|LABORATORIO|ODONTO|DENTAL|\bUNIMED\b|AMIL|FLEURY|\bDASA\b|PSICOLOG|FISIOTERAP/, category: "Saude" },
+
+  // --- Moradia -----------------------------------------------------------
+  { pattern: /LEROY\s?MERLIN|TELHANORTE|CONSTRUCAO|MATERIAL\s?DE\s?CONSTR|TOK\s?STOK|MOBLY|MADEIRA\s?MADEIRA/, category: "Moradia" },
+  { pattern: /CONDOMINIO|\bENEL\b|\bSABESP\b|COMGAS|\bCPFL\b|\bLIGHT\b|COPASA|CEMIG|ELETROPAULO/, category: "Moradia" },
+
+  // --- Viagens -----------------------------------------------------------
+  { pattern: /AIRBNB|BOOKING|DECOLAR|\bLATAM\b|GOL\s?LINHAS|AZUL\s?LINHAS|AZUL\s?VIAGENS|SMILES|HOTEL|POUSADA|HOSTEL|\bCVC\b/, category: "Viagens" },
+
+  // --- Lazer -------------------------------------------------------------
+  { pattern: /SPORTCLUB|SMART\s?FIT|SMARTFIT|ACADEMIA|BIOSPORT|\bGYM\b|CINEMARK|KINOPLEX|\bCINEMA\b|INGRESSO\s?COM|TICKET\s?360|SYMPLA|EVENTIM/, category: "Lazer" },
+
+  // --- Serviços ----------------------------------------------------------
+  { pattern: /STARLINK|\bVIVO\b|\bCLARO\b|\bTIM\b|ALGAR|INTERNET|TELECOM/, category: "Servicos" },
+  { pattern: /CONTABILIZEI|CONTABIL|CARTORIO|ADVOCACIA|CORREIOS/, category: "Servicos" },
+
+  // --- Cobranças do próprio cartão ---------------------------------------
+  // Pelo nome, e não só pelo tipo: "Estorno Tarifa" é um estorno, então a
+  // regra que manda tarifa para Tarifas pelo tipo não alcança essa linha.
+  { pattern: /\bANUIDADE\b|\bTARIFA\b|\bIOF\b|\bJUROS\b|ENCARGOS?\b|\bMULTA\b/, category: "Tarifas" },
+
+  // --- Educação ----------------------------------------------------------
+  { pattern: /UDEMY|ALURA|COURSERA|\bENEM\b|FACULDADE|UNIVERSIDADE|COLEGIO|\bESCOLA\b|CURSO\s/, category: "Educacao" },
+];
+
+/**
+ * Nome de categoria da casa sugerido pelo estabelecimento.
+ *
+ * Devolve `null` quando não reconhece - e aí a dica do banco assume.
+ */
+export function categoryFromMerchant(merchantNormalized: string): string | null {
+  const key = merchantNormalized.trim();
+  if (key === "") return null;
+  return MERCHANT_RULES.find((r) => r.pattern.test(key))?.category ?? null;
+}
+
+/**
  * Nome de categoria da casa sugerido pela categoria que o banco mandou.
  *
  * Devolve `null` quando não reconhece - e aí a linha fica sem categoria, que é

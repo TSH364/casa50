@@ -112,10 +112,15 @@ sai da máquina antes de você revisar e confirmar.
   não é repetição; a parcela 3/10 não é igual à 4/10.
 - **Revisão antes de gravar**: novos, repetidos, ignorados, sem categoria e
   total calculado, com cada linha alternável entre importar e ignorar.
-- **Categorização automática** por regra aprendida, pela categoria do arquivo
-  (traduzindo o vocabulário do banco: "Supermercados / Mercearia / Padarias"
-  vira Alimentação) ou pelo tipo, no caso das tarifas. A revisão mostra em que
-  categoria cada linha vai cair, antes de gravar.
+- **Categorização automática**, por ordem de confiança: regra aprendida →
+  nome do estabelecimento → categoria do arquivo traduzida → tipo. O nome da
+  loja vem antes da dica do banco porque a do banco sai do ramo cadastrado na
+  maquininha e erra muito: na fatura que motivou a tabela, o Itaú chamava
+  supermercado de "Associação", restaurante de "Supermercados" e recarga de
+  carro elétrico de "Serviços Profissionais". Numa fatura real de 96 linhas,
+  95 entram categorizadas — a que sobra é o pagamento da fatura, que não é
+  gasto. A revisão mostra em que categoria cada linha vai cair, antes de
+  gravar.
 - **Regras aprendidas de verdade.** Categorizar um lançamento à mão guarda
   "este estabelecimento é desta categoria" para a próxima fatura. A tabela já
   era lida pelo importador, mas nada a escrevia, então a regra nunca existia.
