@@ -1,0 +1,133 @@
+@import "tailwindcss";
+
+/* ===========================================================================
+   Fluxo - direcao visual
+   Dark mode como padrao, grafite e preto, tipografia limpa, acento indigo.
+   Vermelho e reservado para excesso e erro - nunca e cor decorativa.
+   =========================================================================== */
+
+@theme {
+  /* Fundos: tres niveis de profundidade, sem gradiente. */
+  --color-canvas: #08090c;
+  --color-surface: #101219;
+  --color-surface-2: #171a23;
+  --color-surface-3: #1f232e;
+  --color-line: #262a36;
+  --color-line-strong: #343a49;
+
+  /* Texto: contraste alto no principal, cinza legivel no secundario. */
+  --color-ink: #f3f4f8;
+  --color-ink-muted: #9aa0b0;
+  --color-ink-faint: #6b7180;
+
+  /* Semantica. */
+  --color-brand: #7c86ff;
+  --color-brand-soft: #2a2d4d;
+  --color-positive: #35d29a;
+  --color-positive-soft: #12352b;
+  --color-attention: #f2b23c;
+  --color-attention-soft: #3a2e13;
+  --color-danger: #f2686b;
+  --color-danger-soft: #3c1c20;
+
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI",
+    Roboto, "Helvetica Neue", Arial, sans-serif;
+  /* Numeros em tabular para os valores nao dancarem ao atualizar. */
+  --font-numeric: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, monospace;
+
+  --radius-card: 1rem;
+  --radius-control: 0.625rem;
+}
+
+:root {
+  color-scheme: dark;
+}
+
+* {
+  border-color: var(--color-line);
+}
+
+html {
+  background-color: var(--color-canvas);
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  background-color: var(--color-canvas);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  /* Respeita a barra inferior do iPhone. */
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+/* Valores monetarios: largura fixa por digito, para o numero nao "pular"
+   quando o total muda durante um recalculo. */
+.tabular {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+
+/* Foco visivel em qualquer controle - requisito de acessibilidade. */
+:focus-visible {
+  outline: 2px solid var(--color-brand);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* Skeleton: pulso discreto, sem brilho atravessando a tela. */
+@keyframes fluxo-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
+
+.skeleton {
+  background-color: var(--color-surface-3);
+  border-radius: 0.5rem;
+  animation: fluxo-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes fluxo-rise {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+
+.rise {
+  animation: fluxo-rise 0.32s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* Quem pediu menos movimento no sistema nao ve animacao nenhuma. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Barra de rolagem discreta, sem sumir por completo. */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: var(--color-surface-3);
+  border-radius: 999px;
+  border: 3px solid var(--color-canvas);
+}
+
+/* --------------------------------------------------------------------------
+   Modal. Keyframes proprias em vez de tailwindcss-animate: sao tres regras,
+   nao vale uma dependencia. No desktop a caixa so aparece; no celular a folha
+   sobe. `prefers-reduced-motion` acima ja neutraliza as duas.
+   -------------------------------------------------------------------------- */
+@keyframes fluxo-fade-in  { from { opacity: 0 } to { opacity: 1 } }
+@keyframes fluxo-fade-out { from { opacity: 1 } to { opacity: 0 } }
+@keyframes fluxo-sheet-up { from { opacity: 0; transform: translateY(12px) } to { opacity: 1; transform: none } }
+@keyframes fluxo-box-in   { from { opacity: 0; transform: translate(-50%, -48%) scale(0.98) } to { opacity: 1; transform: translate(-50%, -50%) scale(1) } }
+
+.fluxo-fade-in  { animation: fluxo-fade-in  0.18s ease-out both }
+.fluxo-fade-out { animation: fluxo-fade-out 0.15s ease-in  both }
+.fluxo-sheet-in { animation: fluxo-sheet-up 0.26s cubic-bezier(0.22, 1, 0.36, 1) both }
+
+@media (min-width: 640px) {
+  .fluxo-sheet-in { animation: fluxo-box-in 0.2s cubic-bezier(0.22, 1, 0.36, 1) both }
+}

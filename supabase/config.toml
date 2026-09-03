@@ -1,0 +1,50 @@
+# Configuracao do stack local do Supabase (`npm run db:start`).
+# Nao afeta o projeto na nuvem, que e configurado pelo painel.
+project_id = "fluxo-financas-casal"
+
+[api]
+enabled = true
+port = 54321
+schemas = ["public", "graphql_public"]
+# `app` fica de fora: as funcoes de autorizacao nao devem ser chamaveis
+# diretamente pelo cliente.
+extra_search_path = ["public", "extensions"]
+max_rows = 1000
+
+[db]
+port = 54322
+major_version = 15
+
+[db.migrations]
+enabled = true
+
+[studio]
+enabled = true
+port = 54323
+
+# Servidor de e-mail de teste: os links de confirmacao aparecem aqui,
+# em vez de serem enviados de verdade.
+[inbucket]
+enabled = true
+port = 54324
+
+[auth]
+enabled = true
+site_url = "http://localhost:3000"
+additional_redirect_urls = ["http://localhost:3000/auth/confirmar"]
+jwt_expiry = 3600
+enable_refresh_token_rotation = true
+enable_signup = true
+
+[auth.email]
+enable_signup = true
+# Desligado no ambiente local para nao travar o desenvolvimento.
+# Na nuvem, manter LIGADO.
+enable_confirmations = false
+double_confirm_changes = true
+
+[storage]
+enabled = true
+# Comprovantes de lancamento (secao 9). Limite baixo de proposito: evita
+# upload de arquivo grande demais antes mesmo da validacao de tipo.
+file_size_limit = "10MiB"
