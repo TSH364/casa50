@@ -19,28 +19,47 @@ const publicSchema = z.object({
   NEXT_PUBLIC_SUPABASE_ANON_KEY: z.string().min(1, {
     message: "NEXT_PUBLIC_SUPABASE_ANON_KEY ausente. Veja .env.example.",
   }),
-  /*
-   * Em desenvolvimento cai em localhost, que e o certo. Em producao NAO tem
-   * padrao de proposito: e daqui que sai o link de confirmacao de e-mail, e
-   * um padrao silencioso mandaria o casal clicar em `localhost:3000` sem
-   * ninguem descobrir o motivo. Falhar no build com o nome da variavel e
-   * muito melhor do que um e-mail que nao funciona.
-   */
-  NEXT_PUBLIC_SITE_URL:
-    process.env.NODE_ENV === "production"
-      ? z.string().url({
-          message:
-            "NEXT_PUBLIC_SITE_URL ausente ou invalida. Em producao ela e obrigatoria: " +
-            "e a base do link de confirmacao de e-mail. Defina a URL final do app.",
-        })
-      : z.string().url().default("http://localhost:3000"),
 });
 
 export const publicEnv = publicSchema.parse({
   NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL,
   NEXT_PUBLIC_SUPABASE_ANON_KEY: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
-  NEXT_PUBLIC_SITE_URL: process.env.NEXT_PUBLIC_SITE_URL,
 });
+
+/**
+ * Endereco publico do app, base do link de confirmacao de e-mail.
+ *
+ * Nao e variavel `NEXT_PUBLIC_`: ela e lida num unico lugar, dentro de uma
+ * Server Action, e nunca precisou ir para o bundle do navegador. Tratar como
+ * publica obrigava a definir a URL a mao antes do primeiro deploy — um passo
+ * manual que a hospedagem ja sabe responder sozinha.
+ *
+ * A ordem de resolucao e deliberada:
+ *
+ * 1. `NEXT_PUBLIC_SITE_URL`, quando definida. Dominio proprio manda.
+ * 2. `VERCEL_PROJECT_PRODUCTION_URL`, que a Vercel injeta com o dominio
+ *    estavel de producao — nao o do deploy especifico, que muda a cada push
+ *    e deixaria o link do e-mail apontando para uma versao antiga.
+ * 3. `localhost` em desenvolvimento.
+ *
+ * Em producao sem nenhuma das duas primeiras, falha com o nome da variavel.
+ * Cair em `localhost` calado mandaria o casal clicar num link morto sem
+ * ninguem descobrir o motivo.
+ */
+export function siteUrl(): string {
+  const explicit = process.env.NEXT_PUBLIC_SITE_URL;
+  if (explicit) return explicit.replace(/\/$/, "");
+
+  const vercel = process.env.VERCEL_PROJECT_PRODUCTION_URL;
+  if (vercel) return `https://${vercel}`;
+
+  if (process.env.NODE_ENV !== "production") return "http://localhost:3000";
+
+  throw new Error(
+    "Nao foi possivel descobrir o endereco do app. Defina NEXT_PUBLIC_SITE_URL " +
+      "com a URL final: e a base do link de confirmacao de e-mail.",
+  );
+}
 
 /**
  * Chave de servico: ignora RLS. Só pode ser lida em codigo de servidor.

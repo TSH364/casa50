@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
-import { publicEnv } from "@/lib/env";
+import { siteUrl } from "@/lib/env";
 
 export interface AuthFormState {
   error?: string;
@@ -77,7 +77,7 @@ export async function signUp(
       // Lido pelo trigger app.handle_new_user() para criar o perfil com o
       // nome real - por isso nunca ha nome fixo em codigo.
       data: { full_name: parsed.data.fullName },
-      emailRedirectTo: `${publicEnv.NEXT_PUBLIC_SITE_URL}/auth/confirmar`,
+      emailRedirectTo: `${siteUrl()}/auth/confirmar`,
     },
   });
 

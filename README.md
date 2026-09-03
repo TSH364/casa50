@@ -285,11 +285,17 @@ hospedagem não move seus dados.
 
 ### Variáveis de ambiente (iguais nos dois)
 
-| Variável | Valor |
-|---|---|
-| `NEXT_PUBLIC_SUPABASE_URL` | URL do projeto Supabase |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | chave publicável (anon) |
-| `NEXT_PUBLIC_SITE_URL` | a URL final do app |
+| Variável | Valor | Obrigatória? |
+|---|---|---|
+| `NEXT_PUBLIC_SUPABASE_URL` | URL do projeto Supabase | sim |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | chave publicável (anon) | sim |
+| `NEXT_PUBLIC_SITE_URL` | endereço final do app | só fora da Vercel |
+
+Na Vercel, o endereço de produção é descoberto sozinho por
+`VERCEL_PROJECT_PRODUCTION_URL`, então bastam as duas primeiras. Defina a
+terceira quando usar domínio próprio ou outra hospedagem — sem ela, e sem a
+variável da Vercel, o app se recusa a subir em produção em vez de mandar o
+link de confirmação de e-mail para `localhost`.
 
 `SUPABASE_SERVICE_ROLE_KEY` **não vai para o servidor de produção**: ela ignora
 o RLS e nenhuma rota do app a usa. Ela existe só para scripts administrativos
@@ -308,7 +314,7 @@ Depois de publicar, nos dois casos:
 ### Opção A — Vercel
 
 1. Importe o repositório do GitHub na Vercel.
-2. Configure as três variáveis acima em Settings → Environment Variables.
+2. Configure as duas primeiras variáveis em Settings → Environment Variables.
 3. Publique. Cada `git push` na `main` republica sozinho.
 
 É a implementação de referência do Next.js: middleware, Server Actions e
@@ -322,7 +328,8 @@ Só o produto de **aplicações web** (Node.js). A hospedagem de site comum
 (Premium/Business) é PHP e não roda este app.
 
 1. Conecte o repositório do GitHub no painel.
-2. Configure as três variáveis de ambiente.
+2. Configure as três variáveis de ambiente — aqui a terceira é obrigatória,
+   porque não existe a variável automática da Vercel.
 3. Comando de build `npm run build`, de início `npm run start`.
 
 Dois pontos antes de fechar o plano:
