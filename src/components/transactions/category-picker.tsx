@@ -23,12 +23,15 @@ export function CategoryPicker({
   categories,
   categoryId,
   subcategoryId,
+  className,
 }: {
   transactionId: string;
   description: string;
   categories: Category[];
   categoryId: string | null;
   subcategoryId: string | null;
+  /** Largura vem de fora: quem monta a linha é que sabe quanto sobra. */
+  className?: string;
 }) {
   // A subcategoria é o que o usuário escolheu de mais específico; é ela que
   // deve aparecer selecionada quando existe.
@@ -54,7 +57,7 @@ export function CategoryPicker({
   const chosen = categories.find((c) => c.id === value);
 
   return (
-    <span className="relative inline-flex min-w-0 max-w-full items-center">
+    <span className={cn("relative inline-flex min-w-0 items-center", className)}>
       <span
         className="pointer-events-none absolute left-2 size-2 shrink-0 rounded-full"
         style={{ backgroundColor: chosen?.color ?? "var(--color-line-strong, #55555c)" }}

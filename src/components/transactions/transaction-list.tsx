@@ -11,6 +11,7 @@ import { EmptyState } from "@/components/states";
 import { Button } from "@/components/ui/button";
 import { formatBRL } from "@/lib/money";
 import { spendingCents } from "@/domain/finance";
+import { monthShortLabel } from "@/domain/month";
 import { cn } from "@/lib/utils";
 import type { Card, Category, Transaction } from "@/domain/types";
 import type { MemberSummary } from "@/lib/houses";
@@ -31,15 +32,15 @@ const ORIGIN_LABEL: Record<Transaction["origin"], string> = {
   imported_statement: "Extrato",
 };
 
-const dayFormatter = new Intl.DateTimeFormat("pt-BR", {
-  day: "2-digit",
-  month: "short",
-  timeZone: "UTC",
-});
-
-/** `"2026-08-12"` -> `"12 ago"`, sem passar por fuso local. */
+/**
+ * `"2026-08-12"` -> `"12 ago"`, sem passar por fuso local.
+ *
+ * Montado a partir das partes em vez de formatar a data inteira: em pt-BR,
+ * `{ day, month: "short" }` devolve "12 de ago." - e esse "de" quebrava a
+ * data em duas linhas dentro da lista.
+ */
 function shortDate(iso: string) {
-  return dayFormatter.format(new Date(`${iso}T00:00:00Z`)).replace(".", "");
+  return `${iso.slice(8)} ${monthShortLabel(iso.slice(0, 7))}`;
 }
 
 export function TransactionList({
@@ -92,10 +93,12 @@ export function TransactionList({
       <ul className="divide-y divide-line">
         {transactions.map((t) => {
           const spend = spendingCents(t);
-          // A categoria saiu daqui: virou seletor, logo ao lado.
+          // A categoria saiu daqui: virou seletor, na linha de baixo.
           const details = [
-            cardName(t.cardId),
+            shortDate(t.date),
+            TYPE_LABEL[t.type],
             memberName(t.memberId),
+            cardName(t.cardId),
             t.installment
               ? `parcela ${t.installment.current}/${t.installment.total}`
               : null,
@@ -104,77 +107,81 @@ export function TransactionList({
           ].filter(Boolean);
 
           return (
+            /*
+             * Três linhas empilhadas, e não seis colunas lado a lado.
+             *
+             * Numa tela de celular a data, a descrição, os detalhes, o valor,
+             * o tipo, dois botões e o seletor de categoria não cabem em
+             * paralelo: sobrava um punhado de pixels para o meio, e tudo saía
+             * cortado em reticências - a categoria chegava a mostrar só "S".
+             * Empilhado, cada coisa recebe a largura de que precisa.
+             */
             <li
               key={t.id}
               className={cn(
-                "group flex items-start gap-3 py-2.5",
+                "group flex items-start gap-3 py-3",
                 t.isHidden && "opacity-45",
               )}
             >
               <span
-                className="h-9 w-1 shrink-0 rounded-full"
+                className="mt-0.5 h-10 w-1 shrink-0 rounded-full"
                 style={{ backgroundColor: categoryColor(t.categoryId) }}
                 aria-hidden
               />
 
-              <span className="tabular w-11 shrink-0 pt-0.5 text-[12px] text-ink-faint">
-                {shortDate(t.date)}
-              </span>
-
               <div className="min-w-0 flex-1">
-                <p className="truncate text-sm text-ink">
-                  {t.merchantAlias ?? t.description}
-                </p>
-                {details.length > 0 ? (
-                  <p className="truncate text-[12px] text-ink-faint">
-                    {details.join(" · ")}
+                <div className="flex items-baseline gap-2">
+                  <p className="min-w-0 flex-1 truncate text-sm text-ink">
+                    {t.merchantAlias ?? t.description}
                   </p>
-                ) : null}
-                {/* Linha própria e largura inteira: espremido ao lado dos
-                    outros detalhes, o nome da categoria vinha cortado. */}
-                <div className="mt-1 max-w-[13rem]">
+                  <p
+                    className={cn(
+                      "tabular shrink-0 text-sm font-medium",
+                      // Verde para o que entra ou volta; branco para o que sai.
+                      spend < 0 || t.type === "income"
+                        ? "text-positive"
+                        : "text-ink",
+                      t.type === "payment" && "text-ink-muted",
+                    )}
+                  >
+                    {formatBRL(t.amount)}
+                  </p>
+                </div>
+
+                <p className="mt-0.5 truncate text-[12px] text-ink-faint">
+                  {details.join(" · ")}
+                </p>
+
+                <div className="mt-2 flex items-center gap-2">
                   <CategoryPicker
+                    className="min-w-0 flex-1 sm:max-w-[15rem]"
                     transactionId={t.id}
                     description={t.merchantAlias ?? t.description}
                     categories={categories}
                     categoryId={t.categoryId}
                     subcategoryId={t.subcategoryId}
                   />
+
+                  {/* Sempre visíveis no toque; no desktop, no hover. */}
+                  <div className="flex shrink-0 items-center opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      aria-label={`Editar ${t.description}`}
+                      onClick={() => setEditing(t)}
+                    >
+                      <Pencil aria-hidden />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      aria-label={`Excluir ${t.description}`}
+                      onClick={() => setDeleting(t)}
+                    >
+                      <Trash2 aria-hidden />
+                    </Button>
+                  </div>
                 </div>
-              </div>
-
-              <div className="shrink-0 text-right">
-                <p
-                  className={cn(
-                    "tabular text-sm font-medium",
-                    // Verde para o que entra ou volta; branco para o que sai.
-                    spend < 0 || t.type === "income" ? "text-positive" : "text-ink",
-                    t.type === "payment" && "text-ink-muted",
-                  )}
-                >
-                  {formatBRL(t.amount)}
-                </p>
-                <p className="text-[11px] text-ink-faint">{TYPE_LABEL[t.type]}</p>
-              </div>
-
-              {/* Sempre visíveis no toque; no desktop aparecem no hover. */}
-              <div className="flex shrink-0 items-center opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100">
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  aria-label={`Editar ${t.description}`}
-                  onClick={() => setEditing(t)}
-                >
-                  <Pencil aria-hidden />
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  aria-label={`Excluir ${t.description}`}
-                  onClick={() => setDeleting(t)}
-                >
-                  <Trash2 aria-hidden />
-                </Button>
               </div>
             </li>
           );
