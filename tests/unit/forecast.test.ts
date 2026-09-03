@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   detectRecurrences,
   forecastMonths,
+  goalProgress,
   installmentSeries,
   installmentsDueIn,
   reconcileRecurrences,
@@ -417,5 +418,126 @@ describe("forecastMonths", () => {
       months: 3,
     });
     expect(meses.map((m) => m.month)).toEqual(["2026-09", "2026-10", "2026-11"]);
+  });
+});
+
+describe("goalProgress", () => {
+  const hoje = new Date("2026-09-15T12:00:00");
+  const g = (current: number, target: number, opts = {}) =>
+    goalProgress(current, target, { today: hoje, ...opts });
+
+  it("calcula o que falta", () => {
+    const p = g(300000, 1000000);
+    expect(p.remainingCents).toBe(700000);
+    expect(p.ratio).toBeCloseTo(0.3);
+    expect(p.isComplete).toBe(false);
+  });
+
+  it("reconhece meta cumprida", () => {
+    const p = g(1000000, 1000000);
+    expect(p.isComplete).toBe(true);
+    expect(p.remainingCents).toBe(0);
+    expect(p.neededPerMonthCents).toBeNull();
+  });
+
+  it("não fica negativo quando passa da meta", () => {
+    const p = g(1200000, 1000000);
+    expect(p.remainingCents).toBe(0);
+    expect(p.isComplete).toBe(true);
+  });
+
+  it("divide o que falta pelos meses até o prazo", () => {
+    // Set/2026 até mar/2027 são 6 meses; faltam R$ 7.000.
+    const p = g(300000, 1000000, { targetDate: "2027-03-31" });
+    expect(p.monthsLeft).toBe(6);
+    expect(p.neededPerMonthCents).toBe(Math.ceil(700000 / 6));
+  });
+
+  it("projeta o mês de conclusão pelo aporte declarado", () => {
+    const p = g(300000, 1000000, { monthlyContributionCents: 100000 });
+    // R$ 7.000 restantes a R$ 1.000/mês = 7 meses.
+    expect(p.projectedMonth).toBe("2027-04");
+  });
+
+  it("diz que está fora do ritmo quando o aporte não alcança o prazo", () => {
+    const p = g(300000, 1000000, {
+      targetDate: "2027-03-31",
+      monthlyContributionCents: 50000,
+    });
+    expect(p.onTrack).toBe(false);
+  });
+
+  it("diz que está no ritmo quando o aporte alcança", () => {
+    const p = g(300000, 1000000, {
+      targetDate: "2027-03-31",
+      monthlyContributionCents: 200000,
+    });
+    expect(p.onTrack).toBe(true);
+  });
+
+  it("não julga ritmo sem prazo ou sem aporte", () => {
+    // Cobrar ritmo de uma meta sem prazo seria inventar uma exigência.
+    expect(g(300000, 1000000).onTrack).toBeNull();
+    expect(g(300000, 1000000, { targetDate: "2027-03-31" }).onTrack).toBeNull();
+    expect(g(300000, 1000000, { monthlyContributionCents: 50000 }).onTrack).toBeNull();
+  });
+
+  it("trata prazo já vencido como tudo para agora", () => {
+    const p = g(300000, 1000000, { targetDate: "2026-08-31" });
+    expect(p.monthsLeft).toBe(0);
+    expect(p.neededPerMonthCents).toBe(700000);
+  });
+});
+
+describe("forecastMonths — estorno abate a despesa", () => {
+  it("anuidade estornada não aumenta o compromisso futuro", () => {
+    // Regra essencial do produto: anuidade com estorno esperado não pode
+    // inflar a previsão. Cobrada e estornada no mesmo mês, o líquido é zero.
+    const [mes] = forecastMonths({
+      transactions: [
+        tx({ merchantNormalized: "MERCADO", amount: 500, invoiceMonth: "2026-07" }),
+        tx({ merchantNormalized: "MERCADO", amount: 500, invoiceMonth: "2026-08" }),
+        tx({
+          merchantNormalized: "ANUIDADE",
+          description: "Anuidade diferenciada",
+          amount: 400,
+          type: "fee",
+          invoiceMonth: "2026-08",
+        }),
+        tx({
+          merchantNormalized: "ANUIDADE",
+          description: "Estorno de anuidade",
+          amount: 400,
+          type: "refund",
+          invoiceMonth: "2026-08",
+        }),
+      ],
+      recurrences: [],
+      fromMonth: "2026-08",
+      months: 1,
+    });
+
+    // Sem o abatimento, agosto contaria 900 e a média subiria para 700.
+    expect(mes?.estimatedCents).toBe(50000);
+  });
+
+  it("mês com estorno maior que a despesa vale zero, não negativo", () => {
+    const [mes] = forecastMonths({
+      transactions: [
+        tx({ merchantNormalized: "LOJA", amount: 100, invoiceMonth: "2026-07" }),
+        tx({
+          merchantNormalized: "LOJA",
+          amount: 900,
+          type: "refund",
+          invoiceMonth: "2026-08",
+        }),
+      ],
+      recurrences: [],
+      fromMonth: "2026-08",
+      months: 1,
+    });
+
+    expect(mes?.estimatedCents).toBe(5000);
+    expect(mes?.estimatedCents).toBeGreaterThanOrEqual(0);
   });
 });

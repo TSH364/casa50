@@ -183,7 +183,7 @@ export function mapBudget(row: Record<string, unknown>): Budget {
 }
 
 export const GOAL_COLUMNS =
-  "id, house_id, name, target_amount, target_date, monthly_contribution, owner_id, status";
+  "id, house_id, name, target_amount, target_date, monthly_contribution, owner_id, note, status";
 
 /**
  * `currentAmount` nao existe como coluna: e a soma dos depositos da meta.
@@ -204,6 +204,7 @@ export function mapGoal(
     monthlyContribution:
       row.monthly_contribution === null ? null : Number(row.monthly_contribution),
     ownerId: (row.owner_id as string | null) ?? null,
+    note: (row.note as string | null) ?? null,
     status: row.status as Goal["status"],
   };
 }

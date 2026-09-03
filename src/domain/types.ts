@@ -180,5 +180,6 @@ export interface Goal {
   targetDate: IsoDate | null;
   monthlyContribution: number | null;
   ownerId: string | null;
+  note: string | null;
   status: GoalStatus;
 }

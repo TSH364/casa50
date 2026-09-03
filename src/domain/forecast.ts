@@ -401,8 +401,13 @@ export function forecastMonths({
   for (const t of transactions) {
     if (t.isHidden || t.installment !== null) continue;
     if (t.status === "cancelled" || t.status === "missing") continue;
+
+    // Estorno entra com sinal negativo, nao e descartado. A regra do produto
+    // e explicita: anuidade com estorno esperado nao pode aumentar o
+    // compromisso futuro liquido. Pular o estorno faria a anuidade contar
+    // cheia na media e a previsao subir por uma despesa que voltou.
     const spend = spendingCents(t);
-    if (spend <= 0) continue;
+    if (spend === 0) continue;
 
     const key = compareKey(
       t.merchantNormalized ?? t.merchantOriginal ?? t.description,
@@ -422,7 +427,10 @@ export function forecastMonths({
     );
   }
 
-  const observed = [...variableByMonth.values()];
+  // Um mes cujo estorno superou a despesa nao tem gasto variavel negativo:
+  // tem zero. Media negativa reduziria a previsao dos meses seguintes por um
+  // evento que ja aconteceu e nao se repete.
+  const observed = [...variableByMonth.values()].map((v) => Math.max(0, v));
   const hasEstimate = observed.length >= 2;
   const estimatedCents = hasEstimate
     ? Math.round(observed.reduce((a, b) => a + b, 0) / observed.length)
@@ -440,4 +448,86 @@ export function forecastMonths({
       hasEstimate,
     };
   });
+}
+
+// --------------------------------------------------------------------------
+// Metas (secao 13)
+// --------------------------------------------------------------------------
+
+export interface GoalProgress {
+  currentCents: Cents;
+  targetCents: Cents;
+  remainingCents: Cents;
+  /** 0 a 1. Passa de 1 quando ja superou a meta. */
+  ratio: number;
+  isComplete: boolean;
+  /** Meses ate o prazo. `null` quando a meta nao tem prazo. */
+  monthsLeft: number | null;
+  /** Quanto precisaria guardar por mes para chegar no prazo. */
+  neededPerMonthCents: Cents | null;
+  /**
+   * Em que mes a meta fecha no ritmo do aporte declarado.
+   * `null` quando nao ha aporte, ou quando o aporte e zero.
+   */
+  projectedMonth: MonthKey | null;
+  /**
+   * `true` quando o aporte declarado alcanca o prazo; `false` quando nao
+   * alcanca; `null` quando falta prazo ou aporte para comparar.
+   *
+   * Tres estados de proposito: dizer "fora do ritmo" para uma meta sem prazo
+   * seria inventar uma cobranca que o casal nunca fez.
+   */
+  onTrack: boolean | null;
+}
+
+export function goalProgress(
+  currentCents: Cents,
+  targetCents: Cents,
+  options: {
+    targetDate?: string | null;
+    monthlyContributionCents?: Cents | null;
+    today?: Date;
+  } = {},
+): GoalProgress {
+  const today = options.today ?? new Date();
+  const remaining = Math.max(0, targetCents - currentCents);
+  const isComplete = remaining === 0;
+
+  const currentMonthKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`;
+
+  let monthsLeft: number | null = null;
+  if (options.targetDate) {
+    const targetMonth = options.targetDate.slice(0, 7);
+    monthsLeft = Math.max(0, monthDiff(currentMonthKey, targetMonth));
+  }
+
+  const neededPerMonthCents =
+    monthsLeft !== null && monthsLeft > 0 && !isComplete
+      ? Math.ceil(remaining / monthsLeft)
+      : monthsLeft === 0 && !isComplete
+        ? remaining
+        : null;
+
+  const contribution = options.monthlyContributionCents ?? 0;
+  const projectedMonth =
+    contribution > 0 && !isComplete
+      ? addMonths(currentMonthKey, Math.ceil(remaining / contribution))
+      : null;
+
+  let onTrack: boolean | null = null;
+  if (!isComplete && neededPerMonthCents !== null && contribution > 0) {
+    onTrack = contribution >= neededPerMonthCents;
+  }
+
+  return {
+    currentCents,
+    targetCents,
+    remainingCents: remaining,
+    ratio: targetCents === 0 ? 0 : currentCents / targetCents,
+    isComplete,
+    monthsLeft,
+    neededPerMonthCents,
+    projectedMonth,
+    onTrack,
+  };
 }

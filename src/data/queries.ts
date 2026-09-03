@@ -397,3 +397,38 @@ export async function listGoals(
     deposits,
   };
 }
+
+export interface SettlementRecord {
+  id: string;
+  month: MonthKey;
+  fromMember: string;
+  toMember: string;
+  amount: number;
+  paidAt: string | null;
+  note: string | null;
+}
+
+export async function listSettlements(
+  houseId: string,
+  month: MonthKey,
+): Promise<SettlementRecord[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("settlements")
+    .select("id, month, from_member, to_member, amount, paid_at, note")
+    .eq("house_id", houseId)
+    .eq("month", fromMonthKey(month))
+    .order("created_at", { ascending: false });
+
+  if (error) fail("os acertos", error);
+
+  return (data ?? []).map((row) => ({
+    id: row.id as string,
+    month: toMonthKey(row.month as string),
+    fromMember: row.from_member as string,
+    toMember: row.to_member as string,
+    amount: Number(row.amount),
+    paidAt: (row.paid_at as string | null) ?? null,
+    note: (row.note as string | null) ?? null,
+  }));
+}

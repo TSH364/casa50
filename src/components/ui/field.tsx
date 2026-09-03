@@ -67,17 +67,43 @@ export function Field({
   htmlFor: string;
   children: React.ReactNode;
 }) {
+  const hintId = `${htmlFor}-hint`;
+  const errorId = `${htmlFor}-error`;
+  const describedBy = error ? errorId : hint ? hintId : undefined;
+
+  /*
+   * O rotulo sozinho nao basta: sem `aria-describedby`, quem usa leitor de
+   * tela ouve "E-mail, campo de edicao" e nunca a dica nem o motivo do erro,
+   * porque esses textos ficam fora do campo. `aria-invalid` e o que faz o
+   * leitor anunciar o campo como invalido ao receber foco.
+   *
+   * O clone respeita o que o filho ja definiu: um campo que traga o proprio
+   * `aria-describedby` nao e sobrescrito aqui.
+   */
+  const field = React.isValidElement<Record<string, unknown>>(children)
+    ? React.cloneElement(children, {
+        "aria-describedby":
+          (children.props["aria-describedby"] as string | undefined) ??
+          describedBy,
+        "aria-invalid":
+          (children.props["aria-invalid"] as boolean | undefined) ??
+          (error ? true : undefined),
+      })
+    : children;
+
   return (
     <div className="space-y-1.5">
       <Label htmlFor={htmlFor}>{label}</Label>
-      {children}
+      {field}
       {/* role="alert" faz o leitor de tela anunciar o erro assim que aparece. */}
       {error ? (
-        <p role="alert" className="text-[13px] text-danger">
+        <p id={errorId} role="alert" className="text-[13px] text-danger">
           {error}
         </p>
       ) : hint ? (
-        <p className="text-[13px] text-ink-faint">{hint}</p>
+        <p id={hintId} className="text-[13px] text-ink-faint">
+          {hint}
+        </p>
       ) : null}
     </div>
   );

@@ -22,6 +22,18 @@ export default async function AppLayout({
 
   return (
     <div className="flex min-h-dvh">
+      {/*
+        Primeiro alvo do Tab: quem navega por teclado nao deveria percorrer os
+        seis itens de navegacao a cada troca de pagina para chegar ao conteudo.
+        Fica invisivel ate receber foco.
+      */}
+      <a
+        href="#conteudo"
+        className="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-50 focus:rounded-[--radius-control] focus:bg-brand focus:px-4 focus:py-2.5 focus:text-sm focus:text-white"
+      >
+        Pular para o conteúdo
+      </a>
+
       <AppNav />
 
       <div className="flex min-w-0 flex-1 flex-col">
@@ -35,7 +47,7 @@ export default async function AppLayout({
         </header>
 
         {/* pb-24 no celular reserva a altura da barra inferior fixa. */}
-        <main className="min-w-0 flex-1 px-4 pb-24 pt-5 sm:px-6 md:pb-10">
+        <main id="conteudo" tabIndex={-1} className="min-w-0 flex-1 px-4 pb-24 pt-5 sm:px-6 md:pb-10">
           {children}
         </main>
       </div>

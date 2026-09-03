@@ -7,19 +7,43 @@ projeta o que já está comprometido e registra quem fez cada alteração.
 
 ## Estado atual — leia antes de usar
 
-O projeto está na **Etapa 1 de 7**. O que está pronto está testado; o que não
-está aparece na interface como **"Em desenvolvimento"**, nunca como dado
+As sete etapas estão implementadas. O que **não** está pronto está listado
+abaixo, em "Limitações conhecidas" — nada aparece na interface como dado
 inventado.
 
 | Etapa | Escopo | Situação |
 |---|---|---|
 | 1 | Estrutura, autenticação, banco, migrations, seed, layout base | **Pronta** |
-| 2 | Cartões, lançamentos, extratos, resumo do mês | **Parcial** — falta convite de membro e CRUD de categorias |
-| 3 | Importação CSV Nubank, normalização, duplicidades, revisão | **Pronta para CSV** — XLSX e PDF ainda não |
+| 2 | Cartões, categorias, lançamentos, extratos, membros, resumo do mês | **Pronta** |
+| 3 | Importação de fatura, normalização, duplicidades, revisão | **Pronta para CSV** — XLSX e PDF não leem |
 | 4 | Extratos, edição, exclusão, histórico, auditoria na tela | **Pronta** |
-| 5 | Parcelas, recorrências, assinaturas, previsão, conciliação | Não iniciada |
-| 6 | Orçamentos, metas, insights, divisão de despesas | Não iniciada |
-| 7 | Testes E2E, acessibilidade, performance, deploy | Não iniciada |
+| 5 | Parcelas, recorrências, previsão, conciliação | **Pronta** |
+| 6 | Orçamentos, metas, insights, divisão de despesas | **Pronta** |
+| 7 | Testes E2E, acessibilidade, deploy | **Parcial** — E2E escritos, não executados aqui |
+
+**159 testes unitários** cobrem dinheiro, datas, resumo do mês, leitura de
+fatura, parcelas, recorrências, previsão, metas, insights e divisão.
+
+### Limitações conhecidas
+
+Estas são reais e nenhuma está escondida atrás de uma tela que finge funcionar.
+
+- **XLSX e PDF não são lidos.** A tela de importação pede o CSV com uma
+  mensagem clara em vez de tentar ler e importar dado parcial em silêncio.
+- **Os testes E2E nunca rodaram até o fim nesta máquina.** O projeto está
+  dentro de uma pasta do OneDrive, e a sincronização disputa os arquivos que o
+  Next.js reescreve em `.next` a cada compilação (`EBUSY: resource busy or
+  locked`), derrubando o servidor de desenvolvimento com erro 500 no meio da
+  suíte. Os testes estão escritos e configurados; para executá-los, mova o
+  projeto para fora do OneDrive ou pause a sincronização antes de rodar.
+- **Nenhuma tela foi exercitada com dados reais do casal.** Tudo foi verificado
+  por teste automatizado, por consulta direta ao banco e por build — nunca
+  usando o app de verdade com uma fatura sua.
+- **O app não envia e-mail.** O convite de membro cria o vínculo pendente; a
+  pessoa precisa ser avisada por fora e entrar com o mesmo endereço.
+- **Divisão de despesas divide igual ou por peso fixo.** A divisão por item e
+  o rateio proporcional à renda com atualização automática ficaram de fora; o
+  documento do produto os coloca em "Evolução planejada".
 
 ### O que a Etapa 4 entrega
 
@@ -99,7 +123,7 @@ e subcategorias.
   não em filtro de frontend.
 - **Auditoria automática por trigger**, com texto legível e o JSON antes/depois.
 - **Autenticação real** (e-mail e senha), criação de casa, seleção de casa ativa.
-- **Camada de domínio financeiro testada** — 93 testes unitários passando.
+- **Camada de domínio financeiro testada** — 159 testes unitários passando.
 - **Layout base** dark, mobile-first, com as seis seções navegáveis.
 
 ### Banco em produção
@@ -131,7 +155,7 @@ ficou gravado):
   necessário porque um convidado ainda não é membro; a função só casa o convite
   com o e-mail autenticado de quem chama.
 
-Também passam: `npm run typecheck`, `npm test` (93 testes) e `npm run build`
+Também passam: `npm run typecheck`, `npm test` (159 testes) e `npm run build`
 (14 rotas). As telas de login e cadastro foram carregadas contra o banco real,
 em 375px e em desktop, sem erro de console.
 
@@ -250,19 +274,67 @@ npm run dev
 
 ---
 
-## Deploy na Vercel
+## Deploy
 
-1. Suba o repositório para o GitHub e importe na Vercel.
-2. Configure as variáveis de ambiente (**sem** `SUPABASE_SERVICE_ROLE_KEY`,
-   que nenhuma rota usa):
-   - `NEXT_PUBLIC_SUPABASE_URL`
-   - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-   - `NEXT_PUBLIC_SITE_URL` — a URL final do app
-3. No Supabase, em **Authentication → URL Configuration**, adicione
-   `https://SEU-APP.vercel.app/auth/confirmar` às *Redirect URLs*, senão o link
-   de confirmação de e-mail volta para `localhost`.
-4. Ainda no Supabase, mantenha **Confirm email** ligado em produção. O
-   `supabase/config.toml` desliga isso apenas no ambiente local.
+O app precisa de um servidor Node rodando: ele monta cada tela no servidor,
+com a sessão de quem pediu. **Não funciona como site estático** — exportar
+para HTML derrubaria middleware de autenticação, Server Actions e importação.
+
+Nos dois caminhos abaixo, o banco continua sendo o Supabase. A escolha de
+hospedagem não move seus dados.
+
+### Variáveis de ambiente (iguais nos dois)
+
+| Variável | Valor |
+|---|---|
+| `NEXT_PUBLIC_SUPABASE_URL` | URL do projeto Supabase |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | chave publicável (anon) |
+| `NEXT_PUBLIC_SITE_URL` | a URL final do app |
+
+`SUPABASE_SERVICE_ROLE_KEY` **não vai para o servidor de produção**: ela ignora
+o RLS e nenhuma rota do app a usa. Ela existe só para scripts administrativos
+rodados na sua máquina.
+
+Depois de publicar, nos dois casos:
+
+1. No Supabase, em **Authentication → URL Configuration**, adicione
+   `https://SEU-DOMINIO/auth/confirmar` às *Redirect URLs*. Sem isso o link de
+   confirmação de e-mail volta para `localhost`.
+2. Mantenha **Confirm email** ligado. O `supabase/config.toml` desliga isso
+   apenas no ambiente local.
+3. Ligue **Leaked password protection** em Authentication → Password. O
+   advisor do Supabase aponta isso como pendente; é uma caixa de seleção.
+
+### Opção A — Vercel
+
+1. Importe o repositório do GitHub na Vercel.
+2. Configure as três variáveis acima em Settings → Environment Variables.
+3. Publique. Cada `git push` na `main` republica sozinho.
+
+É a implementação de referência do Next.js: middleware, Server Actions e
+revalidação são de primeira mão. Para um app de duas pessoas o plano gratuito
+sobra — e ele é permanente nesse volume, não período de teste. O plano
+gratuito proíbe uso comercial; finanças pessoais de um casal está dentro.
+
+### Opção B — Hostinger (Hospedagem de Aplicações Web)
+
+Só o produto de **aplicações web** (Node.js). A hospedagem de site comum
+(Premium/Business) é PHP e não roda este app.
+
+1. Conecte o repositório do GitHub no painel.
+2. Configure as três variáveis de ambiente.
+3. Comando de build `npm run build`, de início `npm run start`.
+
+Dois pontos antes de fechar o plano:
+
+- **O preço anunciado é de 48 meses pagos adiantado.** Na renovação o valor
+  mensal é várias vezes maior. Compare com o gratuito da Vercel considerando o
+  custo total, não a parcela.
+- **O plano mais barato não informa a RAM.** `next build` costuma pedir 1–2 GB;
+  com menos que isso o build falha. O plano com 4 GB não tem esse problema.
+
+Faz sentido se você já paga Hostinger e quer um fornecedor só, ou se quer os
+dados fora dos EUA.
 
 ---
 
@@ -303,7 +375,7 @@ supabase/
   migrations/         0001 estrutura · 0002 RLS · 0003 auditoria
   seed.sql            dados fictícios — nunca dados reais
   importers/          leitura de fatura: colunas, sinal, mês, duplicidade
-tests/unit/           93 testes
+tests/unit/           159 testes
 ```
 
 ---

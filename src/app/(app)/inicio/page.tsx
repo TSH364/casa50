@@ -5,7 +5,9 @@ import Link from "next/link";
 import { getActiveHouse, listMembers } from "@/lib/houses";
 import { listCards, listCategories, listMonthsWithData } from "@/data/queries";
 import { currentMonth, isMonthKey, monthLabel } from "@/domain/month";
-import { Card, CardHeader, InDevelopment } from "@/components/ui/card";
+import { Card, CardHeader } from "@/components/ui/card";
+import { MonthPanels, PanelsSkeleton } from "@/components/dashboard/month-panels";
+import { FlowMap, FlowMapSkeleton } from "@/components/dashboard/flow-map";
 import { MonthSwitcher } from "@/components/month-switcher";
 import { FilterChips } from "@/components/filter-chips";
 import { NewTransactionButton } from "@/components/transactions/new-transaction-button";
@@ -113,13 +115,9 @@ export default async function InicioPage({
         />
       </Suspense>
 
-      <Card>
-        <CardHeader
-          title="Mapa de fluxo"
-          description="Meses passados como realizado, próximos como previsão."
-        />
-        <InDevelopment note="Depende das recorrências e parcelas — Etapa 5." />
-      </Card>
+      <Suspense key={`fluxo:${month}`} fallback={<FlowMapSkeleton />}>
+        <FlowMap houseId={active.id} month={month} />
+      </Suspense>
 
       <Suspense key={`categorias:${key}`} fallback={<ByCategorySkeleton />}>
         <ByCategory
@@ -130,25 +128,9 @@ export default async function InicioPage({
         />
       </Suspense>
 
-      <Card>
-        <CardHeader title="Assinaturas e recorrências" />
-        <InDevelopment note="Etapa 5." />
-      </Card>
-
-      <Card>
-        <CardHeader title="Parcelas comprometidas" description="Próximos três meses." />
-        <InDevelopment note="Etapa 5." />
-      </Card>
-
-      <Card>
-        <CardHeader title="Conciliação" description="Estornos, IOF, tarifas e anuidade." />
-        <InDevelopment note="Etapa 5." />
-      </Card>
-
-      <Card>
-        <CardHeader title="Orçamentos" />
-        <InDevelopment note="Etapa 6." />
-      </Card>
+      <Suspense key={`paineis:${month}`} fallback={<PanelsSkeleton />}>
+        <MonthPanels houseId={active.id} month={month} members={members} />
+      </Suspense>
 
       <Card>
         <CardHeader
