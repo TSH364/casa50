@@ -7,6 +7,7 @@ import {
   extractInstallment,
   monthFromDates,
   monthFromFilename,
+  categoryFromHint,
   normalizeMerchant,
   parseCardLastFour,
   parseInstallmentCell,
@@ -599,5 +600,39 @@ describe("parseCsv - fatura toda zerada", () => {
 
     expect(result.issues.filter((i) => i.level === "error")).toHaveLength(0);
     expect(result.drafts[0]?.type).toBe("expense");
+  });
+});
+
+describe("categoryFromHint", () => {
+  it("traduz o vocabulário do Itaú para as categorias da casa", () => {
+    // Nenhum destes casava por nome exato, e por isso a fatura inteira
+    // entrava sem categoria.
+    expect(categoryFromHint("Restaurante / Lanchonete / Bar")).toBe("Alimentacao");
+    expect(
+      categoryFromHint(
+        "Supermercados / Mercearia / Padarias / Lojas de Conveniência",
+      ),
+    ).toBe("Alimentacao");
+    expect(categoryFromHint("Relacionados a Automotivo")).toBe("Transporte");
+    expect(categoryFromHint("Assistência médica e odontológica")).toBe("Saude");
+    expect(categoryFromHint("Educacional")).toBe("Educacao");
+    expect(categoryFromHint("Entretenimento")).toBe("Lazer");
+    expect(categoryFromHint("Especialidade varejo")).toBe("Compras");
+    expect(categoryFromHint("Casa / Escritório Mobiliário")).toBe("Moradia");
+    expect(categoryFromHint("Empresa serviços")).toBe("Servicos");
+  });
+
+  it("prefere a regra específica à genérica", () => {
+    // "Serviços de telecomunicações" também casaria com "servico".
+    expect(categoryFromHint("Serviços de telecomunicações")).toBe("Servicos");
+    expect(categoryFromHint("TV por assinatura / Serviços de rádio")).toBe(
+      "Assinaturas",
+    );
+  });
+
+  it("não inventa categoria para o que não reconhece", () => {
+    expect(categoryFromHint("-")).toBeNull();
+    expect(categoryFromHint("")).toBeNull();
+    expect(categoryFromHint("Categoria que não existe")).toBeNull();
   });
 });

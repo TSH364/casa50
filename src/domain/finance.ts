@@ -1,6 +1,11 @@
 import { toCents, type Cents } from "@/lib/money";
 import { addMonths, daysInMonth, daysRemaining } from "./month";
-import type { ForecastStatus, MonthKey, Transaction } from "./types";
+import type {
+  ForecastStatus,
+  MonthKey,
+  Transaction,
+  TransactionType,
+} from "./types";
 
 /**
  * Regras financeiras puras: sem I/O, sem React, sem Supabase.
@@ -22,20 +27,33 @@ const REALIZED: readonly ForecastStatus[] = ["confirmed", "divergent"];
  *   refund                 -> subtrai (secao 12: estorno nao e despesa nova)
  *   income                 -> zero, contabilizado em `incomeCents`
  *   payment                -> zero, e a quitacao da fatura, nao um gasto novo
+ *
+ * `spendingOfCents` e a mesma regra sem depender de um `Transaction` pronto,
+ * para o total da importacao sair daqui em vez de reimplementar o sinal. As
+ * duas ja divergiram: a importacao subtraia o pagamento que a tela conta como
+ * zero, e a fatura do Itau aparecia negativa porque o pagamento da fatura
+ * anterior (R$ 18.151,91) era maior que as compras do mes.
  */
-export function spendingCents(t: Transaction): Cents {
-  if (t.isHidden) return 0;
-  switch (t.type) {
+export function spendingOfCents(
+  type: TransactionType,
+  amountCents: Cents,
+): Cents {
+  switch (type) {
     case "expense":
     case "fee":
     case "adjustment":
-      return toCents(t.amount);
+      return amountCents;
     case "refund":
-      return -toCents(t.amount);
+      return -amountCents;
     case "income":
     case "payment":
       return 0;
   }
+}
+
+export function spendingCents(t: Transaction): Cents {
+  if (t.isHidden) return 0;
+  return spendingOfCents(t.type, toCents(t.amount));
 }
 
 /** Quanto o lancamento soma as receitas do mes, em centavos. */

@@ -77,6 +77,45 @@ export async function createTransaction(
   return { ok: true };
 }
 
+/**
+ * Guarda "este estabelecimento é desta categoria" para a próxima importação.
+ *
+ * A tabela `learned_rules` já era lida pelo importador, mas nada no app
+ * escrevia nela: a categorização automática por regra nunca podia acontecer,
+ * porque regra nenhuma existia. Aprender aqui é o que faz a segunda
+ * importação vir categorizada, sem inventar palpite na primeira.
+ *
+ * Falha em silêncio de propósito: a edição do lançamento é o que o usuário
+ * pediu; não conseguir memorizar a regra não pode desfazê-la.
+ */
+async function learnCategoryRule(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  input: Parsed,
+): Promise<void> {
+  if (input.categoryId === null) return;
+
+  const houseId = await requireHouseId();
+  const user = await getCurrentUser();
+  // `normalized_pattern` é preenchido pelo trigger `learned_rules_fill`, com a
+  // mesma normalização que o importador usa para comparar.
+  const { error } = await supabase.from("learned_rules").upsert(
+    {
+      house_id: houseId,
+      pattern: input.description,
+      category_id: input.categoryId,
+      subcategory_id: input.subcategoryId,
+      created_by: user?.id ?? null,
+    },
+    { onConflict: "house_id,normalized_pattern" },
+  );
+
+  if (error) {
+    console.error("[lancamentos] falha ao aprender a regra", {
+      code: error.code,
+    });
+  }
+}
+
 export async function updateTransaction(
   id: string,
   _prev: FormState,
@@ -97,6 +136,8 @@ export async function updateTransaction(
     console.error("[lancamentos] falha ao atualizar", { code: error.code });
     return { error: "Não foi possível salvar as alterações." };
   }
+
+  await learnCategoryRule(supabase, parsed.data);
 
   revalidateTransactions();
   return { ok: true };

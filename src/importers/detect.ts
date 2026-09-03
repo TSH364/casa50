@@ -317,6 +317,54 @@ export function parseCardLastFour(raw: string): string | null {
 }
 
 // --------------------------------------------------------------------------
+// Categoria do banco -> categoria da casa
+// --------------------------------------------------------------------------
+
+/**
+ * Traduz o vocabulário de categoria do banco para o das categorias iniciais.
+ *
+ * O importador já usava a coluna de categoria do arquivo, mas só por nome
+ * exato - e nome exato quase nunca bate. O Itaú escreve "Supermercados /
+ * Mercearia / Padarias / Lojas de Conveniência" onde a casa tem "Alimentação";
+ * das 24 categorias daquela fatura, só "Transporte" coincidia. Resultado: 96
+ * lançamentos entravam sem categoria.
+ *
+ * A ordem importa: a primeira regra que casar vence, então o específico vem
+ * antes do genérico ("telecomunicações" antes de "serviços").
+ *
+ * Continua sendo palpite: a tela de revisão mostra a categoria de cada linha
+ * antes de gravar, e o nome só vira categoria de verdade se a casa tiver uma
+ * com aquele nome.
+ */
+const CATEGORY_SYNONYMS: readonly { pattern: RegExp; category: string }[] = [
+  { pattern: /supermercado|mercearia|padaria|conveniencia|restaurante|lanchonete|\bbar\b|alimenta|bebida|delivery/, category: "Alimentacao" },
+  { pattern: /combustivel|\bposto\b|estacionamento|pedagio|\btaxi\b|automotivo|transporte|passagem|mobilidade/, category: "Transporte" },
+  { pattern: /telecomunica|telefonia|internet|provedor/, category: "Servicos" },
+  { pattern: /tv por assinatura|streaming|assinatura|radio/, category: "Assinaturas" },
+  { pattern: /medic|odontolog|\bsaude\b|farmacia|drogaria|hospital|laboratorio/, category: "Saude" },
+  { pattern: /educa|ensino|escola|faculdade|universidade|\bcurso\b|livraria/, category: "Educacao" },
+  { pattern: /entretenimento|recreativ|lazer|cinema|\bjogo|\barte\b|artesanato|passatempo|associacao|clube|esporte|academia/, category: "Lazer" },
+  { pattern: /viagem|hotel|hospedagem|aere|turismo|locadora/, category: "Viagens" },
+  { pattern: /mobiliario|\bmoveis\b|construcao|imobiliar|aluguel|moradia|condominio|energia eletrica|\bagua\b|utilidade publica/, category: "Moradia" },
+  { pattern: /varejo|departamento|desconto|magazine|vestuario|calcado|\bloja\b|marketing direto|\bpet\b/, category: "Compras" },
+  { pattern: /tarifa|anuidade|\bjuros\b|encargo|\biof\b|\bmulta\b|seguro/, category: "Tarifas" },
+  { pattern: /imposto|tributo|\btaxa\b/, category: "Impostos" },
+  { pattern: /servico|profission|empresa|eletric|eletronic|tecnologia|software/, category: "Servicos" },
+];
+
+/**
+ * Nome de categoria da casa sugerido pela categoria que o banco mandou.
+ *
+ * Devolve `null` quando não reconhece - e aí a linha fica sem categoria, que é
+ * melhor que catalogar errado.
+ */
+export function categoryFromHint(hint: string): string | null {
+  const key = stripAccents(hint).toLowerCase().replace(/\s+/g, " ").trim();
+  if (key === "" || key === "-") return null;
+  return CATEGORY_SYNONYMS.find((s) => s.pattern.test(key))?.category ?? null;
+}
+
+// --------------------------------------------------------------------------
 // Convenção de sinal
 // --------------------------------------------------------------------------
 

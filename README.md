@@ -92,7 +92,9 @@ sai da máquina antes de você revisar e confirmar.
   existe, extraída da descrição (`NETFLIX 3/12`), sem confundir `12/2026`.
 - **Cartão por linha.** Quando o arquivo traz o final do cartão, cada final é
   ligado ao cartão cadastrado com o mesmo número e cada lançamento é gravado no
-  seu — uma fatura com titular e adicionais não vai toda para um cartão só.
+  seu — uma fatura com titular e adicionais não vai toda para um cartão só. Se
+  não houver cartão com aquele final, a própria tela cria, sem obrigar a sair
+  da importação e recomeçar.
 - **Tipos classificados**: despesa, tarifa (anuidade, IOF, juros), pagamento de
   fatura e estorno. `Desconto` **nunca** vira pagamento — exigência da secao 6.
 - **Duplicidade por identidade completa**: mês, data, estabelecimento
@@ -100,7 +102,16 @@ sai da máquina antes de você revisar e confirmar.
   não é repetição; a parcela 3/10 não é igual à 4/10.
 - **Revisão antes de gravar**: novos, repetidos, ignorados, sem categoria e
   total calculado, com cada linha alternável entre importar e ignorar.
-- **Categorização automática** por regra aprendida ou pela categoria do arquivo.
+- **Categorização automática** por regra aprendida, pela categoria do arquivo
+  (traduzindo o vocabulário do banco: "Supermercados / Mercearia / Padarias"
+  vira Alimentação) ou pelo tipo, no caso das tarifas. A revisão mostra em que
+  categoria cada linha vai cair, antes de gravar.
+- **Regras aprendidas de verdade.** Categorizar um lançamento à mão guarda
+  "este estabelecimento é desta categoria" para a próxima fatura. A tabela já
+  era lida pelo importador, mas nada a escrevia, então a regra nunca existia.
+- **Total da fatura pela mesma regra de sinal das telas.** Quitação da fatura
+  anterior conta zero, porque não é gasto do mês — antes ela era subtraída, e
+  uma fatura com pagamento maior que as compras fechava negativa.
 - **Desfazer a importação**, que apaga os lançamentos e marca a fatura como
   revertida — o registro de que houve importação continua no histórico.
 

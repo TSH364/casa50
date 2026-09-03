@@ -5,9 +5,14 @@ import { z } from "zod";
 import { createClient, getCurrentUser } from "@/lib/supabase/server";
 import { requireHouseId } from "./shared";
 import { fromMonthKey } from "@/data/mappers";
-import { duplicateKey, normalizeMerchant } from "@/importers/detect";
+import {
+  categoryFromHint,
+  duplicateKey,
+  normalizeMerchant,
+} from "@/importers/detect";
 import { isMonthKey } from "@/domain/month";
 import { fromCents } from "@/lib/money";
+import { spendingOfCents } from "@/domain/finance";
 import type {
   DraftTransaction,
   ImportSummary,
@@ -60,13 +65,12 @@ function summarize(
   reportedTotalCents: number | null,
 ): ImportSummary {
   const toImport = reviewed.filter((d) => d.decision === "new");
+  // Mesma regra de sinal das telas (`spendingCents`), e não uma cópia: o
+  // pagamento da fatura anterior conta zero, porque quitação não é gasto do
+  // mês. Subtraí-lo fazia a fatura do Itaú fechar em -R$ 1.022,78 enquanto a
+  // lista de lançamentos, na mesma tela, mostrava R$ 17.129,13.
   const computed = toImport.reduce(
-    // Estorno e pagamento entram no total da fatura com sinal invertido -
-    // é assim que o valor bate com o que o banco imprime no rodapé.
-    (sum, d) =>
-      d.type === "refund" || d.type === "payment"
-        ? sum - d.amountCents
-        : sum + d.amountCents,
+    (sum, d) => sum + spendingOfCents(d.type, d.amountCents),
     0,
   );
 
@@ -158,6 +162,9 @@ export async function reviewImport(
       c.id as string,
     ]),
   );
+  const categoryNameById = new Map<string, string>(
+    (categories ?? []).map((c) => [c.id as string, String(c.name)]),
+  );
 
   // Repetições dentro do próprio arquivo também precisam aparecer.
   const seenInFile = new Set<string>();
@@ -180,10 +187,19 @@ export async function reviewImport(
     let categoryId = draft.categoryId;
     if (categoryId === null) {
       const fromRule = ruleByPattern.get(draft.merchantNormalized);
+      // Nome exato primeiro; depois a tradução do vocabulário do banco, que é
+      // o que salva a fatura em que nenhum nome coincide.
       const fromHint = draft.categoryHint
-        ? categoryByName.get(normalizeMerchant(draft.categoryHint))
+        ? (categoryByName.get(normalizeMerchant(draft.categoryHint)) ??
+           categoryByName.get(
+             normalizeMerchant(categoryFromHint(draft.categoryHint) ?? ""),
+           ))
         : undefined;
-      categoryId = fromRule ?? fromHint ?? null;
+      // Tarifa do cartão não costuma vir com categoria no arquivo (anuidade,
+      // IOF, juros vêm com "-"), mas o tipo já diz o que ela é.
+      const fromType =
+        draft.type === "fee" ? categoryByName.get("TARIFAS") : undefined;
+      categoryId = fromRule ?? fromHint ?? fromType ?? null;
       if (categoryId !== null) autoCategorized += 1;
     }
 
@@ -195,6 +211,9 @@ export async function reviewImport(
       ...draft,
       invoiceMonth,
       categoryId,
+      // O nome vai junto para a revisão mostrar em que categoria cada linha
+      // vai cair: palpite que ninguém vê é palpite que ninguém corrige.
+      categoryName: categoryId ? (categoryNameById.get(categoryId) ?? null) : null,
       cardId: rowCardId,
       duplicateKey: key,
       decision: existingId || repeatedInFile ? "duplicate" : "new",
@@ -211,6 +230,14 @@ export async function reviewImport(
   if (dupes > 0) {
     notes.push(
       `${dupes} possível(is) repetição(ões). Confira antes de confirmar — a mesma compra pode aparecer legitimamente duas vezes.`,
+    );
+  }
+  const semCategoria = reviewed.filter(
+    (d) => d.decision === "new" && d.categoryId === null,
+  ).length;
+  if (semCategoria > 0) {
+    notes.push(
+      `${semCategoria} lançamento(s) sem categoria. Dá para categorizar depois, no extrato.`,
     );
   }
   const semCartao = reviewed.filter(

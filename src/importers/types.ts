@@ -77,6 +77,8 @@ export type DraftDecision = "new" | "duplicate" | "ignored";
 /** Linha já confrontada com o que existe no banco. */
 export interface ReviewedDraft extends DraftTransaction {
   decision: DraftDecision;
+  /** Nome da categoria resolvida, só para a revisão mostrar. */
+  categoryName?: string | null;
   /** Preenchido quando `decision === "duplicate"`. */
   duplicateOfId?: string;
 }
