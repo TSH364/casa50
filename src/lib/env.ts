@@ -19,7 +19,21 @@ const publicSchema = z.object({
   NEXT_PUBLIC_SUPABASE_ANON_KEY: z.string().min(1, {
     message: "NEXT_PUBLIC_SUPABASE_ANON_KEY ausente. Veja .env.example.",
   }),
-  NEXT_PUBLIC_SITE_URL: z.string().url().default("http://localhost:3000"),
+  /*
+   * Em desenvolvimento cai em localhost, que e o certo. Em producao NAO tem
+   * padrao de proposito: e daqui que sai o link de confirmacao de e-mail, e
+   * um padrao silencioso mandaria o casal clicar em `localhost:3000` sem
+   * ninguem descobrir o motivo. Falhar no build com o nome da variavel e
+   * muito melhor do que um e-mail que nao funciona.
+   */
+  NEXT_PUBLIC_SITE_URL:
+    process.env.NODE_ENV === "production"
+      ? z.string().url({
+          message:
+            "NEXT_PUBLIC_SITE_URL ausente ou invalida. Em producao ela e obrigatoria: " +
+            "e a base do link de confirmacao de e-mail. Defina a URL final do app.",
+        })
+      : z.string().url().default("http://localhost:3000"),
 });
 
 export const publicEnv = publicSchema.parse({
