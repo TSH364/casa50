@@ -283,7 +283,21 @@ para HTML derrubaria middleware de autenticação, Server Actions e importação
 Nos dois caminhos abaixo, o banco continua sendo o Supabase. A escolha de
 hospedagem não move seus dados.
 
-### Variáveis de ambiente (iguais nos dois)
+### Variáveis de ambiente
+
+As duas variáveis públicas ficam versionadas em **`.env.production`**, com a
+explicação de por que isso é seguro: a URL do Supabase é pública e a chave
+`anon` foi feita para ir dentro do navegador — quem isola uma casa da outra é
+o Row Level Security, não o sigilo dessa chave.
+
+Isso significa que **o deploy funciona sem configurar nada no painel**.
+Variáveis definidas na hospedagem continuam tendo precedência sobre o arquivo,
+então apontar o app para outro projeto Supabase não exige editar código.
+
+`SUPABASE_SERVICE_ROLE_KEY` **nunca** entra nesse arquivo: ela ignora o RLS,
+nenhuma rota a usa, e o lugar dela é o `.env.local` da sua máquina.
+
+### Resumo
 
 | Variável | Valor | Obrigatória? |
 |---|---|---|
