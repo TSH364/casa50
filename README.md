@@ -47,6 +47,11 @@ Estas são reais e nenhuma está escondida atrás de uma tela que finge funciona
 
 ### O que a Etapa 4 entrega
 
+- **Mês escolhido numa grade** de meses e anos, além das setas: voltar de
+  setembro a janeiro não custa mais oito toques.
+- **Convite pendente visível para quem foi convidado**, inclusive na tela de
+  "primeira casa" — é lá que a pessoa convidada chega, e oferecer só "crie sua
+  casa" a mandava para uma casa separada da de quem a convidou.
 - **Categoria trocada na própria linha** do lançamento, com um seletor nativo
   — sem abrir o formulário inteiro só para classificar. Trocar ali também
   ensina a regra para a próxima fatura.

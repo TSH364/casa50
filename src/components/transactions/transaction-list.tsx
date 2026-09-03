@@ -107,7 +107,7 @@ export function TransactionList({
             <li
               key={t.id}
               className={cn(
-                "group flex items-center gap-3 py-2.5",
+                "group flex items-start gap-3 py-2.5",
                 t.isHidden && "opacity-45",
               )}
             >
@@ -117,7 +117,7 @@ export function TransactionList({
                 aria-hidden
               />
 
-              <span className="tabular w-11 shrink-0 text-[12px] text-ink-faint">
+              <span className="tabular w-11 shrink-0 pt-0.5 text-[12px] text-ink-faint">
                 {shortDate(t.date)}
               </span>
 
@@ -125,7 +125,14 @@ export function TransactionList({
                 <p className="truncate text-sm text-ink">
                   {t.merchantAlias ?? t.description}
                 </p>
-                <div className="flex min-w-0 items-center gap-1.5">
+                {details.length > 0 ? (
+                  <p className="truncate text-[12px] text-ink-faint">
+                    {details.join(" · ")}
+                  </p>
+                ) : null}
+                {/* Linha própria e largura inteira: espremido ao lado dos
+                    outros detalhes, o nome da categoria vinha cortado. */}
+                <div className="mt-1 max-w-[13rem]">
                   <CategoryPicker
                     transactionId={t.id}
                     description={t.merchantAlias ?? t.description}
@@ -133,11 +140,6 @@ export function TransactionList({
                     categoryId={t.categoryId}
                     subcategoryId={t.subcategoryId}
                   />
-                  {details.length > 0 ? (
-                    <span className="truncate text-[12px] text-ink-faint">
-                      · {details.join(" · ")}
-                    </span>
-                  ) : null}
                 </div>
               </div>
 

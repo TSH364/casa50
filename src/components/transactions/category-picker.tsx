@@ -54,10 +54,10 @@ export function CategoryPicker({
   const chosen = categories.find((c) => c.id === value);
 
   return (
-    <span className="relative inline-flex max-w-[60%] shrink-0 items-center">
+    <span className="relative inline-flex min-w-0 max-w-full items-center">
       <span
-        className="mr-1 size-2 shrink-0 rounded-full"
-        style={{ backgroundColor: chosen?.color ?? "transparent" }}
+        className="pointer-events-none absolute left-2 size-2 shrink-0 rounded-full"
+        style={{ backgroundColor: chosen?.color ?? "var(--color-line-strong, #55555c)" }}
         aria-hidden
       />
       <select
@@ -66,13 +66,14 @@ export function CategoryPicker({
         onChange={(e) => change(e.target.value)}
         aria-label={`Categoria de ${description}`}
         className={cn(
-          // Sem cara de campo de formulário: é um rótulo que por acaso é
-          // clicável, para não poluir uma lista longa.
-          "min-w-0 max-w-full cursor-pointer appearance-none truncate rounded-[--radius-control]",
-          "border border-transparent bg-transparent py-0.5 pl-0 pr-3 text-[12px]",
-          "hover:border-line hover:bg-surface-2 focus:border-brand focus:outline-none",
+          // Borda sempre visível: sem ela o seletor parecia texto morto e
+          // ninguém descobria que dava para tocar. Alvo de 32px de altura,
+          // que é o mínimo confortável dentro de uma linha de lista.
+          "min-h-8 w-full min-w-0 cursor-pointer appearance-none truncate rounded-full",
+          "border border-line bg-surface-2 py-1 pl-6 pr-6 text-[13px]",
+          "transition-colors hover:border-line-strong focus:border-brand focus:outline-none",
           "disabled:opacity-50",
-          value === "" ? "text-ink-faint italic" : "text-ink-muted",
+          value === "" ? "text-ink-faint" : "text-ink",
         )}
       >
         <option value="">Sem categoria</option>
@@ -97,9 +98,8 @@ export function CategoryPicker({
           );
         })}
       </select>
-      {/* Seta discreta, só para o seletor não parecer texto morto. */}
       <span
-        className="pointer-events-none absolute right-0.5 text-[9px] text-ink-faint"
+        className="pointer-events-none absolute right-2 text-[10px] text-ink-faint"
         aria-hidden
       >
         ▾
