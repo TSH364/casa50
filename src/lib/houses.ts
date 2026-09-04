@@ -148,32 +148,25 @@ export async function listRoster(houseId: string): Promise<RosterEntry[]> {
  *
  * Sem isto o convite seria intransitável: a pessoa entra no app, não é membro
  * de casa nenhuma e não teria por onde aceitar.
+ *
+ * Passa por um RPC, e não por um `select` direto, porque um convite pendente
+ * tem `user_id` nulo e a policy `house_members_select` não alcança a linha -
+ * quem foi convidada não conseguia ver o próprio convite. É a mesma decisão
+ * já tomada para `accept_house_invite`, e pelo mesmo motivo: afrouxar a policy
+ * exporia vínculos de casas alheias a quem descobrisse um e-mail convidado.
  */
 export async function listPendingInvitesForMe(): Promise<
   { houseId: string; houseName: string }[]
 > {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user?.email) return [];
-
-  const { data, error } = await supabase
-    .from("house_members")
-    .select("house_id, houses(name)")
-    .eq("status", "invited")
-    .ilike("invite_email", user.email);
+  const { data, error } = await supabase.rpc("my_pending_invites");
 
   if (error) {
     console.error("[casas] falha ao listar convites", { code: error.code });
     return [];
   }
 
-  return (data ?? []).map((row) => {
-    const house = row.houses as unknown as { name: string } | null;
-    return {
-      houseId: row.house_id as string,
-      houseName: house?.name ?? "Casa",
-    };
-  });
+  return ((data ?? []) as { house_id: string; house_name: string }[]).map(
+    (row) => ({ houseId: row.house_id, houseName: row.house_name ?? "Casa" }),
+  );
 }

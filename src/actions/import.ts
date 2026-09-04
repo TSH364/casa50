@@ -5,9 +5,15 @@ import { z } from "zod";
 import { createClient, getCurrentUser } from "@/lib/supabase/server";
 import { requireHouseId } from "./shared";
 import { fromMonthKey } from "@/data/mappers";
-import { duplicateKey, normalizeMerchant } from "@/importers/detect";
+import {
+  categoryFromHint,
+  categoryFromMerchant,
+  duplicateKey,
+  normalizeMerchant,
+} from "@/importers/detect";
 import { isMonthKey } from "@/domain/month";
 import { fromCents } from "@/lib/money";
+import { spendingOfCents } from "@/domain/finance";
 import type {
   DraftTransaction,
   ImportSummary,
@@ -33,6 +39,8 @@ const draftSchema = z.object({
   type: z.enum(["expense", "income", "payment", "refund", "fee", "adjustment"]),
   categoryHint: z.string().max(120).nullable(),
   categoryId: z.string().uuid().nullable(),
+  cardLastFour: z.string().regex(/^\d{4}$/).nullable(),
+  cardId: z.string().uuid().nullable(),
   installmentCurrent: z.number().int().min(1).max(99).nullable(),
   installmentTotal: z.number().int().min(1).max(99).nullable(),
   duplicateKey: z.string().max(600),
@@ -58,13 +66,12 @@ function summarize(
   reportedTotalCents: number | null,
 ): ImportSummary {
   const toImport = reviewed.filter((d) => d.decision === "new");
+  // Mesma regra de sinal das telas (`spendingCents`), e não uma cópia: o
+  // pagamento da fatura anterior conta zero, porque quitação não é gasto do
+  // mês. Subtraí-lo fazia a fatura do Itaú fechar em -R$ 1.022,78 enquanto a
+  // lista de lançamentos, na mesma tela, mostrava R$ 17.129,13.
   const computed = toImport.reduce(
-    // Estorno e pagamento entram no total da fatura com sinal invertido -
-    // é assim que o valor bate com o que o banco imprime no rodapé.
-    (sum, d) =>
-      d.type === "refund" || d.type === "payment"
-        ? sum - d.amountCents
-        : sum + d.amountCents,
+    (sum, d) => sum + spendingOfCents(d.type, d.amountCents),
     0,
   );
 
@@ -79,6 +86,92 @@ function summarize(
     divergenceCents:
       reportedTotalCents === null ? null : reportedTotalCents - computed,
   };
+}
+
+/**
+ * Tudo que a casa sabe sobre categorias, no formato em que a decisão precisa.
+ *
+ * Carregado uma vez por operação e passado adiante: a resolução roda por
+ * lançamento, e ir ao banco a cada linha seria uma consulta por compra.
+ */
+interface CategoryMaps {
+  ruleByPattern: Map<string, string | null>;
+  byName: Map<string, string>;
+  nameById: Map<string, string>;
+}
+
+async function loadCategoryMaps(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  houseId: string,
+): Promise<CategoryMaps> {
+  const [{ data: rules }, { data: categories }] = await Promise.all([
+    supabase
+      .from("learned_rules")
+      .select("normalized_pattern, category_id")
+      .eq("house_id", houseId),
+    supabase
+      .from("categories")
+      .select("id, name")
+      .eq("house_id", houseId)
+      .eq("is_active", true),
+  ]);
+
+  return {
+    ruleByPattern: new Map(
+      (rules ?? []).map((r) => [
+        String(r.normalized_pattern),
+        r.category_id as string | null,
+      ]),
+    ),
+    byName: new Map(
+      (categories ?? []).map((c) => [
+        normalizeMerchant(String(c.name)),
+        c.id as string,
+      ]),
+    ),
+    nameById: new Map(
+      (categories ?? []).map((c) => [c.id as string, String(c.name)]),
+    ),
+  };
+}
+
+/**
+ * Em que categoria este lançamento cai, e por quê.
+ *
+ * Ordem por confiança, da maior para a menor:
+ *
+ * 1. regra aprendida - a casa já disse, à mão, onde isto vai;
+ * 2. nome do estabelecimento - "ELETROGRAAL" é recarga de carro elétrico,
+ *    independente do que o banco ache;
+ * 3. categoria do arquivo, traduzida - cobre o que a tabela não conhece;
+ * 4. tipo do lançamento - só serve para tarifa.
+ *
+ * O nome da loja vem ANTES da dica do banco de propósito: a do banco sai do
+ * ramo cadastrado na maquininha e erra muito. Numa fatura real ela chamava
+ * supermercado de "Associação" e restaurante de "Supermercados".
+ *
+ * Uma função só, usada pela importação e pela reanálise, para as duas não
+ * divergirem - foi assim que o total da fatura já saiu errado antes.
+ */
+function resolveCategoryId(
+  input: {
+    merchantNormalized: string;
+    categoryHint: string | null;
+    type: string;
+  },
+  maps: CategoryMaps,
+): string | null {
+  const byName = (name: string | null) =>
+    name ? maps.byName.get(normalizeMerchant(name)) : undefined;
+
+  const fromRule = maps.ruleByPattern.get(input.merchantNormalized);
+  const fromMerchant = byName(categoryFromMerchant(input.merchantNormalized));
+  const fromHint = input.categoryHint
+    ? (byName(input.categoryHint) ?? byName(categoryFromHint(input.categoryHint)))
+    : undefined;
+  const fromType = input.type === "fee" ? maps.byName.get("TARIFAS") : undefined;
+
+  return fromRule ?? fromMerchant ?? fromHint ?? fromType ?? null;
 }
 
 /**
@@ -131,54 +224,29 @@ export async function reviewImport(
     if (!existingByKey.has(key)) existingByKey.set(key, row.id as string);
   }
 
-  // Regras aprendidas e categorias, para pré-classificar.
-  const [{ data: rules }, { data: categories }] = await Promise.all([
-    supabase
-      .from("learned_rules")
-      .select("normalized_pattern, category_id")
-      .eq("house_id", houseId),
-    supabase
-      .from("categories")
-      .select("id, name")
-      .eq("house_id", houseId)
-      .eq("is_active", true),
-  ]);
-
-  const ruleByPattern = new Map<string, string | null>(
-    (rules ?? []).map((r) => [
-      String(r.normalized_pattern),
-      r.category_id as string | null,
-    ]),
-  );
-  const categoryByName = new Map<string, string>(
-    (categories ?? []).map((c) => [
-      normalizeMerchant(String(c.name)),
-      c.id as string,
-    ]),
-  );
+  const maps = await loadCategoryMaps(supabase, houseId);
 
   // Repetições dentro do próprio arquivo também precisam aparecer.
   const seenInFile = new Set<string>();
   let autoCategorized = 0;
 
   const reviewed: ReviewedDraft[] = drafts.map((draft) => {
+    // O cartão da linha vence o cartão escolhido para o arquivo todo: uma
+    // fatura do Itaú traz titular e adicionais no mesmo CSV.
+    const rowCardId = draft.cardId ?? cardId;
     const key = duplicateKey({
       invoiceMonth,
       date: draft.date,
       merchantNormalized: draft.merchantNormalized,
       amountCents: draft.amountCents,
-      cardId,
+      cardId: rowCardId,
       installmentCurrent: draft.installmentCurrent,
       installmentTotal: draft.installmentTotal,
     });
 
     let categoryId = draft.categoryId;
     if (categoryId === null) {
-      const fromRule = ruleByPattern.get(draft.merchantNormalized);
-      const fromHint = draft.categoryHint
-        ? categoryByName.get(normalizeMerchant(draft.categoryHint))
-        : undefined;
-      categoryId = fromRule ?? fromHint ?? null;
+      categoryId = resolveCategoryId(draft, maps);
       if (categoryId !== null) autoCategorized += 1;
     }
 
@@ -190,6 +258,10 @@ export async function reviewImport(
       ...draft,
       invoiceMonth,
       categoryId,
+      // O nome vai junto para a revisão mostrar em que categoria cada linha
+      // vai cair: palpite que ninguém vê é palpite que ninguém corrige.
+      categoryName: categoryId ? (maps.nameById.get(categoryId) ?? null) : null,
+      cardId: rowCardId,
       duplicateKey: key,
       decision: existingId || repeatedInFile ? "duplicate" : "new",
       ...(existingId ? { duplicateOfId: existingId } : {}),
@@ -198,7 +270,7 @@ export async function reviewImport(
 
   if (autoCategorized > 0) {
     notes.push(
-      `${autoCategorized} lançamento(s) categorizados automaticamente por regra ou pela categoria do arquivo.`,
+      `${autoCategorized} lançamento(s) categorizados automaticamente pelo estabelecimento, por regra aprendida ou pela categoria do arquivo. Confira abaixo antes de gravar.`,
     );
   }
   const dupes = reviewed.filter((d) => d.decision === "duplicate").length;
@@ -207,8 +279,21 @@ export async function reviewImport(
       `${dupes} possível(is) repetição(ões). Confira antes de confirmar — a mesma compra pode aparecer legitimamente duas vezes.`,
     );
   }
-  if (cardId === null) {
-    notes.push("Nenhum cartão associado. Os lançamentos ficarão sem cartão.");
+  const semCategoria = reviewed.filter(
+    (d) => d.decision === "new" && d.categoryId === null,
+  ).length;
+  if (semCategoria > 0) {
+    notes.push(
+      `${semCategoria} lançamento(s) sem categoria. Dá para categorizar depois, no extrato.`,
+    );
+  }
+  const semCartao = reviewed.filter(
+    (d) => d.decision === "new" && d.cardId === null,
+  ).length;
+  if (semCartao > 0) {
+    notes.push(
+      `${semCartao} lançamento(s) sem cartão associado. Dá para associar depois, no extrato.`,
+    );
   }
 
   return { reviewed, summary: summarize(reviewed, null), notes };
@@ -288,7 +373,7 @@ export async function commitImport(input: unknown): Promise<CommitResult> {
   const rows = toImport.map((d) => ({
     house_id: houseId,
     invoice_id: invoice.id,
-    card_id: data.cardId,
+    card_id: d.cardId ?? data.cardId,
     member_id: data.memberId,
     date: d.date,
     invoice_month: fromMonthKey(data.invoiceMonth),
@@ -324,6 +409,94 @@ export async function commitImport(input: unknown): Promise<CommitResult> {
   revalidatePath("/importar");
 
   return { invoiceId: invoice.id, summary };
+}
+
+/**
+ * Reanalisa uma fatura já importada, sem apagar nada.
+ *
+ * O leitor melhora com o tempo - uma tabela de estabelecimentos nova, uma
+ * regra que a casa acabou de ensinar - e sem isto o único jeito de aproveitar
+ * a melhoria seria desfazer a importação e importar o arquivo de novo, o que
+ * significa perder tudo que já foi ajustado à mão naquelas linhas.
+ *
+ * Só preenche o que está VAZIO. Uma categoria já preenchida pode ter sido
+ * escolhida pelo casal, e o banco não guarda quem a escolheu; sobrescrever
+ * seria apagar trabalho de alguém para pôr um palpite no lugar.
+ *
+ * A categoria que o banco mandou no arquivo não é guardada no lançamento, só
+ * o estabelecimento. Então a reanálise trabalha com regra aprendida, nome da
+ * loja e tipo - as linhas que dependiam exclusivamente da dica do banco
+ * continuam sem categoria até o arquivo ser importado de novo.
+ */
+export async function reclassifyInvoice(
+  invoiceId: string,
+): Promise<{ error?: string; updated?: number; remaining?: number }> {
+  if (!z.string().uuid().safeParse(invoiceId).success) {
+    return { error: "Fatura inválida." };
+  }
+
+  const houseId = await requireHouseId();
+  const supabase = await createClient();
+
+  const { data: rows, error: rowsError } = await supabase
+    .from("transactions")
+    .select("id, merchant_normalized, type")
+    .eq("house_id", houseId)
+    .eq("invoice_id", invoiceId)
+    .is("category_id", null);
+
+  if (rowsError) {
+    console.error("[importacao] falha ao reanalisar", { code: rowsError.code });
+    return { error: "Não foi possível reanalisar a fatura." };
+  }
+  if (!rows || rows.length === 0) {
+    return { updated: 0, remaining: 0 };
+  }
+
+  const maps = await loadCategoryMaps(supabase, houseId);
+
+  // Agrupa por categoria para gravar em algumas chamadas, e não uma por
+  // lançamento: uma fatura tem dezenas de linhas e no máximo uma dúzia de
+  // categorias.
+  const idsByCategory = new Map<string, string[]>();
+  for (const row of rows) {
+    const categoryId = resolveCategoryId(
+      {
+        merchantNormalized: String(row.merchant_normalized ?? ""),
+        categoryHint: null,
+        type: String(row.type),
+      },
+      maps,
+    );
+    if (categoryId === null) continue;
+    const list = idsByCategory.get(categoryId) ?? [];
+    list.push(row.id as string);
+    idsByCategory.set(categoryId, list);
+  }
+
+  let updated = 0;
+  for (const [categoryId, ids] of idsByCategory) {
+    const { error } = await supabase
+      .from("transactions")
+      .update({ category_id: categoryId })
+      // O `is null` continua no update: entre a leitura e a gravação alguém
+      // pode ter categorizado a linha à mão, e ela tem prioridade.
+      .in("id", ids)
+      .is("category_id", null);
+
+    if (error) {
+      console.error("[importacao] falha ao gravar reanalise", {
+        code: error.code,
+      });
+      return { error: "Não foi possível gravar a reanálise." };
+    }
+    updated += ids.length;
+  }
+
+  revalidatePath("/inicio");
+  revalidatePath("/extratos");
+
+  return { updated, remaining: rows.length - updated };
 }
 
 /**

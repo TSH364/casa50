@@ -3,6 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { cardSchema } from "@/domain/schemas";
+import { CARD_COLUMNS, mapCard } from "@/data/mappers";
+import type { Card } from "@/domain/types";
 import {
   fieldErrorsFrom,
   formToObject,
@@ -28,6 +30,41 @@ function revalidateCards() {
   revalidatePath("/cartoes");
   revalidatePath("/inicio");
   revalidatePath("/extratos");
+}
+
+/**
+ * Cria um cartão a partir do final que veio na fatura (secao 6).
+ *
+ * Existe porque a importação sabe que o arquivo tem os cartões 2150, 6869 e
+ * 0162, e obrigar o usuário a sair da tela, cadastrar três cartões à mão e
+ * recomeçar a importação é trabalho que o app pode poupar. O nome é
+ * provisório: `/cartoes` deixa renomear.
+ */
+export async function createCardFromLastFour(
+  lastFour: string,
+): Promise<{ error?: string; card?: Card }> {
+  if (!/^\d{4}$/.test(lastFour)) {
+    return { error: "Final de cartão inválido." };
+  }
+
+  const houseId = await requireHouseId();
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("cards")
+    .insert({ house_id: houseId, name: `Cartão ${lastFour}`, last_four: lastFour })
+    .select(CARD_COLUMNS)
+    .single();
+
+  if (error || !data) {
+    console.error("[cartoes] falha ao criar pelo final", { code: error?.code });
+    return { error: "Não foi possível criar o cartão." };
+  }
+
+  revalidateCards();
+  revalidatePath("/importar");
+  // O cartão inteiro volta para a tela de importação inserir no seletor sem
+  // recarregar a página - recarregar perderia o arquivo já lido.
+  return { card: mapCard(data) };
 }
 
 export async function createCard(

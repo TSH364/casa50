@@ -4,6 +4,7 @@ import {
   committedInstallments,
   incomeCents,
   spendingCents,
+  spendingOfCents,
   suggestBudget,
   summarizeMonth,
   totalsByCategory,
@@ -265,5 +266,29 @@ describe("meses", () => {
     expect(daysRemaining("2026-08", hoje)).toBe(12);
     expect(daysRemaining("2026-07", hoje)).toBe(0);
     expect(daysRemaining("2026-09", hoje)).toBe(30);
+  });
+});
+
+describe("spendingOfCents", () => {
+  it("é a mesma regra de sinal de spendingCents", () => {
+    // A importação calculava o total da fatura com uma cópia desta regra, e a
+    // cópia divergiu: subtraía o pagamento que aqui conta zero.
+    expect(spendingOfCents("expense", 2690)).toBe(2690);
+    expect(spendingOfCents("fee", 9800)).toBe(9800);
+    expect(spendingOfCents("adjustment", 100)).toBe(100);
+    expect(spendingOfCents("refund", 9800)).toBe(-9800);
+    expect(spendingOfCents("income", 500000)).toBe(0);
+    expect(spendingOfCents("payment", 1815191)).toBe(0);
+  });
+
+  it("o pagamento da fatura anterior não derruba o total do mês", () => {
+    // O caso real: R$ 17.129,13 de compras e um pagamento de R$ 18.151,91.
+    // Contando o pagamento, a fatura fechava em -R$ 1.022,78.
+    const linhas: [Parameters<typeof spendingOfCents>[0], number][] = [
+      ["expense", 1712913],
+      ["payment", 1815191],
+    ];
+    const total = linhas.reduce((sum, [type, cents]) => sum + spendingOfCents(type, cents), 0);
+    expect(total).toBe(1712913);
   });
 });

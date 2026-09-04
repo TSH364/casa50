@@ -7,12 +7,15 @@ import {
   CheckCircle2,
   FileText,
   Info,
-  RotateCcw,
+  Plus,
+  Trash2,
   Upload,
 } from "lucide-react";
 import { commitImport, reviewImport, revertImport } from "@/actions/import";
+import { createCardFromLastFour } from "@/actions/cards";
 import { parseCsv, MAX_FILE_BYTES } from "@/importers/parse";
 import type {
+  DraftTransaction,
   ImportSummary,
   ParseResult,
   ReviewedDraft,
@@ -67,7 +70,7 @@ function IssueLine({ level, text }: { level: string; text: string }) {
 }
 
 export function ImportWizard({
-  cards,
+  cards: initialCards,
   members,
   currentMonth,
 }: {
@@ -77,6 +80,11 @@ export function ImportWizard({
 }) {
   const [step, setStep] = useState<Step>("arquivo");
   const [pending, startTransition] = useTransition();
+  /**
+   * Cópia local dos cartões: um cartão criado aqui precisa aparecer no
+   * seletor na hora, sem recarregar a página e perder o arquivo já lido.
+   */
+  const [cards, setCards] = useState(initialCards);
 
   const [fileName, setFileName] = useState("");
   const [fileHash, setFileHash] = useState<string | null>(null);
@@ -87,6 +95,12 @@ export function ImportWizard({
   const [month, setMonth] = useState(currentMonth);
   const [cardId, setCardId] = useState("");
   const [memberId, setMemberId] = useState("");
+  /** Coluna de valor escolhida à mão. Vazio = a que a detecção achou. */
+  const [amountColumn, setAmountColumn] = useState("");
+  /** Convenção de sinal forçada. Vazio = a que a detecção achou. */
+  const [signOverride, setSignOverride] = useState<SignConvention | "">("");
+  /** Final do cartão no arquivo -> cartão cadastrado. */
+  const [cardByLastFour, setCardByLastFour] = useState<Record<string, string>>({});
 
   const [reviewed, setReviewed] = useState<ReviewedDraft[]>([]);
   const [summary, setSummary] = useState<ImportSummary | null>(null);
@@ -104,16 +118,70 @@ export function ImportWizard({
     setSummary(null);
     setNotes([]);
     setInvoiceId(null);
+    setAmountColumn("");
+    setSignOverride("");
+    setCardByLastFour({});
   }
 
+  /**
+   * Relê o arquivo com os ajustes que o usuário já fez.
+   *
+   * Os ajustes vêm do estado, e não do evento, para um não apagar o outro:
+   * trocar a coluna de valor não pode desfazer a inversão de sinal.
+   */
   function runParse(text: string, name: string, overrides: {
-    signConvention?: SignConvention;
+    signConvention?: SignConvention | "";
     invoiceMonth?: string;
+    amountColumn?: string;
   } = {}) {
-    const result = parseCsv(text, { fileName: name, ...overrides });
+    const amount = overrides.amountColumn ?? amountColumn;
+    const sign = overrides.signConvention ?? signOverride;
+    const result = parseCsv(text, {
+      fileName: name,
+      ...(overrides.invoiceMonth ? { invoiceMonth: overrides.invoiceMonth } : {}),
+      ...(sign ? { signConvention: sign } : {}),
+      ...(amount ? { columns: { amount } } : {}),
+    });
     setParsed(result);
     if (result.detectedMonth) setMonth(result.detectedMonth);
+
+    // Quando o arquivo traz o final do cartão, já liga cada um ao cartão
+    // cadastrado com o mesmo final. O que não casar fica em branco, para o
+    // usuário escolher - nunca chuta um cartão qualquer.
+    const auto: Record<string, string> = {};
+    for (const draft of result.drafts) {
+      const lastFour = draft.cardLastFour;
+      if (!lastFour || auto[lastFour]) continue;
+      const match = cards.find((c) => c.isActive && c.lastFour === lastFour);
+      if (match) auto[lastFour] = match.id;
+    }
+    setCardByLastFour(auto);
     return result;
+  }
+
+  /** Cria o cartão que falta e já o associa ao final que veio no arquivo. */
+  function createCard(lastFour: string) {
+    startTransition(async () => {
+      const result = await createCardFromLastFour(lastFour);
+      if (result.error || !result.card) {
+        toast.error(result.error ?? "Não foi possível criar o cartão.");
+        return;
+      }
+      const created = result.card;
+      setCards((prev) => [...prev, created]);
+      setCardByLastFour((prev) => ({ ...prev, [lastFour]: created.id }));
+      toast.success(`Cartão ···· ${lastFour} criado. Dá para renomear em Cartões.`);
+    });
+  }
+
+  /** Aplica o cartão de cada linha antes de mandar para o servidor. */
+  function withCards(drafts: readonly DraftTransaction[]) {
+    return drafts.map((d) => ({
+      ...d,
+      cardId: d.cardLastFour
+        ? (cardByLastFour[d.cardLastFour] ?? null)
+        : (cardId || null),
+    }));
   }
 
   async function onFile(file: File) {
@@ -158,9 +226,9 @@ export function ImportWizard({
     if (!parsed) return;
     startTransition(async () => {
       const result = await reviewImport({
-        drafts: parsed.drafts,
+        drafts: withCards(parsed.drafts),
         invoiceMonth: month,
-        cardId: cardId || null,
+        cardId: invoiceCardId,
         memberId: memberId || null,
       });
       if (result.error) {
@@ -190,7 +258,7 @@ export function ImportWizard({
       const result = await commitImport({
         drafts: reviewed,
         invoiceMonth: month,
-        cardId: cardId || null,
+        cardId: invoiceCardId,
         memberId: memberId || null,
         fileName,
         fileHash,
@@ -229,6 +297,29 @@ export function ImportWizard({
     const value = addMonths(parsed?.detectedMonth ?? currentMonth, delta);
     return { value, label: monthLabel(value) };
   });
+
+  /** Finais de cartão presentes no arquivo, na ordem em que aparecem. */
+  const fileCards = [
+    ...new Set(
+      (parsed?.drafts ?? [])
+        .map((d) => d.cardLastFour)
+        .filter((v): v is string => v !== null),
+    ),
+  ];
+  const cardOptions = cards
+    .filter((c) => c.isActive)
+    .map((c) => ({
+      value: c.id,
+      label: c.lastFour ? `${c.name} ···· ${c.lastFour}` : c.name,
+    }));
+  // A fatura em si só aponta para um cartão. Com vários no arquivo ela fica
+  // sem cartão e cada lançamento leva o seu.
+  const invoiceCardId =
+    fileCards.length === 1
+      ? (cardByLastFour[fileCards[0]!] ?? null)
+      : fileCards.length > 1
+        ? null
+        : cardId || null;
 
   // ------------------------------------------------------------------ passos
   if (step === "arquivo") {
@@ -323,28 +414,64 @@ export function ImportWizard({
               />
             </Field>
 
-            <Field
-              label="Cartão"
-              htmlFor="card"
-              hint={
-                cardId === ""
-                  ? "O arquivo não traz os 4 últimos dígitos — escolha manualmente."
-                  : undefined
-              }
-            >
-              <Select
-                id="card"
-                placeholder="Sem cartão"
-                value={cardId}
-                onChange={(e) => setCardId(e.target.value)}
-                options={cards
-                  .filter((c) => c.isActive)
-                  .map((c) => ({
-                    value: c.id,
-                    label: c.lastFour ? `${c.name} ···· ${c.lastFour}` : c.name,
-                  }))}
-              />
-            </Field>
+            {fileCards.length === 0 ? (
+              <Field
+                label="Cartão"
+                htmlFor="card"
+                hint="O arquivo não traz os 4 últimos dígitos — escolha manualmente."
+              >
+                <Select
+                  id="card"
+                  placeholder="Sem cartão"
+                  value={cardId}
+                  onChange={(e) => setCardId(e.target.value)}
+                  options={cardOptions}
+                />
+              </Field>
+            ) : (
+              fileCards.map((lastFour) => (
+                <Field
+                  key={lastFour}
+                  label={`Cartão ···· ${lastFour}`}
+                  htmlFor={`card-${lastFour}`}
+                  hint={
+                    cardByLastFour[lastFour]
+                      ? "Reconhecido pelo final."
+                      : "Nenhum cartão com este final. Dá para criar agora."
+                  }
+                >
+                  <div className="flex gap-2">
+                    {/* O wrapper do Select é que é o item do flex; a classe
+                        passada ao componente cai no <select> de dentro. */}
+                    <div className="min-w-0 flex-1">
+                      <Select
+                        id={`card-${lastFour}`}
+                        placeholder="Sem cartão"
+                        value={cardByLastFour[lastFour] ?? ""}
+                        onChange={(e) =>
+                          setCardByLastFour((prev) => ({
+                            ...prev,
+                            [lastFour]: e.target.value,
+                          }))
+                        }
+                        options={cardOptions}
+                      />
+                    </div>
+                    {cardByLastFour[lastFour] ? null : (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        disabled={pending}
+                        onClick={() => createCard(lastFour)}
+                      >
+                        <Plus aria-hidden /> Criar
+                      </Button>
+                    )}
+                  </div>
+                </Field>
+              ))
+            )}
 
             <Field
               label="Quem gastou"
@@ -371,16 +498,37 @@ export function ImportWizard({
               <Select
                 id="sign"
                 value={parsed.signConvention}
-                onChange={(e) =>
+                onChange={(e) => {
+                  const value = e.target.value as SignConvention;
+                  setSignOverride(value);
                   runParse(rawText, fileName, {
-                    signConvention: e.target.value as SignConvention,
+                    signConvention: value,
                     invoiceMonth: month,
-                  })
-                }
+                  });
+                }}
                 options={[
                   { value: "expense_positive", label: "Despesa vem positiva" },
                   { value: "expense_negative", label: "Despesa vem negativa" },
                 ]}
+              />
+            </Field>
+
+            <Field
+              label="Coluna de valor"
+              htmlFor="amount-column"
+              hint="Faturas internacionais trazem mais de uma. Se os valores vierem zerados, é aqui que se corrige."
+            >
+              <Select
+                id="amount-column"
+                value={amountColumn || (parsed.columns.amount ?? "")}
+                onChange={(e) => {
+                  setAmountColumn(e.target.value);
+                  runParse(rawText, fileName, {
+                    amountColumn: e.target.value,
+                    invoiceMonth: month,
+                  });
+                }}
+                options={parsed.headers.map((h) => ({ value: h, label: h }))}
               />
             </Field>
           </div>
@@ -503,6 +651,14 @@ export function ImportWizard({
                       {d.installmentCurrent}/{d.installmentTotal}
                     </span>
                   ) : null}
+                  {d.cardLastFour ? (
+                    <span className="ml-1.5 text-[12px] text-ink-faint">
+                      ···· {d.cardLastFour}
+                    </span>
+                  ) : null}
+                  <span className="block truncate text-[12px] text-ink-faint">
+                    {d.categoryName ?? "Sem categoria"}
+                  </span>
                 </span>
                 <span className="tabular shrink-0 text-sm text-ink">
                   {formatCents(d.amountCents)}
@@ -554,7 +710,7 @@ export function ImportWizard({
             disabled={pending}
             onClick={undo}
           >
-            <RotateCcw aria-hidden /> Desfazer
+            <Trash2 aria-hidden /> Desfazer
           </Button>
           <Button className="flex-1" onClick={reset}>
             <FileText aria-hidden /> Importar outra
