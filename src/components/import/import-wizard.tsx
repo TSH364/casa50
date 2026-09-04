@@ -8,7 +8,7 @@ import {
   FileText,
   Info,
   Plus,
-  RotateCcw,
+  Trash2,
   Upload,
 } from "lucide-react";
 import { commitImport, reviewImport, revertImport } from "@/actions/import";
@@ -710,7 +710,7 @@ export function ImportWizard({
             disabled={pending}
             onClick={undo}
           >
-            <RotateCcw aria-hidden /> Desfazer
+            <Trash2 aria-hidden /> Desfazer
           </Button>
           <Button className="flex-1" onClick={reset}>
             <FileText aria-hidden /> Importar outra

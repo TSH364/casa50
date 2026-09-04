@@ -127,8 +127,13 @@ sai da máquina antes de você revisar e confirmar.
 - **Total da fatura pela mesma regra de sinal das telas.** Quitação da fatura
   anterior conta zero, porque não é gasto do mês — antes ela era subtraída, e
   uma fatura com pagamento maior que as compras fechava negativa.
+- **Reanalisar uma fatura já importada**, sem apagar nada: o leitor melhora
+  com o tempo, e sem isso a única forma de aproveitar a melhoria seria desfazer
+  e importar de novo, perdendo tudo que já foi ajustado à mão. Só preenche
+  categoria vazia — uma já preenchida pode ter sido escolhida pelo casal.
 - **Desfazer a importação**, que apaga os lançamentos e marca a fatura como
-  revertida — o registro de que houve importação continua no histórico.
+  revertida — o registro de que houve importação continua no histórico. O ícone
+  é a lixeira: a seta de voltar ficou com a reanálise, que é o que ela sugere.
 
 Arquivo de exemplo para testar: `docs/exemplo-nubank.csv`.
 
