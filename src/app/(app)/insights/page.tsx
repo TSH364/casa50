@@ -20,7 +20,12 @@ import { reconcileRecurrences } from "@/domain/forecast";
 import { addMonths, currentMonth, isMonthKey, monthLabel } from "@/domain/month";
 import { Card, CardHeader } from "@/components/ui/card";
 import { MonthSwitcher } from "@/components/month-switcher";
+import {
+  CategoryMatrix,
+  CategoryMatrixSkeleton,
+} from "@/components/dashboard/category-matrix";
 import { cn } from "@/lib/utils";
+import { Suspense } from "react";
 import type { Insight, InsightTone } from "@/domain/insights";
 
 export const metadata: Metadata = { title: "Insights · Fluxo" };
@@ -170,6 +175,14 @@ export default async function InsightsPage({
           não geram observação — seriam ruído, não informação.
         </p>
       ) : null}
+
+      {/*
+        Os insights dizem o que mudou; a matriz mostra o terreno de onde
+        saíram, para o casal conferir a conclusão em vez de acreditar nela.
+      */}
+      <Suspense key={`matriz:${month}`} fallback={<CategoryMatrixSkeleton />}>
+        <CategoryMatrix houseId={active.id} month={month} />
+      </Suspense>
     </div>
   );
 }

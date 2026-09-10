@@ -184,6 +184,146 @@ export function totalsByCategory(
     .sort((a, b) => b.totalCents - a.totalCents);
 }
 
+// --------------------------------------------------------------------------
+// Matriz mes x categoria (secao 7)
+// --------------------------------------------------------------------------
+
+/**
+ * Como o mes se compara ao tipico daquela categoria.
+ *
+ * "typical" tambem e a resposta quando nao ha base para julgar: com uma ou
+ * duas medicoes, qualquer variacao parece enorme, e pintar isso de alarme
+ * seria inventar sinal onde so ha pouco dado - a mesma regra que os insights
+ * ja seguem ao exigir historico antes de comparar.
+ */
+export type CellTone = "empty" | "below" | "typical" | "above";
+
+export interface MatrixCell {
+  totalCents: Cents;
+  tone: CellTone;
+}
+
+export interface MatrixRow {
+  month: MonthKey;
+  totalCents: Cents;
+  /** Uma celula por categoria, na ordem de `categoryIds`. */
+  cells: MatrixCell[];
+}
+
+export interface CategoryMatrix {
+  /** Colunas: categorias com algum gasto na janela, da maior para a menor. */
+  categoryIds: (string | null)[];
+  /** Total de cada coluna na janela inteira. */
+  categoryTotals: Cents[];
+  /** Linhas, do mes mais recente para o mais antigo. */
+  rows: MatrixRow[];
+  /** Quantos meses da janela tiveram algum gasto. */
+  monthsWithData: number;
+}
+
+/** Acima ou abaixo desta fracao da mediana, o mes deixa de ser tipico. */
+const TYPICAL_BAND = 0.3;
+/** Menos que isto de historico na categoria e pouco para chamar de padrao. */
+const MIN_MONTHS_TO_JUDGE = 3;
+
+function median(values: readonly number[]): number {
+  if (values.length === 0) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  const middle = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 0
+    ? Math.round((sorted[middle - 1]! + sorted[middle]!) / 2)
+    : sorted[middle]!;
+}
+
+/**
+ * Gasto por mes e por categoria, com a leitura de "fora do padrao" junto.
+ *
+ * A tabela sozinha responde "quanto"; a cor responde "isto e normal para esta
+ * categoria?", que e a pergunta que a dimensao tempo permite fazer e um
+ * grafico de um mes so nao alcanca. Por isso a comparacao e dentro da coluna,
+ * contra a mediana da propria categoria, e nunca entre categorias: mercado e
+ * assinatura tem ordens de grandeza diferentes, e compara-las pela cor faria
+ * a coluna maior parecer sempre um problema.
+ *
+ * A mediana, e nao a media, porque um mes atipico - a compra grande, a viagem
+ * - puxaria a media e passaria a chamar os meses normais de "abaixo".
+ */
+export function categoryMatrix(
+  transactions: readonly Transaction[],
+  months: readonly MonthKey[],
+  options: SummaryOptions = {},
+): CategoryMatrix {
+  // mes -> categoria -> centavos
+  const byMonth = new Map<MonthKey, Map<string | null, Cents>>();
+  const totals = new Map<string | null, Cents>();
+
+  for (const month of months) byMonth.set(month, new Map());
+
+  for (const t of transactions) {
+    if (!REALIZED.includes(t.status)) continue;
+    const bucket = byMonth.get(t.invoiceMonth);
+    if (!bucket) continue;
+    if (!matches(t, t.invoiceMonth, options)) continue;
+
+    const spend = spendingCents(t);
+    if (spend === 0) continue;
+
+    bucket.set(t.categoryId, (bucket.get(t.categoryId) ?? 0) + spend);
+    totals.set(t.categoryId, (totals.get(t.categoryId) ?? 0) + spend);
+  }
+
+  const categoryIds = [...totals.entries()]
+    .filter(([, cents]) => cents !== 0)
+    .sort((a, b) => b[1] - a[1])
+    .map(([id]) => id);
+
+  // Mediana por categoria, contando so os meses em que ela teve gasto: um mes
+  // sem compra alguma naquela categoria nao e "gasto baixo", e ausencia.
+  const medians = new Map<string | null, number>();
+  const observations = new Map<string | null, number>();
+  for (const id of categoryIds) {
+    const values: number[] = [];
+    for (const month of months) {
+      const cents = byMonth.get(month)?.get(id) ?? 0;
+      if (cents !== 0) values.push(cents);
+    }
+    medians.set(id, median(values));
+    observations.set(id, values.length);
+  }
+
+  const rows: MatrixRow[] = [...months]
+    .sort((a, b) => b.localeCompare(a))
+    .map((month) => {
+      const bucket = byMonth.get(month) ?? new Map<string | null, Cents>();
+      const cells = categoryIds.map((id) => {
+        const totalCents = bucket.get(id) ?? 0;
+        return { totalCents, tone: toneFor(id, totalCents) };
+      });
+      return {
+        month,
+        totalCents: cells.reduce((sum, c) => sum + c.totalCents, 0),
+        cells,
+      };
+    });
+
+  function toneFor(id: string | null, cents: Cents): CellTone {
+    if (cents === 0) return "empty";
+    if ((observations.get(id) ?? 0) < MIN_MONTHS_TO_JUDGE) return "typical";
+    const base = medians.get(id) ?? 0;
+    if (base === 0) return "typical";
+    if (cents > base * (1 + TYPICAL_BAND)) return "above";
+    if (cents < base * (1 - TYPICAL_BAND)) return "below";
+    return "typical";
+  }
+
+  return {
+    categoryIds,
+    categoryTotals: categoryIds.map((id) => totals.get(id) ?? 0),
+    rows,
+    monthsWithData: rows.filter((r) => r.totalCents !== 0).length,
+  };
+}
+
 export interface CommittedMonth {
   month: MonthKey;
   totalCents: Cents;

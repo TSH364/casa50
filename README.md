@@ -47,6 +47,13 @@ Estas são reais e nenhuma está escondida atrás de uma tela que finge funciona
 
 ### O que a Etapa 4 entrega
 
+- **Matriz mês × categoria** em Insights: uma linha por mês, uma coluna por
+  categoria. A rosca do Início responde "para onde foi este mês"; a matriz
+  responde o que um mês só não alcança — "isto é normal para nós?". A cor
+  compara cada célula com a mediana da própria coluna, nunca entre colunas:
+  mercado e assinatura têm ordens de grandeza diferentes, e pintar pela
+  grandeza faria a maior parecer sempre um problema. Com menos de três meses
+  de histórico na categoria, nada é chamado de fora do padrão.
 - **Versão do build visível**: o commit no cabeçalho de toda tela, e a linha
   completa — commit, branch, ambiente e horário do build — no rodapé da tela
   Casa. Serve para conferir num relance se a atualização entrou, em vez de

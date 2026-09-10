@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   budgetProgress,
+  categoryMatrix,
   committedInstallments,
   incomeCents,
   spendingCents,
@@ -290,5 +291,113 @@ describe("spendingOfCents", () => {
     ];
     const total = linhas.reduce((sum, [type, cents]) => sum + spendingOfCents(type, cents), 0);
     expect(total).toBe(1712913);
+  });
+});
+
+describe("categoryMatrix", () => {
+  const MESES = ["2026-01", "2026-02", "2026-03", "2026-04"] as const;
+
+  /** Gasto de `amount` na categoria `cat`, no mês `m`. */
+  const gasto = (m: string, cat: string | null, amount: number) =>
+    tx({ invoiceMonth: m as Transaction["invoiceMonth"], categoryId: cat, amount });
+
+  it("monta colunas por categoria, da maior para a menor", () => {
+    const m = categoryMatrix(
+      [gasto("2026-01", "mercado", 500), gasto("2026-01", "lazer", 100)],
+      MESES,
+    );
+    expect(m.categoryIds).toEqual(["mercado", "lazer"]);
+    expect(m.categoryTotals).toEqual([50000, 10000]);
+  });
+
+  it("põe o mês mais recente na primeira linha", () => {
+    const m = categoryMatrix(
+      [gasto("2026-01", "mercado", 100), gasto("2026-03", "mercado", 100)],
+      MESES,
+    );
+    expect(m.rows.map((r) => r.month)).toEqual([
+      "2026-04", "2026-03", "2026-02", "2026-01",
+    ]);
+  });
+
+  it("compara cada mês com a mediana da própria categoria", () => {
+    // Três meses em 100 e um em 300: só o último está fora do padrão.
+    const m = categoryMatrix(
+      [
+        gasto("2026-01", "mercado", 100),
+        gasto("2026-02", "mercado", 100),
+        gasto("2026-03", "mercado", 100),
+        gasto("2026-04", "mercado", 300),
+      ],
+      MESES,
+    );
+    const tons = Object.fromEntries(m.rows.map((r) => [r.month, r.cells[0]!.tone]));
+    expect(tons["2026-04"]).toBe("above");
+    expect(tons["2026-03"]).toBe("typical");
+    expect(tons["2026-01"]).toBe("typical");
+  });
+
+  it("não julga categoria com pouco histórico", () => {
+    // Dois meses não formam padrão; chamar de "acima" seria inventar sinal.
+    const m = categoryMatrix(
+      [gasto("2026-01", "mercado", 100), gasto("2026-02", "mercado", 900)],
+      MESES,
+    );
+    expect(m.rows.every((r) => r.cells[0]!.tone !== "above")).toBe(true);
+  });
+
+  it("mês sem gasto na categoria é ausência, não gasto baixo", () => {
+    const m = categoryMatrix(
+      [
+        gasto("2026-01", "mercado", 100),
+        gasto("2026-02", "mercado", 100),
+        gasto("2026-03", "mercado", 100),
+      ],
+      MESES,
+    );
+    const abril = m.rows.find((r) => r.month === "2026-04")!;
+    expect(abril.cells[0]!.tone).toBe("empty");
+    expect(abril.cells[0]!.totalCents).toBe(0);
+    // E a ausência não entra na mediana, senão puxaria tudo para baixo.
+    const janeiro = m.rows.find((r) => r.month === "2026-01")!;
+    expect(janeiro.cells[0]!.tone).toBe("typical");
+  });
+
+  it("usa mediana, não média, para não se deixar levar por um mês atípico", () => {
+    // Uma viagem de 10.000 num mês não pode transformar os meses normais em
+    // "abaixo do padrão".
+    const m = categoryMatrix(
+      [
+        gasto("2026-01", "viagem", 100),
+        gasto("2026-02", "viagem", 100),
+        gasto("2026-03", "viagem", 100),
+        gasto("2026-04", "viagem", 10000),
+      ],
+      MESES,
+    );
+    const tons = Object.fromEntries(m.rows.map((r) => [r.month, r.cells[0]!.tone]));
+    expect(tons["2026-01"]).toBe("typical");
+    expect(tons["2026-04"]).toBe("above");
+  });
+
+  it("soma a linha e conta os meses com movimento", () => {
+    const m = categoryMatrix(
+      [gasto("2026-02", "mercado", 100), gasto("2026-02", "lazer", 50)],
+      MESES,
+    );
+    expect(m.rows.find((r) => r.month === "2026-02")!.totalCents).toBe(15000);
+    expect(m.monthsWithData).toBe(1);
+  });
+
+  it("pagamento de fatura não vira coluna", () => {
+    // `spendingCents` conta pagamento como zero; a matriz herda isso.
+    const m = categoryMatrix(
+      [
+        gasto("2026-01", "mercado", 100),
+        tx({ invoiceMonth: "2026-01", categoryId: "quitacao", type: "payment", amount: 5000 }),
+      ],
+      MESES,
+    );
+    expect(m.categoryIds).toEqual(["mercado"]);
   });
 });
