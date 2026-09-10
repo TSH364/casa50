@@ -112,11 +112,17 @@ sai da máquina antes de você revisar e confirmar.
   compras são do mês anterior.
 - **Parcela da coluna própria** (`Parcela` = `2/12`, `Única`) ou, quando não
   existe, extraída da descrição (`NETFLIX 3/12`), sem confundir `12/2026`.
-- **Cartão por linha.** Quando o arquivo traz o final do cartão, cada final é
-  ligado ao cartão cadastrado com o mesmo número e cada lançamento é gravado no
-  seu — uma fatura com titular e adicionais não vai toda para um cartão só. Se
-  não houver cartão com aquele final, a própria tela cria, sem obrigar a sair
-  da importação e recomeçar.
+- **Cartão por linha, criado sozinho.** O extrato sempre informa os 4 últimos
+  dígitos, então exigir cadastro prévio é pedir um dado que o arquivo já traz.
+  Cada final é ligado ao cartão de mesmo número e, se não houver, o cartão é
+  criado na gravação — não na revisão, porque a tela promete que nada é escrito
+  antes de confirmar. Uma fatura com titular e adicionais deixa de ir inteira
+  para "sem cartão", e a visão por cartão em Extratos passa a ter conteúdo.
+  Falhando a gravação dos lançamentos, os cartões criados na mesma importação
+  são desfeitos: "nada foi importado" precisa ser verdade.
+  A ligação é pelo final; dois bancos podem emitir cartões terminados nos
+  mesmos 4 dígitos, e nesse caso a revisão deixa apontar o final para outro
+  cartão antes de confirmar.
 - **Tipos classificados**: despesa, tarifa (anuidade, IOF, juros), pagamento de
   fatura e estorno. `Desconto` **nunca** vira pagamento — exigência da secao 6.
 - **Duplicidade por identidade completa**: mês, data, estabelecimento

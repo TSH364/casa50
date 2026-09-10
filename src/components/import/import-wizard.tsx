@@ -7,12 +7,10 @@ import {
   CheckCircle2,
   FileText,
   Info,
-  Plus,
   Trash2,
   Upload,
 } from "lucide-react";
 import { commitImport, reviewImport, revertImport } from "@/actions/import";
-import { createCardFromLastFour } from "@/actions/cards";
 import { parseCsv, MAX_FILE_BYTES } from "@/importers/parse";
 import type {
   DraftTransaction,
@@ -70,7 +68,7 @@ function IssueLine({ level, text }: { level: string; text: string }) {
 }
 
 export function ImportWizard({
-  cards: initialCards,
+  cards,
   members,
   currentMonth,
 }: {
@@ -80,11 +78,6 @@ export function ImportWizard({
 }) {
   const [step, setStep] = useState<Step>("arquivo");
   const [pending, startTransition] = useTransition();
-  /**
-   * Cópia local dos cartões: um cartão criado aqui precisa aparecer no
-   * seletor na hora, sem recarregar a página e perder o arquivo já lido.
-   */
-  const [cards, setCards] = useState(initialCards);
 
   const [fileName, setFileName] = useState("");
   const [fileHash, setFileHash] = useState<string | null>(null);
@@ -157,21 +150,6 @@ export function ImportWizard({
     }
     setCardByLastFour(auto);
     return result;
-  }
-
-  /** Cria o cartão que falta e já o associa ao final que veio no arquivo. */
-  function createCard(lastFour: string) {
-    startTransition(async () => {
-      const result = await createCardFromLastFour(lastFour);
-      if (result.error || !result.card) {
-        toast.error(result.error ?? "Não foi possível criar o cartão.");
-        return;
-      }
-      const created = result.card;
-      setCards((prev) => [...prev, created]);
-      setCardByLastFour((prev) => ({ ...prev, [lastFour]: created.id }));
-      toast.success(`Cartão ···· ${lastFour} criado. Dá para renomear em Cartões.`);
-    });
   }
 
   /** Aplica o cartão de cada linha antes de mandar para o servidor. */
@@ -437,38 +415,21 @@ export function ImportWizard({
                   hint={
                     cardByLastFour[lastFour]
                       ? "Reconhecido pelo final."
-                      : "Nenhum cartão com este final. Dá para criar agora."
+                      : "Ainda não cadastrado — será criado ao confirmar, com este final."
                   }
                 >
-                  <div className="flex gap-2">
-                    {/* O wrapper do Select é que é o item do flex; a classe
-                        passada ao componente cai no <select> de dentro. */}
-                    <div className="min-w-0 flex-1">
-                      <Select
-                        id={`card-${lastFour}`}
-                        placeholder="Sem cartão"
-                        value={cardByLastFour[lastFour] ?? ""}
-                        onChange={(e) =>
-                          setCardByLastFour((prev) => ({
-                            ...prev,
-                            [lastFour]: e.target.value,
-                          }))
-                        }
-                        options={cardOptions}
-                      />
-                    </div>
-                    {cardByLastFour[lastFour] ? null : (
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        disabled={pending}
-                        onClick={() => createCard(lastFour)}
-                      >
-                        <Plus aria-hidden /> Criar
-                      </Button>
-                    )}
-                  </div>
+                  <Select
+                    id={`card-${lastFour}`}
+                    placeholder={`Criar “Cartão ${lastFour}”`}
+                    value={cardByLastFour[lastFour] ?? ""}
+                    onChange={(e) =>
+                      setCardByLastFour((prev) => ({
+                        ...prev,
+                        [lastFour]: e.target.value,
+                      }))
+                    }
+                    options={cardOptions}
+                  />
                 </Field>
               ))
             )}

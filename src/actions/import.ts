@@ -341,6 +341,82 @@ export interface CommitResult {
   summary?: ImportSummary;
 }
 
+/**
+ * Garante um cartão para cada final que veio no arquivo.
+ *
+ * O extrato sempre informa os 4 últimos dígitos, então exigir que o casal
+ * cadastre o cartão antes de importar é pedir um dado que o próprio arquivo
+ * já traz. Sem isto, uma fatura com titular e adicionais entrava inteira como
+ * "sem cartão" e a visão por cartão ficava vazia.
+ *
+ * Acontece na GRAVAÇÃO, e não na revisão, de propósito: a tela promete que
+ * nada é escrito antes de confirmar, e criar cartão é escrita.
+ *
+ * O nome é provisório ("Cartão 2150"); `/cartoes` deixa renomear, e o vínculo
+ * é pelo id, então renomear depois não desfaz nada.
+ */
+async function ensureCardsForLastFours(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  houseId: string,
+  lastFours: readonly string[],
+): Promise<{
+  error?: string;
+  byLastFour: Map<string, string>;
+  /** Só os que ESTA chamada criou - é o que o rollback pode desfazer. */
+  createdIds: string[];
+}> {
+  const byLastFour = new Map<string, string>();
+  if (lastFours.length === 0) return { byLastFour, createdIds: [] };
+
+  const { data: existing, error: readError } = await supabase
+    .from("cards")
+    .select("id, last_four")
+    .eq("house_id", houseId)
+    .in("last_four", [...lastFours]);
+
+  if (readError) {
+    console.error("[importacao] falha ao ler cartoes", { code: readError.code });
+    return { error: "Não foi possível verificar os cartões.", byLastFour, createdIds: [] };
+  }
+
+  for (const row of existing ?? []) {
+    const lastFour = row.last_four as string | null;
+    if (lastFour && !byLastFour.has(lastFour)) {
+      byLastFour.set(lastFour, row.id as string);
+    }
+  }
+
+  const missing = lastFours.filter((f) => !byLastFour.has(f));
+  if (missing.length === 0) return { byLastFour, createdIds: [] };
+
+  const { data: inserted, error: insertError } = await supabase
+    .from("cards")
+    .insert(
+      missing.map((lastFour) => ({
+        house_id: houseId,
+        name: `Cartão ${lastFour}`,
+        last_four: lastFour,
+      })),
+    )
+    .select("id, last_four");
+
+  if (insertError || !inserted) {
+    console.error("[importacao] falha ao criar cartoes", {
+      code: insertError?.code,
+    });
+    return { error: "Não foi possível criar os cartões da fatura.", byLastFour, createdIds: [] };
+  }
+
+  const createdIds: string[] = [];
+  for (const row of inserted) {
+    const lastFour = row.last_four as string | null;
+    if (lastFour) byLastFour.set(lastFour, row.id as string);
+    createdIds.push(row.id as string);
+  }
+
+  return { byLastFour, createdIds };
+}
+
 /** Grava a importação. Só as linhas marcadas como `new` viram lançamento. */
 export async function commitImport(input: unknown): Promise<CommitResult> {
   const parsed = commitSchema.safeParse(input);
@@ -362,11 +438,35 @@ export async function commitImport(input: unknown): Promise<CommitResult> {
     data.reportedTotalCents,
   );
 
+  // Antes da fatura: se falhar, nada foi criado ainda e não sobra lixo.
+  const finais = [
+    ...new Set(
+      toImport
+        .filter((d) => d.cardId === null)
+        .map((d) => d.cardLastFour)
+        .filter((f): f is string => f !== null),
+    ),
+  ];
+  const cards = await ensureCardsForLastFours(supabase, houseId, finais);
+  if (cards.error) return { error: cards.error };
+
+  const cardIdFor = (d: { cardId: string | null; cardLastFour: string | null }) =>
+    d.cardId ??
+    (d.cardLastFour ? (cards.byLastFour.get(d.cardLastFour) ?? null) : null) ??
+    data.cardId;
+
+  // A fatura aponta para um cartão só; com vários no arquivo ela fica sem, e
+  // cada lançamento leva o seu.
+  const invoiceCardId =
+    data.cardId ?? (cards.byLastFour.size === 1
+      ? ([...cards.byLastFour.values()][0] ?? null)
+      : null);
+
   const { data: invoice, error: invoiceError } = await supabase
     .from("invoices")
     .insert({
       house_id: houseId,
-      card_id: data.cardId,
+      card_id: invoiceCardId,
       file_name: data.fileName,
       institution: data.institution,
       invoice_month: fromMonthKey(data.invoiceMonth),
@@ -397,7 +497,7 @@ export async function commitImport(input: unknown): Promise<CommitResult> {
   const rows = toImport.map((d) => ({
     house_id: houseId,
     invoice_id: invoice.id,
-    card_id: d.cardId ?? data.cardId,
+    card_id: cardIdFor(d),
     member_id: data.memberId,
     date: d.date,
     invoice_month: fromMonthKey(data.invoiceMonth),
@@ -426,8 +526,18 @@ export async function commitImport(input: unknown): Promise<CommitResult> {
       code: rowsError.code,
     });
     // Sem os lançamentos a fatura não representa nada: desfaz para não
-    // deixar um registro de importação vazio no histórico.
+    // deixar um registro de importação vazio no histórico. Os cartões criados
+    // agora há pouco vão junto - "nada foi importado" precisa ser verdade.
     await supabase.from("invoices").delete().eq("id", invoice.id);
+    // Só os criados nesta importação: `byLastFour` também traz cartões que já
+    // existiam, e apagar um deles seria destruir cadastro do casal.
+    if (cards.createdIds.length > 0) {
+      await supabase
+        .from("cards")
+        .delete()
+        .eq("house_id", houseId)
+        .in("id", cards.createdIds);
+    }
     return { error: "Não foi possível gravar os lançamentos. Nada foi importado." };
   }
 
