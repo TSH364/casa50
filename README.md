@@ -112,6 +112,12 @@ sai da máquina antes de você revisar e confirmar.
   não é repetição; a parcela 3/10 não é igual à 4/10.
 - **Revisão antes de gravar**: novos, repetidos, ignorados, sem categoria e
   total calculado, com cada linha alternável entre importar e ignorar.
+- **Categoria renomeada continua recebendo sugestão.** A tabela devolve nomes
+  canônicos ("Transporte"), e uma casa que chama aquilo de "Carro" perdia toda
+  sugestão daquela categoria, em silêncio. Agora há casamento por apelido, com
+  o nome exato sempre ganhando do apelido. Medido na fatura real: 95 de 96
+  linhas classificadas tanto com os nomes iniciais quanto com a casa inteira
+  renomeada.
 - **Categorização automática**, por ordem de confiança: regra aprendida →
   nome do estabelecimento → categoria do arquivo traduzida → tipo. O nome da
   loja vem antes da dica do banco porque a do banco sai do ramo cadastrado na
@@ -130,7 +136,9 @@ sai da máquina antes de você revisar e confirmar.
 - **Reanalisar uma fatura já importada**, sem apagar nada: o leitor melhora
   com o tempo, e sem isso a única forma de aproveitar a melhoria seria desfazer
   e importar de novo, perdendo tudo que já foi ajustado à mão. Só preenche
-  categoria vazia — uma já preenchida pode ter sido escolhida pelo casal.
+  categoria vazia — uma já preenchida pode ter sido escolhida pelo casal. Usa a
+  mesma decisão da importação, inclusive a categoria que o banco mandou, que
+  agora fica guardada no lançamento (`category_hint`).
 - **Desfazer a importação**, que apaga os lançamentos e marca a fatura como
   revertida — o registro de que houve importação continua no histórico. O ícone
   é a lixeira: a seta de voltar ficou com a reanálise, que é o que ela sugere.

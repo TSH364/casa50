@@ -9,6 +9,7 @@ import {
   categoryFromHint,
   categoryFromMerchant,
   duplicateKey,
+  matchCategoryNames,
   normalizeMerchant,
 } from "@/importers/detect";
 import { isMonthKey } from "@/domain/month";
@@ -98,6 +99,13 @@ interface CategoryMaps {
   ruleByPattern: Map<string, string | null>;
   byName: Map<string, string>;
   nameById: Map<string, string>;
+  /**
+   * Nome canônico ("Transporte") -> id da categoria da casa que o atende.
+   *
+   * Existe porque a casa pode renomear: quem chama de "Carro" o que veio como
+   * "Transporte" perdia toda sugestão daquela categoria, em silêncio.
+   */
+  byCanonical: Map<string, string>;
 }
 
 async function loadCategoryMaps(
@@ -116,6 +124,21 @@ async function loadCategoryMaps(
       .eq("is_active", true),
   ]);
 
+  const byName = new Map<string, string>(
+    (categories ?? []).map((c) => [
+      normalizeMerchant(String(c.name)),
+      c.id as string,
+    ]),
+  );
+
+  const byCanonical = new Map<string, string>();
+  for (const [canonical, realName] of matchCategoryNames(
+    (categories ?? []).map((c) => String(c.name)),
+  )) {
+    const id = byName.get(normalizeMerchant(realName));
+    if (id) byCanonical.set(canonical, id);
+  }
+
   return {
     ruleByPattern: new Map(
       (rules ?? []).map((r) => [
@@ -123,15 +146,11 @@ async function loadCategoryMaps(
         r.category_id as string | null,
       ]),
     ),
-    byName: new Map(
-      (categories ?? []).map((c) => [
-        normalizeMerchant(String(c.name)),
-        c.id as string,
-      ]),
-    ),
+    byName,
     nameById: new Map(
       (categories ?? []).map((c) => [c.id as string, String(c.name)]),
     ),
+    byCanonical,
   };
 }
 
@@ -161,15 +180,20 @@ function resolveCategoryId(
   },
   maps: CategoryMaps,
 ): string | null {
-  const byName = (name: string | null) =>
+  /** Nome canônico da tabela -> categoria da casa, mesmo renomeada. */
+  const canonical = (name: string | null) =>
+    name ? maps.byCanonical.get(name) : undefined;
+  /** Nome cru vindo do arquivo, que pode coincidir com o da casa. */
+  const literal = (name: string | null) =>
     name ? maps.byName.get(normalizeMerchant(name)) : undefined;
 
   const fromRule = maps.ruleByPattern.get(input.merchantNormalized);
-  const fromMerchant = byName(categoryFromMerchant(input.merchantNormalized));
+  const fromMerchant = canonical(categoryFromMerchant(input.merchantNormalized));
   const fromHint = input.categoryHint
-    ? (byName(input.categoryHint) ?? byName(categoryFromHint(input.categoryHint)))
+    ? (literal(input.categoryHint) ??
+       canonical(categoryFromHint(input.categoryHint)))
     : undefined;
-  const fromType = input.type === "fee" ? maps.byName.get("TARIFAS") : undefined;
+  const fromType = input.type === "fee" ? canonical("Tarifas") : undefined;
 
   return fromRule ?? fromMerchant ?? fromHint ?? fromType ?? null;
 }
@@ -379,6 +403,9 @@ export async function commitImport(input: unknown): Promise<CommitResult> {
     invoice_month: fromMonthKey(data.invoiceMonth),
     description: d.description,
     merchant_original: d.merchantOriginal,
+    // Guardada crua, como o banco escreveu: é o que deixa a reanálise
+    // alcançar a linha depois, sem precisar do arquivo de novo.
+    category_hint: d.categoryHint,
     amount: fromCents(d.amountCents),
     type: d.type,
     origin: "invoice" as const,
@@ -423,10 +450,11 @@ export async function commitImport(input: unknown): Promise<CommitResult> {
  * escolhida pelo casal, e o banco não guarda quem a escolheu; sobrescrever
  * seria apagar trabalho de alguém para pôr um palpite no lugar.
  *
- * A categoria que o banco mandou no arquivo não é guardada no lançamento, só
- * o estabelecimento. Então a reanálise trabalha com regra aprendida, nome da
- * loja e tipo - as linhas que dependiam exclusivamente da dica do banco
- * continuam sem categoria até o arquivo ser importado de novo.
+ * Usa exatamente a mesma decisão da importação, `resolveCategoryId`: regra
+ * aprendida, nome da loja, categoria que o banco mandou (guardada em
+ * `category_hint` desde a migração `20260910000001`) e tipo. Lançamentos
+ * importados ANTES dessa migração não têm a dica guardada, então para eles a
+ * reanálise trabalha só com nome da loja e tipo.
  */
 export async function reclassifyInvoice(
   invoiceId: string,
@@ -440,7 +468,7 @@ export async function reclassifyInvoice(
 
   const { data: rows, error: rowsError } = await supabase
     .from("transactions")
-    .select("id, merchant_normalized, type")
+    .select("id, merchant_normalized, type, category_hint")
     .eq("house_id", houseId)
     .eq("invoice_id", invoiceId)
     .is("category_id", null);
@@ -463,7 +491,7 @@ export async function reclassifyInvoice(
     const categoryId = resolveCategoryId(
       {
         merchantNormalized: String(row.merchant_normalized ?? ""),
-        categoryHint: null,
+        categoryHint: (row.category_hint as string | null) ?? null,
         type: String(row.type),
       },
       maps,

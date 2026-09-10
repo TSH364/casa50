@@ -49,7 +49,7 @@ export function InvoiceList({
       if (!result.updated) {
         toast.info(
           result.remaining
-            ? `Nada novo a classificar. ${result.remaining} lançamento(s) continuam sem categoria — a categoria do arquivo não fica guardada, então para esses vale importar a fatura de novo.`
+            ? `Nada novo a classificar. ${result.remaining} lançamento(s) continuam sem categoria — dá para escolher uma na própria linha, em Lançamentos.`
             : "Todos os lançamentos desta fatura já estão categorizados.",
         );
         return;

@@ -9,6 +9,7 @@ import {
   monthFromFilename,
   categoryFromHint,
   categoryFromMerchant,
+  matchCategoryNames,
   normalizeMerchant,
   parseCardLastFour,
   parseInstallmentCell,
@@ -688,5 +689,57 @@ describe("categoryFromMerchant", () => {
     // "CASA AZUL" não é companhia aérea; "PLANETA" não é a operadora NET.
     expect(categoryFromMerchant("CASA AZUL DECORACOES")).toBeNull();
     expect(categoryFromMerchant("PLANETA DOS BRINQUEDOS")).toBeNull();
+  });
+});
+
+describe("matchCategoryNames", () => {
+  const INICIAIS = [
+    "Moradia", "Alimentacao", "Transporte", "Saude", "Educacao", "Lazer",
+    "Assinaturas", "Compras", "Viagens", "Servicos", "Tarifas", "Impostos",
+    "TSH", "Outros",
+  ];
+
+  it("casa as categorias iniciais consigo mesmas", () => {
+    const m = matchCategoryNames(INICIAIS);
+    expect(m.get("Alimentacao")).toBe("Alimentacao");
+    expect(m.get("Transporte")).toBe("Transporte");
+    expect(m.get("Tarifas")).toBe("Tarifas");
+  });
+
+  it("aceita o nome acentuado", () => {
+    const m = matchCategoryNames(["Alimentação", "Saúde", "Serviços"]);
+    expect(m.get("Alimentacao")).toBe("Alimentação");
+    expect(m.get("Saude")).toBe("Saúde");
+    expect(m.get("Servicos")).toBe("Serviços");
+  });
+
+  it("encontra a categoria renomeada pelo apelido", () => {
+    // O caso que motivou a tabela: quem chama Transporte de "Carro" perdia
+    // toda sugestão daquela categoria, em silêncio.
+    const m = matchCategoryNames(["Carro", "Mercado", "Casa", "Streaming"]);
+    expect(m.get("Transporte")).toBe("Carro");
+    expect(m.get("Alimentacao")).toBe("Mercado");
+    expect(m.get("Moradia")).toBe("Casa");
+    expect(m.get("Assinaturas")).toBe("Streaming");
+  });
+
+  it("o nome exato ganha do apelido", () => {
+    // Com as duas presentes, comida vai para "Alimentação" e não para
+    // "Mercado", que é só apelido.
+    const m = matchCategoryNames(["Mercado", "Alimentação"]);
+    expect(m.get("Alimentacao")).toBe("Alimentação");
+  });
+
+  it("uma categoria da casa atende um canônico só", () => {
+    // "Casa" é apelido de Moradia; não pode virar destino de mais nada.
+    const m = matchCategoryNames(["Casa"]);
+    const donos = [...m.values()].filter((v) => v === "Casa");
+    expect(donos).toHaveLength(1);
+  });
+
+  it("não inventa dono para categoria que a casa não tem", () => {
+    const m = matchCategoryNames(["Alimentacao"]);
+    expect(m.get("Transporte")).toBeUndefined();
+    expect(m.get("Viagens")).toBeUndefined();
   });
 });

@@ -437,6 +437,91 @@ const MERCHANT_RULES: readonly { pattern: RegExp; category: string }[] = [
 ];
 
 /**
+ * Outros nomes pelos quais uma categoria inicial pode atender.
+ *
+ * A tabela de estabelecimentos e a tradução do vocabulário do banco devolvem
+ * sempre um dos nomes iniciais ("Transporte", "Alimentacao"...). Mas a casa
+ * pode renomear: quem chama de "Carro" o que veio como "Transporte" perdia
+ * toda sugestão daquela categoria, em silêncio.
+ *
+ * Vale só quando NÃO existe categoria com o nome canônico - o nome exato
+ * sempre ganha do apelido. Assim, numa casa que tem "Alimentação" e "Mercado"
+ * ao mesmo tempo, a sugestão de comida vai para "Alimentação", e não para a
+ * primeira que casar por acaso.
+ */
+const CATEGORY_ALIASES: Record<string, readonly string[]> = {
+  Alimentacao: [
+    "alimentacao", "alimentos", "comida", "mercado", "supermercado",
+    "feira", "restaurante", "refeicao", "rango",
+  ],
+  Transporte: [
+    "carro", "automovel", "auto", "veiculo", "locomocao", "mobilidade",
+    "combustivel", "gasolina", "deslocamento",
+  ],
+  Moradia: [
+    "casa", "lar", "habitacao", "aluguel", "moradia", "contas da casa",
+    "utilidades", "condominio",
+  ],
+  Saude: ["saude", "medico", "farmacia", "plano de saude", "bem estar"],
+  Educacao: ["educacao", "estudos", "escola", "cursos", "faculdade"],
+  Lazer: ["lazer", "diversao", "entretenimento", "passeio", "hobby", "cultura"],
+  Assinaturas: [
+    "assinatura", "assinaturas", "streaming", "apps", "aplicativos",
+    "servicos digitais", "digital",
+  ],
+  Compras: ["compras", "shopping", "varejo", "presentes", "vestuario"],
+  Viagens: ["viagem", "viagens", "ferias", "turismo"],
+  Servicos: ["servico", "servicos", "prestadores"],
+  Tarifas: ["tarifa", "tarifas", "taxas", "juros", "encargos", "banco"],
+  Impostos: ["imposto", "impostos", "tributos"],
+  Outros: ["outros", "diversos", "geral", "sem categoria"],
+};
+
+/**
+ * Liga cada nome canônico à categoria da casa que deve atendê-lo.
+ *
+ * Recebe os nomes de categoria como a casa os escreveu e devolve, para cada
+ * nome canônico que tenha dono, o nome real correspondente. Duas passadas de
+ * propósito: primeiro os nomes exatos, depois os apelidos, para o exato nunca
+ * perder para um apelido de outra categoria.
+ */
+export function matchCategoryNames(
+  houseCategoryNames: readonly string[],
+): Map<string, string> {
+  const normalized = houseCategoryNames.map((name) => ({
+    name,
+    key: stripAccents(name).toLowerCase().replace(/\s+/g, " ").trim(),
+  }));
+  const result = new Map<string, string>();
+  const usado = new Set<string>();
+
+  for (const canonical of Object.keys(CATEGORY_ALIASES)) {
+    const key = stripAccents(canonical).toLowerCase();
+    const hit = normalized.find((c) => c.key === key);
+    if (hit) {
+      result.set(canonical, hit.name);
+      usado.add(hit.name);
+    }
+  }
+
+  for (const [canonical, aliases] of Object.entries(CATEGORY_ALIASES)) {
+    if (result.has(canonical)) continue;
+    // Uma categoria da casa atende um canônico só: sem isto, numa casa com
+    // apenas "Casa", tanto Moradia quanto qualquer outro apelido dela
+    // apontariam para a mesma linha e a sugestão viraria loteria.
+    const hit = normalized.find(
+      (c) => !usado.has(c.name) && aliases.includes(c.key),
+    );
+    if (hit) {
+      result.set(canonical, hit.name);
+      usado.add(hit.name);
+    }
+  }
+
+  return result;
+}
+
+/**
  * Nome de categoria da casa sugerido pelo estabelecimento.
  *
  * Devolve `null` quando não reconhece - e aí a dica do banco assume.
