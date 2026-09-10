@@ -5,6 +5,7 @@ import { getActiveHouse } from "@/lib/houses";
 import { getCurrentUser } from "@/lib/supabase/server";
 import { signOut } from "@/app/entrar/actions";
 import { Button } from "@/components/ui/button";
+import { buildInfo, buildLabel } from "@/lib/version";
 
 export default async function AppLayout({
   children,
@@ -19,6 +20,8 @@ export default async function AppLayout({
   const { active, houses } = await getActiveHouse();
   // Conta nova ainda sem casa: nao existe dado para mostrar.
   if (!active) redirect("/nova-casa");
+
+  const build = buildInfo();
 
   return (
     <div className="flex min-h-dvh">
@@ -39,11 +42,26 @@ export default async function AppLayout({
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="sticky top-0 z-30 flex min-h-14 items-center justify-between gap-3 border-b border-line bg-canvas/90 px-4 backdrop-blur-md sm:px-6">
           <HouseSwitcher houses={houses} activeId={active.id} />
-          <form action={signOut}>
-            <Button variant="ghost" size="sm" type="submit">
-              Sair
-            </Button>
-          </form>
+          <div className="flex shrink-0 items-center gap-1">
+            {/*
+              Versão do build, discreta mas em toda tela: serve para conferir
+              num relance se a atualização entrou mesmo, sem depender de
+              adivinhar se a página veio do cache. O texto completo - branch,
+              ambiente e horário do build - fica na tela Casa, porque `title`
+              não abre no toque e aqui só cabe o commit.
+            */}
+            <span
+              title={buildLabel(build)}
+              className="tabular text-[11px] text-ink-faint"
+            >
+              {build.sha}
+            </span>
+            <form action={signOut}>
+              <Button variant="ghost" size="sm" type="submit">
+                Sair
+              </Button>
+            </form>
+          </div>
         </header>
 
         {/* pb-24 no celular reserva a altura da barra inferior fixa. */}

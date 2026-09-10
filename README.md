@@ -47,6 +47,11 @@ Estas são reais e nenhuma está escondida atrás de uma tela que finge funciona
 
 ### O que a Etapa 4 entrega
 
+- **Versão do build visível**: o commit no cabeçalho de toda tela, e a linha
+  completa — commit, branch, ambiente e horário do build — no rodapé da tela
+  Casa. Serve para conferir num relance se a atualização entrou, em vez de
+  adivinhar se a página veio do cache. O horário resolve o redeploy sem código
+  novo, em que o commit é o mesmo mas o build é outro.
 - **Mês escolhido numa grade** de meses e anos, além das setas: voltar de
   setembro a janeiro não custa mais oito toques.
 - **Convite pendente visível para quem foi convidado**, inclusive na tela de

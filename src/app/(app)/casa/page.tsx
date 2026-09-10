@@ -10,6 +10,7 @@ import { getCurrentUser } from "@/lib/supabase/server";
 import { Card, CardHeader } from "@/components/ui/card";
 import { MembersManager } from "@/components/house/members-manager";
 import { PendingInvites } from "@/components/house/pending-invites";
+import { buildInfo, buildLabel } from "@/lib/version";
 
 export const metadata: Metadata = { title: "Casa · Fluxo" };
 
@@ -83,6 +84,14 @@ export default async function CasaPage() {
           Ver histórico da casa
         </Link>
       </Card>
+
+      {/*
+        Versão por extenso. O cabeçalho mostra só o commit, e `title` não abre
+        no toque - num app usado no celular, o detalhe precisa estar escrito.
+      */}
+      <p className="pb-2 text-center text-[12px] text-ink-faint">
+        {buildLabel(buildInfo())}
+      </p>
     </div>
   );
 }
