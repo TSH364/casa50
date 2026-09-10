@@ -46,17 +46,38 @@ export function InvoiceList({
         toast.error(result.error);
         return;
       }
-      if (!result.updated) {
+      // Duas coisas podem ter acontecido, e o aviso precisa dizer as duas:
+      // reanalisar que só ligou cartão não é "nada a fazer".
+      const feito: string[] = [];
+      if (result.updated) feito.push(`${result.updated} categorizados`);
+      if (result.cardsLinked) {
+        feito.push(
+          `${result.cardsLinked} ligados ao cartão` +
+            (result.cardsCreated
+              ? ` (${result.cardsCreated} cartão(ões) criado(s))`
+              : ""),
+        );
+      }
+
+      const pendencias: string[] = [];
+      if (result.remaining) pendencias.push(`${result.remaining} sem categoria`);
+      if (result.withoutStoredCard) {
+        pendencias.push(
+          `${result.withoutStoredCard} sem cartão — esses foram importados antes de o app guardar o final, e só reimportando o arquivo`,
+        );
+      }
+
+      if (feito.length === 0) {
         toast.info(
-          result.remaining
-            ? `Nada novo a classificar. ${result.remaining} lançamento(s) continuam sem categoria — dá para escolher uma na própria linha, em Lançamentos.`
-            : "Todos os lançamentos desta fatura já estão categorizados.",
+          pendencias.length > 0
+            ? `Nada novo a fazer. Restam: ${pendencias.join("; ")}.`
+            : "Esta fatura já está categorizada e com os cartões ligados.",
         );
         return;
       }
       toast.success(
-        `${result.updated} lançamento(s) categorizados.` +
-          (result.remaining ? ` ${result.remaining} continuam sem categoria.` : ""),
+        `${feito.join(" · ")}.` +
+          (pendencias.length > 0 ? ` Restam: ${pendencias.join("; ")}.` : ""),
       );
     });
   }

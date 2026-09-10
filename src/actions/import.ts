@@ -503,9 +503,10 @@ export async function commitImport(input: unknown): Promise<CommitResult> {
     invoice_month: fromMonthKey(data.invoiceMonth),
     description: d.description,
     merchant_original: d.merchantOriginal,
-    // Guardada crua, como o banco escreveu: é o que deixa a reanálise
+    // Guardados crus, como vieram no arquivo: é o que deixa a reanálise
     // alcançar a linha depois, sem precisar do arquivo de novo.
     category_hint: d.categoryHint,
+    card_last_four: d.cardLastFour,
     amount: fromCents(d.amountCents),
     type: d.type,
     origin: "invoice" as const,
@@ -549,7 +550,8 @@ export async function commitImport(input: unknown): Promise<CommitResult> {
 }
 
 /**
- * Reanalisa uma fatura já importada, sem apagar nada.
+ * Reanalisa uma fatura já importada, sem apagar nada: preenche categoria e
+ * liga cartão, nos lançamentos onde esses campos estão vazios.
  *
  * O leitor melhora com o tempo - uma tabela de estabelecimentos nova, uma
  * regra que a casa acabou de ensinar - e sem isto o único jeito de aproveitar
@@ -561,14 +563,33 @@ export async function commitImport(input: unknown): Promise<CommitResult> {
  * seria apagar trabalho de alguém para pôr um palpite no lugar.
  *
  * Usa exatamente a mesma decisão da importação, `resolveCategoryId`: regra
- * aprendida, nome da loja, categoria que o banco mandou (guardada em
- * `category_hint` desde a migração `20260910000001`) e tipo. Lançamentos
- * importados ANTES dessa migração não têm a dica guardada, então para eles a
- * reanálise trabalha só com nome da loja e tipo.
+ * aprendida, nome da loja, categoria que o banco mandou e tipo. O cartão sai
+ * do final guardado no lançamento, criando o cartão se ainda não existir -
+ * mesma função que a importação usa.
+ *
+ * As duas coisas dependem de dado que o arquivo trouxe e que passou a ser
+ * guardado nas migrações `20260910000001` (categoria) e `20260910000002`
+ * (final do cartão). Lançamentos gravados ANTES delas não têm esses campos, e
+ * para eles a reanálise faz o que pode: a categoria ainda sai do nome da loja
+ * e do tipo, mas o cartão não tem de onde sair - só reimportando o arquivo.
  */
+export interface ReclassifyResult {
+  error?: string;
+  /** Lançamentos que ganharam categoria. */
+  updated?: number;
+  /** Continuam sem categoria. */
+  remaining?: number;
+  /** Lançamentos que ganharam cartão. */
+  cardsLinked?: number;
+  /** Cartões que precisaram ser criados para isso. */
+  cardsCreated?: number;
+  /** Sem categoria E sem o final guardado - só reimportando. */
+  withoutStoredCard?: number;
+}
+
 export async function reclassifyInvoice(
   invoiceId: string,
-): Promise<{ error?: string; updated?: number; remaining?: number }> {
+): Promise<ReclassifyResult> {
   if (!z.string().uuid().safeParse(invoiceId).success) {
     return { error: "Fatura inválida." };
   }
@@ -576,19 +597,82 @@ export async function reclassifyInvoice(
   const houseId = await requireHouseId();
   const supabase = await createClient();
 
+  // Duas perguntas independentes: falta categoria, falta cartão. Uma linha
+  // pode precisar de uma, da outra ou das duas, então a leitura pega tudo da
+  // fatura e cada passo filtra o que lhe cabe.
   const { data: rows, error: rowsError } = await supabase
     .from("transactions")
-    .select("id, merchant_normalized, type, category_hint")
+    .select(
+      "id, merchant_normalized, type, category_hint, category_id, card_id, card_last_four",
+    )
     .eq("house_id", houseId)
-    .eq("invoice_id", invoiceId)
-    .is("category_id", null);
+    .eq("invoice_id", invoiceId);
 
   if (rowsError) {
     console.error("[importacao] falha ao reanalisar", { code: rowsError.code });
     return { error: "Não foi possível reanalisar a fatura." };
   }
   if (!rows || rows.length === 0) {
-    return { updated: 0, remaining: 0 };
+    return { updated: 0, remaining: 0, cardsLinked: 0, cardsCreated: 0 };
+  }
+
+  // ------------------------------------------------------------- cartões
+  //
+  // Mesma regra da categoria: só preenche o que está VAZIO. Um cartão já
+  // escolhido pode ter sido corrigido à mão, e sobrescrever seria apagar
+  // trabalho de alguém.
+  const semCartao = rows.filter(
+    (r) => r.card_id === null && r.card_last_four !== null,
+  );
+  const finais = [
+    ...new Set(semCartao.map((r) => String(r.card_last_four))),
+  ];
+
+  let cardsLinked = 0;
+  let cardsCreated = 0;
+  if (finais.length > 0) {
+    const cards = await ensureCardsForLastFours(supabase, houseId, finais);
+    if (cards.error) return { error: cards.error };
+    cardsCreated = cards.createdIds.length;
+
+    for (const [lastFour, cardId] of cards.byLastFour) {
+      const ids = semCartao
+        .filter((r) => String(r.card_last_four) === lastFour)
+        .map((r) => r.id as string);
+      if (ids.length === 0) continue;
+
+      const { error } = await supabase
+        .from("transactions")
+        .update({ card_id: cardId })
+        .in("id", ids)
+        .is("card_id", null);
+
+      if (error) {
+        console.error("[importacao] falha ao ligar cartao", {
+          code: error.code,
+        });
+        return { error: "Não foi possível ligar os cartões." };
+      }
+      cardsLinked += ids.length;
+    }
+  }
+
+  const withoutStoredCard = rows.filter(
+    (r) => r.card_id === null && r.card_last_four === null,
+  ).length;
+
+  // ---------------------------------------------------------- categorias
+  const semCategoria = rows.filter((r) => r.category_id === null);
+  if (semCategoria.length === 0) {
+    revalidatePath("/inicio");
+    revalidatePath("/extratos");
+    return {
+      updated: 0,
+      remaining: 0,
+      cardsLinked,
+      cardsCreated,
+      withoutStoredCard,
+    };
   }
 
   const maps = await loadCategoryMaps(supabase, houseId);
@@ -597,7 +681,7 @@ export async function reclassifyInvoice(
   // lançamento: uma fatura tem dezenas de linhas e no máximo uma dúzia de
   // categorias.
   const idsByCategory = new Map<string, string[]>();
-  for (const row of rows) {
+  for (const row of semCategoria) {
     const categoryId = resolveCategoryId(
       {
         merchantNormalized: String(row.merchant_normalized ?? ""),
@@ -634,7 +718,13 @@ export async function reclassifyInvoice(
   revalidatePath("/inicio");
   revalidatePath("/extratos");
 
-  return { updated, remaining: rows.length - updated };
+  return {
+    updated,
+    remaining: semCategoria.length - updated,
+    cardsLinked,
+    cardsCreated,
+    withoutStoredCard,
+  };
 }
 
 /**

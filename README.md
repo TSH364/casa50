@@ -154,9 +154,12 @@ sai da máquina antes de você revisar e confirmar.
 - **Reanalisar uma fatura já importada**, sem apagar nada: o leitor melhora
   com o tempo, e sem isso a única forma de aproveitar a melhoria seria desfazer
   e importar de novo, perdendo tudo que já foi ajustado à mão. Só preenche
-  categoria vazia — uma já preenchida pode ter sido escolhida pelo casal. Usa a
-  mesma decisão da importação, inclusive a categoria que o banco mandou, que
-  agora fica guardada no lançamento (`category_hint`).
+  categoria vazia **e liga o cartão onde ele falta** — o que já está preenchido
+  pode ter sido escolhido pelo casal. Usa a mesma decisão da importação,
+  inclusive a categoria que o banco mandou e o final do cartão, que agora ficam
+  guardados no lançamento (`category_hint`, `card_last_four`). Lançamentos
+  gravados antes dessas colunas não têm esses dados: a categoria ainda sai do
+  nome da loja, mas o cartão não tem de onde sair — só reimportando.
 - **Desfazer a importação**, que apaga os lançamentos e marca a fatura como
   revertida — o registro de que houve importação continua no histórico. O ícone
   é a lixeira: a seta de voltar ficou com a reanálise, que é o que ela sugere.
