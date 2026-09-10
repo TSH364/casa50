@@ -11,13 +11,21 @@ import {
 import { getActiveHouse } from "@/lib/houses";
 import {
   listBudgets,
+  listCalendarEvents,
   listCategories,
   listRecurrences,
   listTransactions,
 } from "@/data/queries";
 import { buildInsights, historyDepth } from "@/domain/insights";
 import { reconcileRecurrences } from "@/domain/forecast";
-import { addMonths, currentMonth, isMonthKey, monthLabel } from "@/domain/month";
+import { monthPressure } from "@/domain/calendar";
+import {
+  addMonths,
+  currentMonth,
+  daysInMonth,
+  isMonthKey,
+  monthLabel,
+} from "@/domain/month";
 import { Card, CardHeader } from "@/components/ui/card";
 import { MonthSwitcher } from "@/components/month-switcher";
 import {
@@ -109,28 +117,43 @@ export default async function InsightsPage({
   const month =
     params.mes && isMonthKey(params.mes) ? params.mes : currentMonth();
 
-  const [transactions, categories, budgets, recurrences] = await Promise.all([
-    listTransactions(active.id, {
-      fromMonth: addMonths(month, -6),
-      toMonth: month,
-      limit: 3000,
-    }),
-    listCategories(active.id),
-    listBudgets(active.id, month),
-    listRecurrences(active.id),
-  ]);
+  const [transactions, categories, budgets, recurrences, events] =
+    await Promise.all([
+      listTransactions(active.id, {
+        fromMonth: addMonths(month, -6),
+        toMonth: month,
+        limit: 3000,
+      }),
+      listCategories(active.id),
+      listBudgets(active.id, month),
+      listRecurrences(active.id),
+      // Doze meses de agenda: o aprendizado de "quanto custa uma viagem"
+      // precisa das viagens do ano, não só do semestre que os lançamentos
+      // cobrem.
+      listCalendarEvents(active.id, {
+        from: `${addMonths(month, -12)}-01`,
+        to: `${month}-${String(daysInMonth(month)).padStart(2, "0")}`,
+      }),
+    ]);
 
   const recurrenceMatches = reconcileRecurrences(
     recurrences,
     transactions,
     month,
   );
+  const pressure =
+    events.length > 0
+      ? monthPressure(month, events, transactions, {
+          today: new Date().toISOString().slice(0, 10),
+        })
+      : undefined;
   const insights = buildInsights({
     month,
     transactions,
     categories,
     budgets,
     recurrenceMatches,
+    pressure,
   });
   const depth = historyDepth(transactions);
 

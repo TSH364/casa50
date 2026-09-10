@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import { notFound } from "next/navigation";
 import { CalendarClock, CreditCard } from "lucide-react";
 import { getActiveHouse, listMembers } from "@/lib/houses";
@@ -20,6 +21,7 @@ import { Card, CardHeader } from "@/components/ui/card";
 import { EmptyState } from "@/components/states";
 import { MonthSwitcher } from "@/components/month-switcher";
 import { RecurrencesPanel } from "@/components/forecast/recurrences-panel";
+import { AgendaPanel, AgendaPanelSkeleton } from "@/components/calendar/agenda-panel";
 
 export const metadata: Metadata = { title: "Previsão · Fluxo" };
 
@@ -81,6 +83,12 @@ export default async function PrevisaoPage({
       <header className="flex flex-wrap items-center justify-between gap-3">
         <MonthSwitcher month={month} />
       </header>
+
+      {/* A agenda vem primeiro: é a informação que chega antes de tudo o
+          mais, e é ela que explica um mês fora do padrão. */}
+      <Suspense fallback={<AgendaPanelSkeleton />}>
+        <AgendaPanel houseId={active.id} month={month} />
+      </Suspense>
 
       <Card>
         <CardHeader

@@ -183,3 +183,49 @@ export interface Goal {
   note: string | null;
   status: GoalStatus;
 }
+
+/** Tipo de compromisso, deduzido do titulo do evento. */
+export type EventKind =
+  | "trip"
+  | "health"
+  | "celebration"
+  | "education"
+  | "home"
+  | "work"
+  | "other";
+
+/**
+ * Agenda conectada a casa.
+ *
+ * A URL nao aparece aqui de proposito: o banco nao a devolve no SELECT, e
+ * quem sincroniza a busca por RPC. `host` e o que sobra para a tela dizer de
+ * onde a agenda vem sem exibir a chave.
+ */
+export interface CalendarSource {
+  id: string;
+  houseId: string;
+  name: string;
+  kind: "ics";
+  host: string | null;
+  ownerId: string | null;
+  isActive: boolean;
+  lastSyncedAt: string | null;
+  lastError: string | null;
+  eventCount: number;
+}
+
+/** Uma ocorrencia de evento, ja expandida a partir da regra de repeticao. */
+export interface CalendarEvent {
+  id: string;
+  houseId: string;
+  sourceId: string;
+  uid: string;
+  title: string;
+  location: string | null;
+  /** Primeiro dia, inclusivo. */
+  startsOn: IsoDate;
+  /** Ultimo dia, inclusivo. */
+  endsOn: IsoDate;
+  allDay: boolean;
+  kind: EventKind;
+}

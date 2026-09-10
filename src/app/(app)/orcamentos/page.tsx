@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import { notFound } from "next/navigation";
 import { getActiveHouse } from "@/lib/houses";
 import { listBudgets, listCategories, listTransactions } from "@/data/queries";
@@ -7,6 +8,7 @@ import { addMonths, currentMonth, isMonthKey, monthRange } from "@/domain/month"
 import { toCents } from "@/lib/money";
 import { MonthSwitcher } from "@/components/month-switcher";
 import { BudgetsManager } from "@/components/budgets/budgets-manager";
+import { RebalancePanel } from "@/components/budgets/rebalance-panel";
 import type { BudgetRow } from "@/components/budgets/budgets-manager";
 
 export const metadata: Metadata = { title: "Orçamentos · Fluxo" };
@@ -82,6 +84,12 @@ export default async function OrcamentosPage({
       <header className="flex flex-wrap items-center justify-between gap-3">
         <MonthSwitcher month={month} />
       </header>
+
+      {/* Sem fallback visível: quando não há pressão na agenda o painel não
+          existe, e um esqueleto que some sozinho prometeria conteúdo. */}
+      <Suspense fallback={null}>
+        <RebalancePanel houseId={active.id} month={month} categories={categories} />
+      </Suspense>
 
       <BudgetsManager rows={rows} month={month} />
     </div>

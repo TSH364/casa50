@@ -267,3 +267,84 @@ describe("historyDepth", () => {
     ).toBe(2);
   });
 });
+
+describe("buildInsights — pressão da agenda", () => {
+  const evento = {
+    id: "v1",
+    houseId: "casa",
+    sourceId: "fonte",
+    uid: "u",
+    title: "Viagem para Paraty",
+    location: null,
+    startsOn: "2026-08-10",
+    endsOn: "2026-08-13",
+    allDay: true,
+    kind: "trip" as const,
+  };
+
+  it("avisa com o número quando há histórico", () => {
+    const insights = buildInsights({
+      ...base,
+      transactions: [],
+      pressure: {
+        month: "2026-08",
+        events: [{ event: evento, daysInMonth: 4, extraCents: 120_000, sampleSize: 2 }],
+        extraCents: 120_000,
+        hasEstimate: true,
+        dailyBaselineCents: 5_000,
+      },
+    });
+
+    const aviso = insights.find((i) => i.kind === "event_pressure");
+    expect(aviso?.tone).toBe("attention");
+    expect(aviso?.evidence).toContainEqual({
+      label: "Total estimado a mais",
+      value: brl(1200),
+    });
+  });
+
+  it("sem histórico, mostra o compromisso e admite que não sabe o custo", () => {
+    const insights = buildInsights({
+      ...base,
+      transactions: [],
+      pressure: {
+        month: "2026-08",
+        events: [{ event: evento, daysInMonth: 4, extraCents: null, sampleSize: 0 }],
+        extraCents: 0,
+        hasEstimate: false,
+        dailyBaselineCents: 5_000,
+      },
+    });
+
+    const aviso = insights.find((i) => i.kind === "event_pressure");
+    expect(aviso?.tone).toBe("neutral");
+    expect(aviso?.detail).toContain("não há histórico");
+    expect(aviso?.evidence).toContainEqual({
+      label: "Viagem para Paraty",
+      value: "4 dias · sem base para estimar",
+    });
+  });
+
+  it("sem agenda ligada, não diz nada", () => {
+    const insights = buildInsights({ ...base, transactions: [] });
+    expect(insights.filter((i) => i.kind === "event_pressure")).toHaveLength(0);
+  });
+
+  it("aparece acima da comparação de categorias", () => {
+    const insights = buildInsights({
+      ...base,
+      transactions: [mes("2026-06", 500), mes("2026-07", 500), mes("2026-08", 1500)],
+      pressure: {
+        month: "2026-08",
+        events: [{ event: evento, daysInMonth: 4, extraCents: 120_000, sampleSize: 2 }],
+        extraCents: 120_000,
+        hasEstimate: true,
+        dailyBaselineCents: 5_000,
+      },
+    });
+
+    // O aviso que chega a tempo de mudar algo vem antes do que só constata.
+    expect(insights[0]?.kind).toBe("event_pressure");
+    expect(insights.some((i) => i.kind === "category_spike")).toBe(true);
+  });
+});

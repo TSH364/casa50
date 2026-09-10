@@ -4,6 +4,7 @@ import { toCents } from "@/lib/money";
 import { addMonths, monthDiff, monthRange } from "./month";
 import { spendingCents, totalsByCategory } from "./finance";
 import { installmentSeries, type RecurrenceMatch } from "./forecast";
+import { EVENT_KIND_LABEL, type MonthPressure } from "./calendar";
 
 /**
  * Insights (secao 14).
@@ -25,7 +26,8 @@ export type InsightKind =
   | "budget_warning"
   | "recurrence_increase"
   | "installments_ending"
-  | "month_total";
+  | "month_total"
+  | "event_pressure";
 
 export type InsightTone = "positive" | "neutral" | "attention" | "danger";
 
@@ -66,6 +68,8 @@ export interface InsightInput {
   categories: readonly Category[];
   budgets: readonly Budget[];
   recurrenceMatches: readonly RecurrenceMatch[];
+  /** O que a agenda promete para o mês. Ausente quando não há agenda ligada. */
+  pressure?: MonthPressure;
   /** Meses de histórico a considerar nas comparações. */
   historyMonths?: number;
 }
@@ -276,6 +280,70 @@ function endingInstallments(input: InsightInput): Insight[] {
   ];
 }
 
+/**
+ * O que a agenda avisa sobre o mês (camada 2 da agenda).
+ *
+ * Este é o insight que chega ANTES do gasto - todos os outros olham para trás.
+ * Por isso ele vale mesmo sem estimativa: saber que há quatro dias de viagem
+ * marcados já muda a decisão da semana, e a frase diz com todas as letras
+ * quando não dá para dizer o preço.
+ */
+function agendaPressure(input: InsightInput): Insight[] {
+  const pressure = input.pressure;
+  if (!pressure || pressure.events.length === 0) return [];
+
+  const dias = pressure.events.reduce((sum, e) => sum + e.daysInMonth, 0);
+  const tipos = [...new Set(pressure.events.map((e) => e.event.kind))]
+    .map((k) => EVENT_KIND_LABEL[k].toLowerCase())
+    .join(", ");
+
+  const evidence: InsightEvidence[] = [
+    { label: "Dias com compromisso", value: String(dias) },
+    { label: "Tipos", value: tipos },
+    ...pressure.events.slice(0, 3).map((e) => ({
+      label: e.event.title,
+      value:
+        e.extraCents === null
+          ? `${e.daysInMonth} ${e.daysInMonth === 1 ? "dia" : "dias"} · sem base para estimar`
+          : `${e.daysInMonth} ${e.daysInMonth === 1 ? "dia" : "dias"} · +${brl(e.extraCents)} (${e.sampleSize} vezes antes)`,
+    })),
+  ];
+
+  if (!pressure.hasEstimate) {
+    return [
+      {
+        id: "agenda-pressure",
+        kind: "event_pressure",
+        tone: "neutral",
+        title: "A agenda tem compromisso que costuma custar",
+        detail:
+          "Ainda não há histórico de um compromisso parecido para dizer quanto isso pesa.",
+        evidence,
+        href: "/previsao",
+        weight: 300_000,
+      },
+    ];
+  }
+
+  return [
+    {
+      id: "agenda-pressure",
+      kind: "event_pressure",
+      tone: "attention",
+      title: "A agenda aponta um mês mais caro",
+      detail: `Os compromissos marcados apontam ${brl(pressure.extraCents)} acima de um mês comum.`,
+      evidence: [
+        ...evidence,
+        { label: "Dia comum da casa", value: brl(pressure.dailyBaselineCents) },
+        { label: "Total estimado a mais", value: brl(pressure.extraCents) },
+      ],
+      href: "/orcamentos",
+      // Acima da comparação de categorias: este avisa a tempo de mudar algo.
+      weight: 900_000 + pressure.extraCents,
+    },
+  ];
+}
+
 function monthTotal(input: InsightInput): Insight[] {
   const { month, transactions } = input;
   const previous = addMonths(month, -1);
@@ -328,6 +396,7 @@ function monthTotal(input: InsightInput): Insight[] {
 export function buildInsights(input: InsightInput): Insight[] {
   return [
     ...budgetAlerts(input),
+    ...agendaPressure(input),
     ...recurrenceChanges(input),
     ...categoryComparisons(input),
     ...endingInstallments(input),

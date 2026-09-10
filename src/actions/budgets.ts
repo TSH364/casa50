@@ -141,3 +141,73 @@ export async function copyBudgetsFromPreviousMonth(
   revalidatePath("/inicio");
   return { ok: true, copied: rows.length };
 }
+
+const applySchema = z.object({
+  month: z.string().refine(isMonthKey, "Mês inválido."),
+  changes: z
+    .array(
+      z.object({
+        categoryId: z.string().uuid(),
+        limitCents: z.number().int().min(0).max(9_999_999_999),
+      }),
+    )
+    .min(1, "Nada para aplicar.")
+    .max(50),
+});
+
+/**
+ * Aplica de uma vez a realocacao proposta pela agenda (secao 12, camada 3).
+ *
+ * E tudo ou nada de proposito: a proposta so faz sentido inteira. Aceitar
+ * metade dela liberaria metade do dinheiro para uma viagem que vai acontecer
+ * por completo, e o casal ficaria com um combinado que nao fecha.
+ */
+export async function applyBudgetChanges(input: unknown): Promise<FormState & { applied?: number }> {
+  const parsed = applySchema.safeParse(input);
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Dados inválidos." };
+  }
+  const { month, changes } = parsed.data;
+
+  const [houseId, user] = await Promise.all([requireHouseId(), getCurrentUser()]);
+  const supabase = await createClient();
+
+  const removals = changes.filter((c) => c.limitCents === 0).map((c) => c.categoryId);
+  const upserts = changes
+    .filter((c) => c.limitCents > 0)
+    .map((c) => ({
+      house_id: houseId,
+      category_id: c.categoryId,
+      month: fromMonthKey(month),
+      limit_amount: c.limitCents / 100,
+      created_by: user?.id ?? null,
+    }));
+
+  if (upserts.length > 0) {
+    const { error } = await supabase
+      .from("budgets")
+      .upsert(upserts, { onConflict: "house_id,category_id,month" });
+    if (error) {
+      console.error("[orcamentos] falha ao aplicar realocação", { code: error.code });
+      return { error: "Não foi possível aplicar a realocação." };
+    }
+  }
+
+  if (removals.length > 0) {
+    const { error } = await supabase
+      .from("budgets")
+      .delete()
+      .eq("house_id", houseId)
+      .eq("month", fromMonthKey(month))
+      .in("category_id", removals);
+    if (error) {
+      console.error("[orcamentos] falha ao remover na realocação", { code: error.code });
+      return { error: "Não foi possível aplicar a realocação." };
+    }
+  }
+
+  revalidatePath("/orcamentos");
+  revalidatePath("/inicio");
+  revalidatePath("/previsao");
+  return { ok: true, applied: changes.length };
+}

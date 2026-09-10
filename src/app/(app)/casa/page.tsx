@@ -3,12 +3,15 @@ import Link from "next/link";
 import { CreditCard, History, Tags } from "lucide-react";
 import {
   getActiveHouse,
+  listMembers,
   listPendingInvitesForMe,
   listRoster,
 } from "@/lib/houses";
+import { listCalendarSources } from "@/data/queries";
 import { getCurrentUser } from "@/lib/supabase/server";
 import { Card, CardHeader } from "@/components/ui/card";
 import { MembersManager } from "@/components/house/members-manager";
+import { CalendarsManager } from "@/components/calendar/calendars-manager";
 import { PendingInvites } from "@/components/house/pending-invites";
 import { buildInfo, buildLabel } from "@/lib/version";
 
@@ -16,10 +19,12 @@ export const metadata: Metadata = { title: "Casa · Fluxo" };
 
 export default async function CasaPage() {
   const { active } = await getActiveHouse();
-  const [roster, invites, user] = await Promise.all([
+  const [roster, invites, user, members, calendars] = await Promise.all([
     active ? listRoster(active.id) : Promise.resolve([]),
     listPendingInvitesForMe(),
     getCurrentUser(),
+    active ? listMembers(active.id) : Promise.resolve([]),
+    active ? listCalendarSources(active.id) : Promise.resolve([]),
   ]);
 
   // Só dono e administrador convidam, mudam papel ou removem. O RLS recusaria
@@ -40,6 +45,14 @@ export default async function CasaPage() {
           roster={roster}
           currentUserId={user?.id ?? null}
           canManage={canManage}
+        />
+      ) : null}
+
+      {active ? (
+        <CalendarsManager
+          sources={calendars}
+          members={members}
+          canManage={active.role !== "viewer"}
         />
       ) : null}
 
