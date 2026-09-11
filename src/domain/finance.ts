@@ -506,3 +506,63 @@ export function itemsByCategory(
   }
   return out;
 }
+
+export interface DaySpend {
+  date: IsoDate;
+  /** Dia do mes, 1..31. */
+  day: number;
+  totalCents: Cents;
+  count: number;
+  /** 0 = sem gasto; 1..4 = intensidade. */
+  step: 0 | 1 | 2 | 3 | 4;
+}
+
+/**
+ * Gasto de cada dia do mes, ja com a intensidade para o calendario.
+ *
+ * A intensidade sai de QUARTIS dos dias com gasto, nao de uma fracao do
+ * maior dia. Numa fatura real um unico dia de R$ 9.597 convive com dezenas de
+ * R$ 40: dividido pelo maximo, o mes inteiro cairia no passo 1 e o calendario
+ * mostraria um quadrado aceso num campo apagado. Por quartil, cada passo
+ * carrega mais ou menos um quarto dos dias e o desenho volta a ter relevo.
+ *
+ * Todo dia do mes aparece, inclusive os sem gasto - o ponto do calendario e
+ * justamente ver os vazios.
+ */
+export function dailySpending(
+  transactions: readonly Transaction[],
+  month: MonthKey,
+  options: SummaryOptions = {},
+): DaySpend[] {
+  const porDia = new Map<IsoDate, { totalCents: Cents; count: number }>();
+
+  for (const t of transactions) {
+    if (!matches(t, month, options)) continue;
+    if (!REALIZED.includes(t.status)) continue;
+    const spend = spendingCents(t);
+    if (spend <= 0) continue;
+    const atual = porDia.get(t.date) ?? { totalCents: 0, count: 0 };
+    atual.totalCents += spend;
+    atual.count += 1;
+    porDia.set(t.date, atual);
+  }
+
+  const valores = [...porDia.values()].map((v) => v.totalCents).sort((a, b) => a - b);
+  const quartil = (p: number) =>
+    valores.length === 0 ? 0 : valores[Math.min(valores.length - 1, Math.floor(valores.length * p))]!;
+  const cortes = [quartil(0.25), quartil(0.5), quartil(0.75)];
+
+  const total = daysInMonth(month);
+  const out: DaySpend[] = [];
+  for (let day = 1; day <= total; day += 1) {
+    const date = `${month}-${String(day).padStart(2, "0")}`;
+    const encontrado = porDia.get(date);
+    const cents = encontrado?.totalCents ?? 0;
+    let step: DaySpend["step"] = 0;
+    if (cents > 0) {
+      step = cents <= cortes[0]! ? 1 : cents <= cortes[1]! ? 2 : cents <= cortes[2]! ? 3 : 4;
+    }
+    out.push({ date, day, totalCents: cents, count: encontrado?.count ?? 0, step });
+  }
+  return out;
+}

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   budgetProgress,
   categoryMatrix,
+  dailySpending,
   committedInstallments,
   incomeCents,
   itemsByCategory,
@@ -487,5 +488,55 @@ describe("itemsByCategory", () => {
       "2026-08",
     );
     expect(itens.get(mercado)?.[0]?.installment).toBe("3/10");
+  });
+});
+
+describe("dailySpending", () => {
+  function dia(d: number, valor: number) {
+    return tx({ date: `2026-08-${String(d).padStart(2, "0")}`, amount: valor });
+  }
+
+  it("traz todos os dias do mês, inclusive os sem gasto", () => {
+    const dias = dailySpending([dia(5, 100)], "2026-08");
+    expect(dias).toHaveLength(31);
+    expect(dias[0]?.totalCents).toBe(0);
+    expect(dias[0]?.step).toBe(0);
+  });
+
+  it("um dia gigante não apaga o resto do mês", () => {
+    // O caso da fatura real: um dia de R$ 9.597 convivendo com dezenas de
+    // R$ 40. Dividido pelo máximo, o mês inteiro cairia no passo 1.
+    const lancamentos = [
+      ...Array.from({ length: 12 }, (_, i) => dia(i + 1, 40)),
+      ...Array.from({ length: 8 }, (_, i) => dia(i + 13, 200)),
+      dia(25, 9597),
+    ];
+    const dias = dailySpending(lancamentos, "2026-08");
+    const passos = new Set(dias.filter((d) => d.totalCents > 0).map((d) => d.step));
+    // Mais de um passo em uso: o calendário tem relevo.
+    expect(passos.size).toBeGreaterThan(1);
+    expect(dias.find((d) => d.day === 25)?.step).toBe(4);
+  });
+
+  it("dia sem gasto é passo 0, e nunca passo 1", () => {
+    const dias = dailySpending([dia(5, 1)], "2026-08");
+    expect(dias.find((d) => d.day === 6)?.step).toBe(0);
+    expect(dias.find((d) => d.day === 5)?.step).toBeGreaterThan(0);
+  });
+
+  it("soma vários lançamentos do mesmo dia e conta quantos são", () => {
+    const dias = dailySpending([dia(7, 30), dia(7, 20)], "2026-08");
+    const sete = dias.find((d) => d.day === 7);
+    expect(sete?.totalCents).toBe(5_000);
+    expect(sete?.count).toBe(2);
+  });
+
+  it("fecha com o total do mês", () => {
+    const lancamentos = [dia(3, 100), dia(9, 250), dia(9, 50)];
+    const soma = dailySpending(lancamentos, "2026-08").reduce(
+      (s, d) => s + d.totalCents,
+      0,
+    );
+    expect(soma).toBe(40_000);
   });
 });

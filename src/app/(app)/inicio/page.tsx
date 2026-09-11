@@ -10,6 +10,10 @@ import { currentMonth, isMonthKey, monthLabel } from "@/domain/month";
 import { Card, CardHeader } from "@/components/ui/card";
 import { MonthPanels, PanelsSkeleton } from "@/components/dashboard/month-panels";
 import { FlowMap, FlowMapSkeleton } from "@/components/dashboard/flow-map";
+import {
+  MonthCalendar,
+  MonthCalendarSkeleton,
+} from "@/components/dashboard/month-calendar";
 import { MonthSwitcher } from "@/components/month-switcher";
 import { FilterChips } from "@/components/filter-chips";
 import { NewTransactionButton } from "@/components/transactions/new-transaction-button";
@@ -140,6 +144,16 @@ export default async function InicioPage({
         <FlowMap
           houseId={active.id}
           month={month}
+          excludeCategoryIds={excludeCategoryIds}
+        />
+      </Suspense>
+
+      <Suspense key={`calendario:${key}`} fallback={<MonthCalendarSkeleton />}>
+        <MonthCalendar
+          houseId={active.id}
+          month={month}
+          memberId={memberId}
+          cardId={cardId}
           excludeCategoryIds={excludeCategoryIds}
         />
       </Suspense>

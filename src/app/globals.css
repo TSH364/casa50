@@ -31,6 +31,26 @@
   --color-danger-soft: #3c1c20;
 
   /*
+   * Escala SEQUENCIAL do calendario de gastos: um matiz so, do escuro ao
+   * claro. No escuro o ancoradouro inverte - mais gasto e mais luminoso.
+   * Os quatro passos foram calculados no matiz da marca e medidos:
+   *
+   *   L (OKLab)     0,440 -> 0,530 -> 0,620 -> 0,710  estritamente crescente
+   *   texto do dia  7,31  4,99  5,26  7,49 : 1        AA em todos
+   *
+   * A tinta do numero inverte no meio da rampa (clara nos dois primeiros,
+   * escura nos dois ultimos): com uma tinta so, o numero sumia no topo.
+   *
+   * Dia sem gasto nao recebe passo nenhum - fica sem preenchimento. A
+   * diferenca entre "gastou pouco" e "nao gastou" nao pode depender de dois
+   * tons vizinhos de azul; ela e ter ou nao ter cor.
+   */
+  --color-day-1: #434897;
+  --color-day-2: #5960bd;
+  --color-day-3: #7079e4;
+  --color-day-4: #8b96ff;
+
+  /*
    * Escala divergente da matriz mes x categoria: dois matizes e um meio
    * cinza, que e o que um divergente pede. Os passos nao sao os tokens
    * `-soft` porque estes reprovaram na medicao - entre "tipico" e "abaixo"
