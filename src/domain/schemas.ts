@@ -10,12 +10,27 @@ import { isMonthKey } from "./month";
  * dar retorno rapido, e um formulario pode ser burlado.
  */
 
+/**
+ * Campo ausente conta como vazio.
+ *
+ * Um `<select>` ou `<input>` desabilitado NAO e enviado pelo navegador, entao
+ * a chave simplesmente nao chega no FormData. Sem isto, `z.string()` recebia
+ * `undefined` e reclamava "Required" num campo que o proprio formulario tinha
+ * desabilitado - era impossivel salvar um lancamento numa categoria sem
+ * subcategoria, que e o caso de todas as categorias iniciais.
+ */
+function optional<T extends z.ZodTypeAny>(schema: T) {
+  return z.preprocess((v) => (v === undefined || v === null ? "" : v), schema);
+}
+
 /** Campo de texto opcional: string vazia vira `null`, nunca `""`. */
-const optionalText = z
-  .string()
-  .trim()
-  .transform((v) => (v === "" ? null : v))
-  .nullable();
+const optionalText = optional(
+  z
+    .string()
+    .trim()
+    .transform((v) => (v === "" ? null : v))
+    .nullable(),
+);
 
 /**
  * Valor monetario digitado pelo usuario ("1.234,56", "R$ 89,90", "-32,90").
@@ -34,28 +49,32 @@ const money = z
   })
   .pipe(z.number().max(99_999_999.99, "Valor alto demais."));
 
-const optionalMoney = z
-  .string()
-  .trim()
-  .transform((v, ctx) => {
-    if (v === "") return null;
-    const parsed = parseAmount(v);
-    if (parsed === null) {
-      ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Informe um valor válido." });
-      return z.NEVER;
-    }
-    return Math.abs(parsed);
-  });
+const optionalMoney = optional(
+  z
+    .string()
+    .trim()
+    .transform((v, ctx) => {
+      if (v === "") return null;
+      const parsed = parseAmount(v);
+      if (parsed === null) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Informe um valor válido." });
+        return z.NEVER;
+      }
+      return Math.abs(parsed);
+    }),
+);
 
 const uuid = z.string().uuid("Seleção inválida.");
-const optionalUuid = z
-  .string()
-  .trim()
-  .transform((v) => (v === "" || v === "none" ? null : v))
-  .nullable()
-  .refine((v) => v === null || z.string().uuid().safeParse(v).success, {
-    message: "Seleção inválida.",
-  });
+const optionalUuid = optional(
+  z
+    .string()
+    .trim()
+    .transform((v) => (v === "" || v === "none" ? null : v))
+    .nullable()
+    .refine((v) => v === null || z.string().uuid().safeParse(v).success, {
+      message: "Seleção inválida.",
+    }),
+);
 
 const isoDate = z
   .string()
@@ -64,13 +83,15 @@ const isoDate = z
 
 const monthKey = z.string().refine(isMonthKey, "Mês inválido.");
 
-const day = z
-  .string()
-  .trim()
-  .transform((v) => (v === "" ? null : Number(v)))
-  .refine((v) => v === null || (Number.isInteger(v) && v >= 1 && v <= 31), {
-    message: "Informe um dia entre 1 e 31.",
-  });
+const day = optional(
+  z
+    .string()
+    .trim()
+    .transform((v) => (v === "" ? null : Number(v)))
+    .refine((v) => v === null || (Number.isInteger(v) && v >= 1 && v <= 31), {
+      message: "Informe um dia entre 1 e 31.",
+    }),
+);
 
 // --------------------------------------------------------------------------
 // Cartao
@@ -119,19 +140,29 @@ export const transactionSchema = z
     memberId: optionalUuid,
     cardId: optionalUuid,
     visibility: z.enum(["individual", "shared"]),
-    splitType: z.enum(["none", "equal", "income_proportional", "custom"]),
+    // Desabilitado quando a despesa e individual, e select desabilitado nao
+    // e enviado: ausencia significa "sem divisao", que e o unico valor que a
+    // regra abaixo aceita nesse caso.
+    splitType: z
+      .enum(["none", "equal", "income_proportional", "custom"])
+      .optional()
+      .default("none"),
     note: optionalText,
     merchantAlias: optionalText,
-    installmentCurrent: z
-      .string()
-      .trim()
-      .transform((v) => (v === "" ? null : Number(v)))
-      .refine((v) => v === null || (Number.isInteger(v) && v >= 1), "Parcela inválida."),
-    installmentTotal: z
-      .string()
-      .trim()
-      .transform((v) => (v === "" ? null : Number(v)))
-      .refine((v) => v === null || (Number.isInteger(v) && v >= 1), "Total inválido."),
+    installmentCurrent: optional(
+      z
+        .string()
+        .trim()
+        .transform((v) => (v === "" ? null : Number(v)))
+        .refine((v) => v === null || (Number.isInteger(v) && v >= 1), "Parcela inválida."),
+    ),
+    installmentTotal: optional(
+      z
+        .string()
+        .trim()
+        .transform((v) => (v === "" ? null : Number(v)))
+        .refine((v) => v === null || (Number.isInteger(v) && v >= 1), "Total inválido."),
+    ),
   })
   .refine(
     (v) =>

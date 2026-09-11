@@ -47,6 +47,28 @@ Estas são reais e nenhuma está escondida atrás de uma tela que finge funciona
 
 ### O que a Etapa 4 entrega
 
+- **Matriz mês × categoria** em Insights: uma linha por mês, uma coluna por
+  categoria. A rosca do Início responde "para onde foi este mês"; a matriz
+  responde o que um mês só não alcança — "isto é normal para nós?". A cor
+  compara cada célula com a mediana da própria coluna, nunca entre colunas:
+  mercado e assinatura têm ordens de grandeza diferentes, e pintar pela
+  grandeza faria a maior parecer sempre um problema. Com menos de três meses
+  de histórico na categoria, nada é chamado de fora do padrão.
+- **Versão do build visível**: o commit no cabeçalho de toda tela, e a linha
+  completa — commit, branch, ambiente e horário do build — no rodapé da tela
+  Casa. Serve para conferir num relance se a atualização entrou, em vez de
+  adivinhar se a página veio do cache. O horário resolve o redeploy sem código
+  novo, em que o commit é o mesmo mas o build é outro.
+- **Mês escolhido numa grade** de meses e anos, além das setas: voltar de
+  setembro a janeiro não custa mais oito toques.
+- **Convite pendente visível para quem foi convidado**, inclusive na tela de
+  "primeira casa" — é lá que a pessoa convidada chega, e oferecer só "crie sua
+  casa" a mandava para uma casa separada da de quem a convidou.
+- **Categoria trocada na própria linha** do lançamento, com um seletor nativo
+  — sem abrir o formulário inteiro só para classificar. Trocar ali também
+  ensina a regra para a próxima fatura.
+- **Filtro por categoria** em Extratos, com "Sem categoria" na frente: é o
+  recorte do que ainda falta classificar depois de importar.
 - **Faturas do mês** em Extratos: cada importação com arquivo, instituição,
   quem importou, quando, quantos lançamentos e o total — com **desfazer**.
   Quando o arquivo traz o total do banco, a divergência contra a soma
@@ -72,13 +94,35 @@ tela não o lê.
 Fluxo de importação em `/importar`, com o arquivo lido **no navegador** — nada
 sai da máquina antes de você revisar e confirmar.
 
-- **CSV do Nubank** (`date,title,amount`) e variantes em português.
+- **CSV do Nubank** (`date,title,amount`), do Itaú (separado por `;`, com
+  `Valor (em US$)`, `Cotação (em R$)` e `Valor (em R$)`) e variantes em
+  português.
+- **Coluna de valor escolhida pela moeda, não pela ordem.** Quando o arquivo
+  traz mais de uma coluna de valor, vence a que está em real; a de moeda
+  estrangeira e a de cotação são descartadas. Pegar a primeira coluna que
+  começasse com "valor" lia toda compra nacional como R$ 0,00. A tela deixa
+  trocar a coluna à mão, e uma fatura que vem inteira zerada vira erro em vez
+  de virar dezenas de lançamentos de R$ 0,00.
 - **Convenção de sinal detectada por arquivo.** O CSV real do Nubank traz
   despesa positiva; o exemplo da especificação usa negativa. O importador
   decide pela maioria das linhas, mostra a conclusão e deixa inverter.
-- **Mês pelo nome do arquivo** (`2026-08`, `08-2026`, `agosto-2026`, `202608`),
-  com as datas como segunda tentativa e confirmação manual sempre disponível.
-- **Parcela extraída da descrição** (`NETFLIX 3/12`), sem confundir `12/2026`.
+- **Mês pelo nome do arquivo** (`2026-08`, `08-2026`, `agosto-2026`, `202608`,
+  `20260105`), com as datas como segunda tentativa e confirmação manual sempre
+  disponível. Num arquivo nomeado pelo vencimento, o mês é o do vencimento — as
+  compras são do mês anterior.
+- **Parcela da coluna própria** (`Parcela` = `2/12`, `Única`) ou, quando não
+  existe, extraída da descrição (`NETFLIX 3/12`), sem confundir `12/2026`.
+- **Cartão por linha, criado sozinho.** O extrato sempre informa os 4 últimos
+  dígitos, então exigir cadastro prévio é pedir um dado que o arquivo já traz.
+  Cada final é ligado ao cartão de mesmo número e, se não houver, o cartão é
+  criado na gravação — não na revisão, porque a tela promete que nada é escrito
+  antes de confirmar. Uma fatura com titular e adicionais deixa de ir inteira
+  para "sem cartão", e a visão por cartão em Extratos passa a ter conteúdo.
+  Falhando a gravação dos lançamentos, os cartões criados na mesma importação
+  são desfeitos: "nada foi importado" precisa ser verdade.
+  A ligação é pelo final; dois bancos podem emitir cartões terminados nos
+  mesmos 4 dígitos, e nesse caso a revisão deixa apontar o final para outro
+  cartão antes de confirmar.
 - **Tipos classificados**: despesa, tarifa (anuidade, IOF, juros), pagamento de
   fatura e estorno. `Desconto` **nunca** vira pagamento — exigência da secao 6.
 - **Duplicidade por identidade completa**: mês, data, estabelecimento
@@ -86,9 +130,39 @@ sai da máquina antes de você revisar e confirmar.
   não é repetição; a parcela 3/10 não é igual à 4/10.
 - **Revisão antes de gravar**: novos, repetidos, ignorados, sem categoria e
   total calculado, com cada linha alternável entre importar e ignorar.
-- **Categorização automática** por regra aprendida ou pela categoria do arquivo.
+- **Categoria renomeada continua recebendo sugestão.** A tabela devolve nomes
+  canônicos ("Transporte"), e uma casa que chama aquilo de "Carro" perdia toda
+  sugestão daquela categoria, em silêncio. Agora há casamento por apelido, com
+  o nome exato sempre ganhando do apelido. Medido na fatura real: 95 de 96
+  linhas classificadas tanto com os nomes iniciais quanto com a casa inteira
+  renomeada.
+- **Categorização automática**, por ordem de confiança: regra aprendida →
+  nome do estabelecimento → categoria do arquivo traduzida → tipo. O nome da
+  loja vem antes da dica do banco porque a do banco sai do ramo cadastrado na
+  maquininha e erra muito: na fatura que motivou a tabela, o Itaú chamava
+  supermercado de "Associação", restaurante de "Supermercados" e recarga de
+  carro elétrico de "Serviços Profissionais". Numa fatura real de 96 linhas,
+  95 entram categorizadas — a que sobra é o pagamento da fatura, que não é
+  gasto. A revisão mostra em que categoria cada linha vai cair, antes de
+  gravar.
+- **Regras aprendidas de verdade.** Categorizar um lançamento à mão guarda
+  "este estabelecimento é desta categoria" para a próxima fatura. A tabela já
+  era lida pelo importador, mas nada a escrevia, então a regra nunca existia.
+- **Total da fatura pela mesma regra de sinal das telas.** Quitação da fatura
+  anterior conta zero, porque não é gasto do mês — antes ela era subtraída, e
+  uma fatura com pagamento maior que as compras fechava negativa.
+- **Reanalisar uma fatura já importada**, sem apagar nada: o leitor melhora
+  com o tempo, e sem isso a única forma de aproveitar a melhoria seria desfazer
+  e importar de novo, perdendo tudo que já foi ajustado à mão. Só preenche
+  categoria vazia **e liga o cartão onde ele falta** — o que já está preenchido
+  pode ter sido escolhido pelo casal. Usa a mesma decisão da importação,
+  inclusive a categoria que o banco mandou e o final do cartão, que agora ficam
+  guardados no lançamento (`category_hint`, `card_last_four`). Lançamentos
+  gravados antes dessas colunas não têm esses dados: a categoria ainda sai do
+  nome da loja, mas o cartão não tem de onde sair — só reimportando.
 - **Desfazer a importação**, que apaga os lançamentos e marca a fatura como
-  revertida — o registro de que houve importação continua no histórico.
+  revertida — o registro de que houve importação continua no histórico. O ícone
+  é a lixeira: a seta de voltar ficou com a reanálise, que é o que ela sugere.
 
 Arquivo de exemplo para testar: `docs/exemplo-nubank.csv`.
 

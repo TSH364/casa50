@@ -30,6 +30,8 @@ export interface ColumnMap {
   category: string | null;
   /** Coluna de parcela, quando vem separada da descrição. */
   installment: string | null;
+  /** Coluna com os 4 últimos dígitos do cartão, quando o arquivo traz. */
+  card: string | null;
 }
 
 export type IssueLevel = "info" | "warning" | "error";
@@ -55,6 +57,15 @@ export interface DraftTransaction {
   /** Nome da categoria sugerida pelo arquivo ou por regra aprendida. */
   categoryHint: string | null;
   categoryId: string | null;
+  /**
+   * 4 últimos dígitos lidos do arquivo, quando ele traz a coluna.
+   *
+   * Uma fatura pode misturar cartões da mesma conta (titular e adicionais);
+   * é por este número que a tela liga cada linha ao cartão cadastrado.
+   */
+  cardLastFour: string | null;
+  /** Cartão resolvido na revisão. `null` cai no cartão escolhido para o todo. */
+  cardId: string | null;
   installmentCurrent: number | null;
   installmentTotal: number | null;
   /** Chave usada para achar repetição, igual à do banco. */
@@ -66,6 +77,8 @@ export type DraftDecision = "new" | "duplicate" | "ignored";
 /** Linha já confrontada com o que existe no banco. */
 export interface ReviewedDraft extends DraftTransaction {
   decision: DraftDecision;
+  /** Nome da categoria resolvida, só para a revisão mostrar. */
+  categoryName?: string | null;
   /** Preenchido quando `decision === "duplicate"`. */
   duplicateOfId?: string;
 }

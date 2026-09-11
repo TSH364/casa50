@@ -16,8 +16,15 @@ import { Card as Panel, CardHeader } from "@/components/ui/card";
  */
 export function PendingInvites({
   invites,
+  /**
+   * Para onde ir depois de aceitar. A tela de "nova casa" precisa mandar para
+   * dentro do app: quem acabou de entrar numa casa não pode continuar na
+   * página que existe justamente para quem não tem nenhuma.
+   */
+  redirectTo,
 }: {
   invites: { houseId: string; houseName: string }[];
+  redirectTo?: string;
 }) {
   const [pending, startTransition] = useTransition();
   const router = useRouter();
@@ -32,7 +39,8 @@ export function PendingInvites({
         return;
       }
       toast.success(`Você entrou em ${houseName}.`);
-      router.refresh();
+      if (redirectTo) router.push(redirectTo);
+      else router.refresh();
     });
   }
 

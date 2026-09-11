@@ -2,8 +2,8 @@
 
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
-import { FileSpreadsheet, RotateCcw } from "lucide-react";
-import { revertImport } from "@/actions/import";
+import { FileSpreadsheet, RotateCcw, Trash2 } from "lucide-react";
+import { reclassifyInvoice, revertImport } from "@/actions/import";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/dialog";
 import { EmptyState } from "@/components/states";
@@ -34,6 +34,53 @@ export function InvoiceList({
 }) {
   const [reverting, setReverting] = useState<InvoiceSummary | undefined>();
   const [pending, startTransition] = useTransition();
+
+  /**
+   * Reanalisa sem confirmação: a ação não apaga nada, só preenche categoria
+   * vazia. Pedir "tem certeza?" para algo reversível e inofensivo é ruído.
+   */
+  function reclassify(invoice: InvoiceSummary) {
+    startTransition(async () => {
+      const result = await reclassifyInvoice(invoice.id);
+      if (result.error) {
+        toast.error(result.error);
+        return;
+      }
+      // Duas coisas podem ter acontecido, e o aviso precisa dizer as duas:
+      // reanalisar que só ligou cartão não é "nada a fazer".
+      const feito: string[] = [];
+      if (result.updated) feito.push(`${result.updated} categorizados`);
+      if (result.cardsLinked) {
+        feito.push(
+          `${result.cardsLinked} ligados ao cartão` +
+            (result.cardsCreated
+              ? ` (${result.cardsCreated} cartão(ões) criado(s))`
+              : ""),
+        );
+      }
+
+      const pendencias: string[] = [];
+      if (result.remaining) pendencias.push(`${result.remaining} sem categoria`);
+      if (result.withoutStoredCard) {
+        pendencias.push(
+          `${result.withoutStoredCard} sem cartão — esses foram importados antes de o app guardar o final, e só reimportando o arquivo`,
+        );
+      }
+
+      if (feito.length === 0) {
+        toast.info(
+          pendencias.length > 0
+            ? `Nada novo a fazer. Restam: ${pendencias.join("; ")}.`
+            : "Esta fatura já está categorizada e com os cartões ligados.",
+        );
+        return;
+      }
+      toast.success(
+        `${feito.join(" · ")}.` +
+          (pendencias.length > 0 ? ` Restam: ${pendencias.join("; ")}.` : ""),
+      );
+    });
+  }
 
   const importedBy = (id: string | null) =>
     members.find((m) => m.userId === id)?.fullName ?? "alguém";
@@ -73,10 +120,16 @@ export function InvoiceList({
               : invoice.reportedTotal - invoice.computedTotal;
 
           return (
+            /*
+             * Empilhado, e não tudo lado a lado: com o nome do arquivo, o
+             * total e dois botões competindo pela mesma faixa, num celular
+             * sobrava "F.." para o nome. Mesma decisão da lista de
+             * lançamentos.
+             */
             <li
               key={invoice.id}
               className={cn(
-                "flex items-center gap-3 rounded-[--radius-control] bg-surface-2 px-3 py-3",
+                "flex items-start gap-3 rounded-[--radius-control] bg-surface-2 px-3 py-3",
                 isReverted && "opacity-55",
               )}
             >
@@ -85,9 +138,15 @@ export function InvoiceList({
               </span>
 
               <div className="min-w-0 flex-1">
-                <p className="truncate text-sm text-ink">
-                  {invoice.fileName ?? "Importação manual"}
-                </p>
+                <div className="flex items-baseline gap-2">
+                  <p className="min-w-0 flex-1 truncate text-sm text-ink">
+                    {invoice.fileName ?? "Importação manual"}
+                  </p>
+                  <span className="tabular shrink-0 text-sm font-medium text-ink">
+                    {formatBRL(invoice.computedTotal)}
+                  </span>
+                </div>
+
                 <p className="truncate text-[12px] text-ink-faint">
                   {[
                     invoice.institution,
@@ -99,28 +158,41 @@ export function InvoiceList({
                     .filter(Boolean)
                     .join(" · ")}
                 </p>
+
                 {divergence !== null && Math.abs(divergence) >= 0.01 ? (
                   <p className="mt-1 text-[12px] text-attention">
                     Diferença de {formatBRL(Math.abs(divergence))} entre o total
                     do banco e a soma dos lançamentos.
                   </p>
                 ) : null}
+
+                {!isReverted && invoice.transactionCount > 0 ? (
+                  <div className="mt-1 flex flex-wrap gap-2">
+                    {/* A seta de voltar fica com a reanálise: é o que ela
+                        sugere. Desfazer apaga lançamentos, e para isso o
+                        ícone honesto é a lixeira. Com texto ao lado, porque
+                        duas ações parecidas em ícone puro se confundem. */}
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={pending}
+                      aria-label={`Reanalisar categorias de ${invoice.fileName ?? "fatura"}`}
+                      onClick={() => reclassify(invoice)}
+                    >
+                      <RotateCcw aria-hidden /> Reanalisar
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      disabled={pending}
+                      aria-label={`Desfazer importação de ${invoice.fileName ?? "fatura"}`}
+                      onClick={() => setReverting(invoice)}
+                    >
+                      <Trash2 aria-hidden /> Desfazer
+                    </Button>
+                  </div>
+                ) : null}
               </div>
-
-              <span className="tabular shrink-0 text-sm font-medium text-ink">
-                {formatBRL(invoice.computedTotal)}
-              </span>
-
-              {!isReverted && invoice.transactionCount > 0 ? (
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  aria-label={`Desfazer importação de ${invoice.fileName ?? "fatura"}`}
-                  onClick={() => setReverting(invoice)}
-                >
-                  <RotateCcw aria-hidden />
-                </Button>
-              ) : null}
             </li>
           );
         })}

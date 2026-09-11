@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { createClient, getCurrentUser } from "@/lib/supabase/server";
 import { fieldErrorsFrom, formToObject, requireHouseId } from "./shared";
+import { selectHouse } from "@/app/casa-actions";
 import type { FormState } from "./shared";
 
 /**
@@ -127,6 +128,11 @@ export async function acceptInvite(houseId: string): Promise<FormState> {
           : "Não foi possível aceitar o convite.",
     };
   }
+
+  // Entra já na casa aceita. Sem isto, quem tinha criado uma casa antes de
+  // ver o convite cairia de volta na própria: `getActiveHouse` escolhe a
+  // primeira da lista quando não há cookie, e a primeira é a mais antiga.
+  await selectHouse(houseId);
 
   revalidatePath("/casa");
   revalidatePath("/inicio");

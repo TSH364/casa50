@@ -40,6 +40,7 @@ async function Listing({
   month,
   memberId,
   cardId,
+  categoryId,
   search,
   categories,
   cards,
@@ -49,6 +50,7 @@ async function Listing({
   month: MonthKey;
   memberId: string | null;
   cardId: string | null;
+  categoryId: string | null;
   search: string | undefined;
   categories: Category[];
   cards: CardType[];
@@ -58,6 +60,7 @@ async function Listing({
     month,
     memberId,
     cardId,
+    categoryId,
     search,
   });
   // Total do recorte visível, para o número bater com a lista abaixo dele.
@@ -92,6 +95,7 @@ export default async function ExtratosPage({
     mes?: string;
     membro?: string;
     cartao?: string;
+    categoria?: string;
     busca?: string;
   }>;
 }) {
@@ -109,9 +113,10 @@ export default async function ExtratosPage({
     params.mes && isMonthKey(params.mes) ? params.mes : currentMonth();
   const memberId = params.membro ?? null;
   const cardId = params.cartao ?? null;
+  const categoryId = params.categoria ?? null;
   const search = params.busca;
 
-  const key = `${month}:${memberId ?? "t"}:${cardId ?? "t"}:${search ?? ""}`;
+  const key = `${month}:${memberId ?? "t"}:${cardId ?? "t"}:${categoryId ?? "t"}:${search ?? ""}`;
 
   return (
     <div className="mx-auto max-w-3xl space-y-4">
@@ -158,6 +163,21 @@ export default async function ExtratosPage({
         />
       ) : null}
 
+      <FilterChips
+        param="categoria"
+        label="Filtrar por categoria"
+        active={categoryId}
+        allLabel="Todas as categorias"
+        options={[
+          // Primeiro da lista: é o recorte que resolve o trabalho pendente
+          // depois de importar uma fatura.
+          { value: "sem", label: "Sem categoria" },
+          ...categories
+            .filter((c) => c.parentId === null && c.isActive)
+            .map((c) => ({ value: c.id, label: c.name })),
+        ]}
+      />
+
       <Suspense key={`faturas:${month}:${cardId ?? "t"}`} fallback={<StatementsSkeleton />}>
         <Statements
           houseId={active.id}
@@ -174,6 +194,7 @@ export default async function ExtratosPage({
           month={month}
           memberId={memberId}
           cardId={cardId}
+          categoryId={categoryId}
           search={search}
           categories={categories}
           cards={cards}

@@ -2,15 +2,20 @@ import "server-only";
 import { createClient } from "@/lib/supabase/server";
 import type {
   Budget,
+  CalendarEvent,
+  CalendarSource,
   Card,
   Category,
   Goal,
+  IsoDate,
   MonthKey,
   Recurrence,
   Transaction,
 } from "@/domain/types";
 import {
   BUDGET_COLUMNS,
+  CALENDAR_EVENT_COLUMNS,
+  CALENDAR_SOURCE_COLUMNS,
   CARD_COLUMNS,
   CATEGORY_COLUMNS,
   GOAL_COLUMNS,
@@ -18,6 +23,8 @@ import {
   TRANSACTION_COLUMNS,
   fromMonthKey,
   mapBudget,
+  mapCalendarEvent,
+  mapCalendarSource,
   mapCard,
   mapCategory,
   mapGoal,
@@ -100,6 +107,8 @@ export interface TransactionFilter {
   toMonth?: MonthKey;
   memberId?: string | null;
   cardId?: string | null;
+  /** Categoria-pai. Inclui os lançamentos marcados na subcategoria dela. */
+  categoryId?: string | null;
   /** Busca livre em descrição e estabelecimento. */
   search?: string;
   limit?: number;
@@ -126,6 +135,10 @@ export async function listTransactions(
   }
   if (filter.memberId) query = query.eq("member_id", filter.memberId);
   if (filter.cardId) query = query.eq("card_id", filter.cardId);
+  // "sem" é o recorte que mais importa depois de importar uma fatura: é a
+  // lista do que ainda falta categorizar.
+  if (filter.categoryId === "sem") query = query.is("category_id", null);
+  else if (filter.categoryId) query = query.eq("category_id", filter.categoryId);
 
   if (filter.search?.trim()) {
     // Escapa vírgula e parêntese, que são separadores da sintaxe `or` do
@@ -431,4 +444,42 @@ export async function listSettlements(
     paidAt: (row.paid_at as string | null) ?? null,
     note: (row.note as string | null) ?? null,
   }));
+}
+
+export async function listCalendarSources(
+  houseId: string,
+): Promise<CalendarSource[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("calendar_sources")
+    .select(CALENDAR_SOURCE_COLUMNS)
+    .eq("house_id", houseId)
+    .order("created_at", { ascending: true });
+
+  if (error) fail("as agendas", error);
+  return (data ?? []).map(mapCalendarSource);
+}
+
+/**
+ * Eventos que ENCOSTAM no intervalo.
+ *
+ * Nao basta o inicio estar dentro: uma viagem de 28/12 a 04/01 pertence
+ * tambem a janela de janeiro, e filtrar so por `starts_on` a perderia.
+ */
+export async function listCalendarEvents(
+  houseId: string,
+  range: { from: IsoDate; to: IsoDate },
+): Promise<CalendarEvent[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("calendar_events")
+    .select(CALENDAR_EVENT_COLUMNS)
+    .eq("house_id", houseId)
+    .gte("ends_on", range.from)
+    .lte("starts_on", range.to)
+    .order("starts_on", { ascending: true })
+    .limit(2000);
+
+  if (error) fail("os eventos da agenda", error);
+  return (data ?? []).map(mapCalendarEvent);
 }

@@ -1,7 +1,10 @@
 import type {
   Budget,
+  CalendarEvent,
+  CalendarSource,
   Card,
   Category,
+  EventKind,
   ForecastStatus,
   Goal,
   Recurrence,
@@ -206,5 +209,49 @@ export function mapGoal(
     ownerId: (row.owner_id as string | null) ?? null,
     note: (row.note as string | null) ?? null,
     status: row.status as Goal["status"],
+  };
+}
+
+// --------------------------------------------------------------------------
+// Agenda
+// --------------------------------------------------------------------------
+
+// `url` fica fora da lista de proposito: o banco nao a devolve a
+// `authenticated`, e pedi-la aqui faria a consulta inteira falhar.
+export const CALENDAR_SOURCE_COLUMNS =
+  "id, house_id, name, kind, host, owner_id, is_active, last_synced_at, last_error, event_count";
+
+export function mapCalendarSource(row: Record<string, unknown>): CalendarSource {
+  return {
+    id: row.id as string,
+    houseId: row.house_id as string,
+    name: row.name as string,
+    kind: (row.kind as CalendarSource["kind"]) ?? "ics",
+    host: (row.host as string | null) ?? null,
+    ownerId: (row.owner_id as string | null) ?? null,
+    isActive: row.is_active as boolean,
+    lastSyncedAt: (row.last_synced_at as string | null) ?? null,
+    lastError: (row.last_error as string | null) ?? null,
+    eventCount: Number(row.event_count ?? 0),
+  };
+}
+
+export const CALENDAR_EVENT_COLUMNS =
+  "id, house_id, source_id, uid, title, location, starts_on, ends_on, all_day, kind";
+
+export function mapCalendarEvent(row: Record<string, unknown>): CalendarEvent {
+  return {
+    id: row.id as string,
+    houseId: row.house_id as string,
+    sourceId: row.source_id as string,
+    uid: row.uid as string,
+    title: row.title as string,
+    location: (row.location as string | null) ?? null,
+    // `date` do Postgres chega como "YYYY-MM-DD"; o fatiamento evita o
+    // `new Date` que traria o dia anterior no fuso de Brasilia.
+    startsOn: (row.starts_on as string).slice(0, 10),
+    endsOn: (row.ends_on as string).slice(0, 10),
+    allDay: row.all_day as boolean,
+    kind: row.kind as EventKind,
   };
 }
