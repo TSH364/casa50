@@ -198,8 +198,9 @@ export function CalendarsManager({
               <RefreshCw aria-hidden /> Reler agendas
             </Button>
             <p className="mt-2 text-[12px] text-ink-faint">
-              A leitura só acontece quando vocês pedem — não há nada rodando em
-              segundo plano.
+              O app relê sozinho quando alguém de vocês abre o Fluxo, no máximo
+              uma vez a cada 12 horas. Enquanto ninguém está usando, nada é
+              lido. Este botão força a leitura agora.
             </p>
           </div>
         ) : null}

@@ -1,9 +1,11 @@
+import { after } from "next/server";
 import { redirect } from "next/navigation";
 import { AppNav } from "@/components/app-nav";
 import { HouseSwitcher } from "@/components/house-switcher";
 import { getActiveHouse } from "@/lib/houses";
 import { getCurrentUser } from "@/lib/supabase/server";
 import { signOut } from "@/app/entrar/actions";
+import { syncStaleCalendars } from "@/actions/calendar";
 import { Button } from "@/components/ui/button";
 import { buildInfo, buildLabel } from "@/lib/version";
 
@@ -20,6 +22,12 @@ export default async function AppLayout({
   const { active, houses } = await getActiveHouse();
   // Conta nova ainda sem casa: nao existe dado para mostrar.
   if (!active) redirect("/nova-casa");
+
+  // Rele as agendas vencidas depois que esta resposta for enviada. Fica no
+  // layout, e nao numa tela especifica, para valer em qualquer porta de
+  // entrada do app - e `after()` garante que nenhuma navegacao espere por
+  // isso. Nada roda quando ninguem esta usando o Fluxo.
+  after(syncStaleCalendars);
 
   const build = buildInfo();
 

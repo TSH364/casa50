@@ -31,7 +31,19 @@ const WINDOW_MONTHS_AHEAD = 12;
 /** Teto do arquivo baixado. Uma agenda pessoal cabe muito abaixo disso. */
 const MAX_BYTES = 5_000_000;
 
+/**
+ * Quanto esperar pela agenda.
+ *
+ * A leitura manual pode demorar: tem gente olhando a tela, e a alternativa e
+ * dizer "nao deu" para quem acabou de pedir. A automatica roda depois da
+ * resposta da pagina, dentro do tempo que a funcao serverless ainda tem - e
+ * la desistir cedo e melhor do que ser interrompida no meio.
+ */
 const FETCH_TIMEOUT_MS = 20_000;
+const BACKGROUND_TIMEOUT_MS = 8_000;
+
+/** Idade a partir da qual a agenda e relida sozinha. */
+const STALE_HOURS = 12;
 
 const addSchema = z.object({
   name: z.string().trim().min(1, "Dê um nome para a agenda.").max(60),
@@ -51,7 +63,7 @@ const addSchema = z.object({
  * do primeiro: um servidor que responde 302 para `http://127.0.0.1` furaria
  * a barreira se o fetch seguisse sozinho.
  */
-async function fetchIcs(url: string): Promise<string> {
+async function fetchIcs(url: string, timeoutMs = FETCH_TIMEOUT_MS): Promise<string> {
   let target = url;
 
   for (let hop = 0; hop < 4; hop += 1) {
@@ -66,7 +78,7 @@ async function fetchIcs(url: string): Promise<string> {
     const response = await fetch(target, {
       redirect: "manual",
       cache: "no-store",
-      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+      signal: AbortSignal.timeout(timeoutMs),
       headers: { Accept: "text/calendar, text/plain;q=0.8, */*;q=0.5" },
     });
 
@@ -128,6 +140,7 @@ export interface SyncResult extends FormState {
 async function syncOne(
   sourceId: string,
   houseId: string,
+  options: { timeoutMs?: number } = {},
 ): Promise<{ events: number; costly: number } | { error: string }> {
   const supabase = await createClient();
 
@@ -144,7 +157,7 @@ async function syncOne(
   const window = syncWindow();
   let occurrences;
   try {
-    const text = await fetchIcs(url);
+    const text = await fetchIcs(url, options.timeoutMs);
     occurrences = parseIcs(text, window).occurrences;
   } catch (error) {
     const message =
@@ -161,6 +174,10 @@ async function syncOne(
     return { error: message };
   }
 
+  // Carimbo desta rodada. E ele que separa o que acabou de ser lido do que
+  // sobrou da leitura anterior.
+  const stamp = new Date().toISOString();
+
   const rows = occurrences.map((o) => ({
     house_id: houseId,
     source_id: sourceId,
@@ -171,20 +188,8 @@ async function syncOne(
     ends_on: o.endsOn,
     all_day: o.allDay,
     kind: classifyEvent(o.title, o.location),
+    synced_at: stamp,
   }));
-
-  // Apaga e regrava: a agenda de fora e a verdade, e uma sincronizacao
-  // incremental teria de adivinhar o que foi excluido la. Como nada no app
-  // referencia o id do evento, a troca nao quebra nenhum vinculo.
-  const { error: deleteError } = await supabase
-    .from("calendar_events")
-    .delete()
-    .eq("source_id", sourceId);
-
-  if (deleteError) {
-    console.error("[agenda] falha ao limpar", { code: deleteError.code });
-    return { error: "Não foi possível atualizar os eventos desta agenda." };
-  }
 
   // Duas ocorrencias com o mesmo (uid, dia de inicio) violariam o indice
   // unico; acontece quando o arquivo repete uma excecao. Fica a primeira.
@@ -196,12 +201,32 @@ async function syncOne(
     return true;
   });
 
+  // Grava por cima ANTES de limpar, e nao o contrario. A agenda de fora e a
+  // verdade, entao a leitura substitui tudo; mas apagar primeiro abriria uma
+  // janela em que a casa nao tem compromisso nenhum - e, rodando sozinha no
+  // fim de uma resposta, uma interrupcao nessa janela deixaria a agenda vazia
+  // sem ninguem para notar. Nesta ordem, uma interrupcao deixa evento velho
+  // sobrando, que a proxima leitura limpa.
   for (let i = 0; i < unique.length; i += 500) {
-    const { error } = await supabase.from("calendar_events").insert(unique.slice(i, i + 500));
+    const { error } = await supabase
+      .from("calendar_events")
+      .upsert(unique.slice(i, i + 500), { onConflict: "source_id,uid,starts_on" });
     if (error) {
       console.error("[agenda] falha ao gravar eventos", { code: error.code });
       return { error: "Não foi possível gravar os eventos desta agenda." };
     }
+  }
+
+  // O que ficou com carimbo antigo saiu da agenda la fora.
+  const { error: pruneError } = await supabase
+    .from("calendar_events")
+    .delete()
+    .eq("source_id", sourceId)
+    .lt("synced_at", stamp);
+
+  if (pruneError) {
+    console.error("[agenda] falha ao limpar sobras", { code: pruneError.code });
+    return { error: "Não foi possível atualizar os eventos desta agenda." };
   }
 
   await supabase
@@ -322,4 +347,81 @@ export async function removeCalendarSource(sourceId: string): Promise<FormState>
   revalidatePath("/previsao");
   revalidatePath("/orcamentos");
   return { ok: true };
+}
+
+/**
+ * Rele as agendas vencidas, sozinha (camada 1).
+ *
+ * Chamada pelo `after()` do layout: roda DEPOIS que a pagina ja foi enviada,
+ * entao nunca atrasa uma tela. Como consequencia, o que aparece na hora ainda
+ * e a leitura anterior - a nova aparece na proxima visita. Para uma agenda que
+ * muda com semanas de antecedencia, essa defasagem nao custa nada, e evitou
+ * botar um segundo de espera em toda navegacao.
+ *
+ * Por que ligada ao uso, e nao a um horario fixo: assim nao ha nada rodando
+ * quando ninguem esta usando o app, e nenhuma infraestrutura nova para manter.
+ * A agenda so e lida quando alguem da casa abriu o Fluxo.
+ *
+ * Falha em silencio de proposito. Isto acontece fora do ciclo de vida da tela:
+ * nao ha onde mostrar um erro, e derrubar a resposta ja enviada por causa de
+ * uma agenda fora do ar seria trocar um problema pequeno por um grande. O
+ * motivo fica gravado em `last_error`, visivel na tela Casa.
+ */
+export async function syncStaleCalendars(): Promise<void> {
+  try {
+    const houseId = await requireHouseId();
+    const supabase = await createClient();
+    const cutoff = new Date(Date.now() - STALE_HOURS * 3_600_000).toISOString();
+
+    // Marcar antes de ler e o que impede duas abas (ou duas pessoas) de
+    // dispararem a mesma leitura ao mesmo tempo: o UPDATE com filtro de idade
+    // e atomico, e quem nao pegar a linha nao recebe nada de volta.
+    //
+    // O preco e que uma leitura interrompida so sera tentada de novo daqui a
+    // `STALE_HOURS`. E o lado certo de errar: insistir a cada carregamento de
+    // pagina numa agenda fora do ar bateria nela dezenas de vezes por hora. O
+    // botao "Reler agendas" continua disponivel para forcar na hora.
+    //
+    // Duas consultas em vez de um `or(...)`: "nunca lida" e "lida ha muito"
+    // sao conjuntos disjuntos (`NULL < x` nunca e verdadeiro), entao o
+    // resultado e o mesmo - e nao depende de como o PostgREST interpreta um
+    // timestamp dentro do texto de um filtro composto. Se essa leitura
+    // falhasse em silencio, a sincronizacao automatica simplesmente nunca
+    // aconteceria, e parecia com "o recurso nao funciona".
+    const claimedAt = new Date().toISOString();
+    const claim = (marcar: "vencida" | "nunca") => {
+      const query = supabase
+        .from("calendar_sources")
+        .update({ last_synced_at: claimedAt })
+        .eq("house_id", houseId)
+        .eq("is_active", true);
+      return (
+        marcar === "nunca"
+          ? query.is("last_synced_at", null)
+          : query.lt("last_synced_at", cutoff)
+      ).select("id");
+    };
+
+    const [vencidas, nunca] = await Promise.all([claim("vencida"), claim("nunca")]);
+    const claimed = [...(vencidas.data ?? []), ...(nunca.data ?? [])];
+    if (claimed.length === 0) return;
+
+    let changed = false;
+    for (const source of claimed) {
+      const result = await syncOne(source.id as string, houseId, {
+        timeoutMs: BACKGROUND_TIMEOUT_MS,
+      });
+      if (!("error" in result)) changed = true;
+    }
+
+    if (changed) {
+      revalidatePath("/previsao");
+      revalidatePath("/orcamentos");
+      revalidatePath("/insights");
+      revalidatePath("/casa");
+    }
+  } catch {
+    // Sem casa ativa, sem sessao, agenda fora do ar: nada disso e motivo para
+    // quebrar uma resposta que ja saiu.
+  }
 }
