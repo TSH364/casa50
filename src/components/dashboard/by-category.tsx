@@ -1,9 +1,9 @@
 import { listCategories, listTransactions } from "@/data/queries";
-import { totalsByCategory } from "@/domain/finance";
-import { formatCents } from "@/lib/money";
+import { itemsByCategory, totalsByCategory } from "@/domain/finance";
 import { Card, CardHeader } from "@/components/ui/card";
 import { EmptyState, Skeleton } from "@/components/states";
 import { CategoryDonut, type DonutSlice } from "./category-donut";
+import { CategoryRows, type CategoryRow } from "./category-rows";
 import type { MonthKey } from "@/domain/types";
 
 interface Props {
@@ -44,7 +44,20 @@ export async function ByCategory({
   ]);
 
   const totals = totalsByCategory(transactions, month, { memberId, cardId });
+  const items = itemsByCategory(transactions, month, { memberId, cardId });
   const byId = new Map(categories.map((c) => [c.id, c]));
+
+  const rows: CategoryRow[] = totals.map((t) => ({
+    categoryId: t.categoryId,
+    name: t.categoryId
+      ? (byId.get(t.categoryId)?.name ?? "Sem categoria")
+      : "Sem categoria",
+    color: (t.categoryId ? byId.get(t.categoryId)?.color : null) ?? "#8B8B94",
+    totalCents: t.totalCents,
+    share: t.share,
+    count: t.count,
+    items: items.get(t.categoryId) ?? [],
+  }));
 
   // Estornos podem deixar uma categoria com total negativo; ela continua na
   // lista (é informação real) mas não vira fatia da rosca, que não representa
@@ -82,32 +95,7 @@ export async function ByCategory({
             centerValue={visibleTotal}
           />
 
-          <ul className="min-w-0 flex-1 space-y-1">
-            {totals.map((t) => {
-              const category = t.categoryId ? byId.get(t.categoryId) : undefined;
-              return (
-                <li
-                  key={t.categoryId ?? "sem-categoria"}
-                  className="flex items-center gap-2.5 rounded-[--radius-control] px-2 py-2 hover:bg-surface-2"
-                >
-                  <span
-                    className="size-2.5 shrink-0 rounded-full"
-                    style={{ backgroundColor: category?.color ?? "#8B8B94" }}
-                    aria-hidden
-                  />
-                  <span className="min-w-0 flex-1 truncate text-sm text-ink">
-                    {category?.name ?? "Sem categoria"}
-                  </span>
-                  <span className="shrink-0 text-[12px] text-ink-faint">
-                    {Math.round(t.share * 100)}%
-                  </span>
-                  <span className="tabular shrink-0 text-sm font-medium text-ink">
-                    {formatCents(t.totalCents)}
-                  </span>
-                </li>
-              );
-            })}
-          </ul>
+          <CategoryRows rows={rows} month={month} />
         </div>
       )}
     </Card>

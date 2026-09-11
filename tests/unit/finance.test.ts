@@ -4,6 +4,7 @@ import {
   categoryMatrix,
   committedInstallments,
   incomeCents,
+  itemsByCategory,
   spendingCents,
   spendingOfCents,
   suggestBudget,
@@ -436,5 +437,53 @@ describe("withoutExcludedCategories", () => {
     const original = lista();
     withoutExcludedCategories(original, [tsh]);
     expect(original).toHaveLength(3);
+  });
+});
+
+describe("itemsByCategory", () => {
+  const mercado = "cat-mercado";
+
+  const lancamentos = [
+    tx({ id: "1", categoryId: mercado, amount: 100, date: "2026-08-03" }),
+    tx({ id: "2", categoryId: mercado, amount: 250, date: "2026-08-10" }),
+    tx({ id: "3", categoryId: null, amount: 70, date: "2026-08-11" }),
+    // Não entram: pagamento de fatura vale zero, e oculto não conta.
+    tx({ id: "4", categoryId: mercado, amount: 900, type: "payment" }),
+    tx({ id: "5", categoryId: mercado, amount: 40, isHidden: true }),
+    // Outro mês.
+    tx({ id: "6", categoryId: mercado, amount: 500, invoiceMonth: "2026-07" }),
+  ];
+
+  it("a lista fecha com o total que ela detalha", () => {
+    // É o ponto da função: uma lista que não soma o número que está ao lado
+    // dela é pior do que não ter lista.
+    const totais = totalsByCategory(lancamentos, "2026-08");
+    const itens = itemsByCategory(lancamentos, "2026-08");
+
+    for (const total of totais) {
+      const soma = (itens.get(total.categoryId) ?? []).reduce(
+        (s, i) => s + i.spendCents,
+        0,
+      );
+      expect(soma).toBe(total.totalCents);
+    }
+  });
+
+  it("agrupa sem categoria numa chave própria", () => {
+    const itens = itemsByCategory(lancamentos, "2026-08");
+    expect(itens.get(null)?.map((i) => i.id)).toEqual(["3"]);
+  });
+
+  it("ordena do maior para o menor", () => {
+    const itens = itemsByCategory(lancamentos, "2026-08");
+    expect(itens.get(mercado)?.map((i) => i.id)).toEqual(["2", "1"]);
+  });
+
+  it("traz a parcela quando existe", () => {
+    const itens = itemsByCategory(
+      [tx({ id: "p", categoryId: mercado, installment: { current: 3, total: 10, value: null } })],
+      "2026-08",
+    );
+    expect(itens.get(mercado)?.[0]?.installment).toBe("3/10");
   });
 });

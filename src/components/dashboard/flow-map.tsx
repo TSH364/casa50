@@ -1,11 +1,10 @@
 import { listRecurrences, listTransactions } from "@/data/queries";
 import { spendingCents } from "@/domain/finance";
 import { forecastMonths } from "@/domain/forecast";
-import { addMonths, monthLabel, monthRange, monthShortLabel } from "@/domain/month";
-import { formatCents } from "@/lib/money";
+import { addMonths, monthRange } from "@/domain/month";
 import { Card, CardHeader } from "@/components/ui/card";
 import { Skeleton } from "@/components/states";
-import { cn } from "@/lib/utils";
+import { FlowBars } from "./flow-bars";
 import type { MonthKey } from "@/domain/types";
 
 export function FlowMapSkeleton() {
@@ -69,8 +68,6 @@ export async function FlowMap({
   }));
 
   const bars = [...realized, ...forecast];
-  const max = Math.max(...bars.map((b) => b.cents), 1);
-  const currentCents = realized.find((b) => b.month === month)?.cents ?? 0;
   const hasAnyData = bars.some((b) => b.cents > 0);
 
   return (
@@ -86,69 +83,7 @@ export async function FlowMap({
         </p>
       ) : (
         <>
-          {/*
-            O valor do mês tem UM lugar, aqui, e não um rótulo por barra.
-            Nove barras dividindo 360px dão 30px cada, e "R$ 17.129" precisa
-            de uns 50px: os rótulos encavalavam uns nos outros e caíam por
-            cima das colunas. Um número legível vale mais que nove ilegíveis,
-            e o valor de cada mês continua alcançável pelo toque (`title`) e
-            pelo leitor de tela (`aria-label`).
-          */}
-          <p className="mb-2 flex items-baseline gap-2">
-            <span className="tabular text-lg font-semibold text-ink">
-              {formatCents(currentCents)}
-            </span>
-            <span className="text-[12px] text-ink-faint">em {monthLabel(month)}</span>
-          </p>
-
-          <ul className="flex items-end gap-1.5" style={{ height: "8rem" }}>
-            {bars.map((bar) => {
-              const height = Math.max(2, (bar.cents / max) * 100);
-              const isCurrent = bar.month === month;
-              const descricao = `${monthLabel(bar.month)}: ${formatCents(bar.cents)}${
-                bar.isForecast ? " (previsto)" : ""
-              }`;
-              return (
-                <li
-                  key={bar.month}
-                  className="flex h-full min-w-0 flex-1 flex-col gap-1"
-                >
-                  {/*
-                    Trilho da barra: a única caixa que a porcentagem enxerga.
-                    Antes a altura era relativa ao `li` inteiro, que também
-                    carregava os rótulos - então 100% pedia mais espaço do que
-                    sobrava, e o texto era empurrado para cima da coluna.
-                  */}
-                  <div className="flex min-h-0 flex-1 items-end">
-                    <span
-                      role="img"
-                      aria-label={descricao}
-                      title={descricao}
-                      className={cn(
-                        "block w-full rounded-t-[3px]",
-                        bar.isForecast
-                          ? // Hachura: previsão nunca ganha o mesmo preenchimento
-                            // sólido de um mês que realmente aconteceu.
-                            "border border-dashed border-brand/60 bg-brand/15"
-                          : isCurrent
-                            ? "bg-brand"
-                            : "bg-brand/50",
-                      )}
-                      style={{ height: `${height}%` }}
-                    />
-                  </div>
-                  <span
-                    className={cn(
-                      "block truncate text-center text-[10px]",
-                      isCurrent ? "font-medium text-ink-muted" : "text-ink-faint",
-                    )}
-                  >
-                    {monthShortLabel(bar.month)}
-                  </span>
-                </li>
-              );
-            })}
-          </ul>
+          <FlowBars bars={bars} month={month} />
 
           <dl className="mt-3 flex flex-wrap gap-x-4 gap-y-1 border-t border-line pt-2.5 text-[12px]">
             <div className="flex items-center gap-1.5">

@@ -2,6 +2,7 @@ import { toCents, type Cents } from "@/lib/money";
 import { addMonths, daysInMonth, daysRemaining } from "./month";
 import type {
   ForecastStatus,
+  IsoDate,
   MonthKey,
   Transaction,
   TransactionType,
@@ -454,4 +455,54 @@ export function withoutExcludedCategories(
   return transactions.filter(
     (t) => t.categoryId === null || !fora.has(t.categoryId),
   );
+}
+
+export interface CategoryItem {
+  id: string;
+  description: string;
+  date: IsoDate;
+  /** Ja com o sinal contabil aplicado, igual ao que soma no total. */
+  spendCents: Cents;
+  installment: string | null;
+}
+
+/**
+ * Os lancamentos de cada categoria, sob exatamente o mesmo filtro que
+ * `totalsByCategory` usa para somar.
+ *
+ * Existe para a tela poder abrir uma categoria e mostrar do que o numero e
+ * feito. A condicao de entrada e a mesma da soma de proposito: uma lista que
+ * nao fecha com o total que ela detalha e pior do que nenhuma lista.
+ */
+export function itemsByCategory(
+  transactions: readonly Transaction[],
+  month: MonthKey,
+  options: SummaryOptions = {},
+): Map<string | null, CategoryItem[]> {
+  const out = new Map<string | null, CategoryItem[]>();
+
+  for (const t of transactions) {
+    if (!matches(t, month, options)) continue;
+    if (!REALIZED.includes(t.status)) continue;
+    const spend = spendingCents(t);
+    if (spend === 0) continue;
+
+    const item: CategoryItem = {
+      id: t.id,
+      description: t.merchantAlias ?? t.description,
+      date: t.date,
+      spendCents: spend,
+      installment: t.installment
+        ? `${t.installment.current}/${t.installment.total}`
+        : null,
+    };
+    const list = out.get(t.categoryId);
+    if (list) list.push(item);
+    else out.set(t.categoryId, [item]);
+  }
+
+  for (const list of out.values()) {
+    list.sort((a, b) => b.spendCents - a.spendCents);
+  }
+  return out;
 }
