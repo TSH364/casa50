@@ -29,9 +29,12 @@ export function FlowMapSkeleton() {
 export async function FlowMap({
   houseId,
   month,
+  excludeCategoryIds,
 }: {
   houseId: string;
   month: MonthKey;
+  /** Categorias fora dos totais da casa. Vem de `houseView`. */
+  excludeCategoryIds: string[];
 }) {
   const pastFrom = addMonths(month, -5);
 
@@ -39,6 +42,7 @@ export async function FlowMap({
     listTransactions(houseId, {
       fromMonth: addMonths(month, -12),
       toMonth: month,
+      excludeCategoryIds,
       limit: 3000,
     }),
     listRecurrences(houseId),

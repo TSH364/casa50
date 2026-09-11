@@ -67,13 +67,21 @@ const TONE_TEXT: Record<CellTone, string> = {
 export async function CategoryMatrix({
   houseId,
   month,
+  excludeCategoryIds,
 }: {
   houseId: string;
   month: MonthKey;
+  /** Categorias fora dos totais da casa. Vem de `houseView`. */
+  excludeCategoryIds: string[];
 }) {
   const from = addMonths(month, -(WINDOW - 1));
   const [transactions, categories] = await Promise.all([
-    listTransactions(houseId, { fromMonth: from, toMonth: month, limit: 3000 }),
+    listTransactions(houseId, {
+      fromMonth: from,
+      toMonth: month,
+      excludeCategoryIds,
+      limit: 3000,
+    }),
     listCategories(houseId),
   ]);
 

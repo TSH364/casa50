@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import { Suspense } from "react";
 import { notFound } from "next/navigation";
 import { getActiveHouse } from "@/lib/houses";
+import { houseView } from "@/lib/house-view";
+import { TotalsNote } from "@/components/totals-note";
 import { listBudgets, listCategories, listTransactions } from "@/data/queries";
 import { budgetProgress, suggestBudget, totalsByCategory } from "@/domain/finance";
 import { addMonths, currentMonth, isMonthKey, monthRange } from "@/domain/month";
@@ -16,7 +18,7 @@ export const metadata: Metadata = { title: "Orçamentos · Fluxo" };
 export default async function OrcamentosPage({
   searchParams,
 }: {
-  searchParams: Promise<{ mes?: string }>;
+  searchParams: Promise<{ mes?: string; totais?: string }>;
 }) {
   const { active } = await getActiveHouse();
   if (!active) notFound();
@@ -28,13 +30,17 @@ export default async function OrcamentosPage({
   // Três meses anteriores alimentam a sugestão de limite (secao 12).
   const historyFrom = addMonths(month, -3);
 
+  const view = await houseView(active.id, params.totais);
+  const excludeCategoryIds = view.excludeCategoryIds;
+
   const [categories, budgets, monthTransactions, history] = await Promise.all([
-    listCategories(active.id),
+    Promise.resolve(view.categories),
     listBudgets(active.id, month),
-    listTransactions(active.id, { month }),
+    listTransactions(active.id, { month, excludeCategoryIds }),
     listTransactions(active.id, {
       fromMonth: historyFrom,
       toMonth: addMonths(month, -1),
+      excludeCategoryIds,
       limit: 2000,
     }),
   ]);
@@ -85,10 +91,17 @@ export default async function OrcamentosPage({
         <MonthSwitcher month={month} />
       </header>
 
+      <TotalsNote view={view} month={month} />
+
       {/* Sem fallback visível: quando não há pressão na agenda o painel não
           existe, e um esqueleto que some sozinho prometeria conteúdo. */}
       <Suspense fallback={null}>
-        <RebalancePanel houseId={active.id} month={month} categories={categories} />
+        <RebalancePanel
+          houseId={active.id}
+          month={month}
+          categories={categories}
+          excludeCategoryIds={excludeCategoryIds}
+        />
       </Suspense>
 
       <BudgetsManager rows={rows} month={month} />

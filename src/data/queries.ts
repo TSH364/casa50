@@ -1,4 +1,5 @@
 import "server-only";
+import { withoutExcludedCategories } from "@/domain/finance";
 import { createClient } from "@/lib/supabase/server";
 import type {
   Budget,
@@ -111,6 +112,18 @@ export interface TransactionFilter {
   categoryId?: string | null;
   /** Busca livre em descrição e estabelecimento. */
   search?: string;
+  /**
+   * Categorias que não contam nos totais da casa.
+   *
+   * O corte acontece aqui, e em nenhum outro lugar: se cada tela filtrasse por
+   * conta própria, uma acabaria esquecida e os números deixariam de bater
+   * entre si - foi exatamente assim que o total da fatura já saiu negativo
+   * uma vez, com duas cópias da mesma regra divergindo.
+   *
+   * Lançamento sem categoria nunca é excluído: ausência de categoria não é o
+   * mesmo que pertencer a uma categoria excluída.
+   */
+  excludeCategoryIds?: readonly string[];
   limit?: number;
 }
 
@@ -155,7 +168,12 @@ export async function listTransactions(
     .limit(filter.limit ?? 500);
 
   if (error) fail("os lançamentos", error);
-  return (data ?? []).map(mapTransaction);
+  const rows = (data ?? []).map(mapTransaction);
+
+  // O corte é feito em memória, e não como filtro no PostgREST: em SQL,
+  // `category_id NOT IN (...)` descarta em silêncio as linhas com categoria
+  // nula. A regra mora no domínio, onde tem teste.
+  return withoutExcludedCategories(rows, filter.excludeCategoryIds ?? []);
 }
 
 export async function getTransaction(id: string): Promise<Transaction | null> {

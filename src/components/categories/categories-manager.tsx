@@ -2,8 +2,12 @@
 
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
-import { Pencil, Plus, Trash2 } from "lucide-react";
-import { countCategoryUsage, deleteCategory } from "@/actions/categories";
+import { Eye, EyeOff, Pencil, Plus, Trash2 } from "lucide-react";
+import {
+  countCategoryUsage,
+  deleteCategory,
+  setCategoryExcludedFromTotals,
+} from "@/actions/categories";
 import { CategoryFormDialog } from "./category-form";
 import { Button } from "@/components/ui/button";
 import { Card as Panel, CardHeader } from "@/components/ui/card";
@@ -21,6 +25,21 @@ export function CategoriesManager({ categories }: { categories: Category[] }) {
 
   const parents = categories.filter((c) => c.parentId === null);
   const childrenOf = (id: string) => categories.filter((c) => c.parentId === id);
+
+  function toggleTotals(category: Category) {
+    const fora = !category.excludedFromTotals;
+    startTransition(async () => {
+      const result = await setCategoryExcludedFromTotals(category.id, fora);
+      if (result.error) toast.error(result.error);
+      else {
+        toast.success(
+          fora
+            ? `${category.name} saiu dos totais da casa.`
+            : `${category.name} voltou a contar nos totais.`,
+        );
+      }
+    });
+  }
 
   function openNew(parentId?: string) {
     setEditing(undefined);
@@ -78,7 +97,7 @@ export function CategoriesManager({ categories }: { categories: Category[] }) {
       <Panel>
         <CardHeader
           title="Categorias da casa"
-          description="Todas editáveis e removíveis, inclusive as iniciais."
+          description="Todas editáveis e removíveis, inclusive as iniciais. O olho tira a categoria dos totais da casa — útil para gasto de trabalho que passa no cartão pessoal."
           action={
             <Button size="sm" onClick={() => openNew()}>
               <Plus aria-hidden /> Nova
@@ -110,8 +129,41 @@ export function CategoriesManager({ categories }: { categories: Category[] }) {
                     />
                     <span className="min-w-0 flex-1 truncate text-sm text-ink">
                       {parent.name}
+                      {parent.excludedFromTotals ? (
+                        <span className="ml-2 rounded-full bg-surface-3 px-2 py-0.5 align-middle text-[11px] font-normal text-ink-faint">
+                          fora dos totais
+                        </span>
+                      ) : null}
                     </span>
                     <div className="flex shrink-0 items-center">
+                      {/*
+                        Só categoria de primeiro nível recebe a marca: o corte
+                        é sobre o que a casa considera gasto seu, e dividir
+                        isso dentro de uma categoria criaria um total que não
+                        fecha com a soma das partes.
+                      */}
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        disabled={pending}
+                        aria-label={
+                          parent.excludedFromTotals
+                            ? `Fazer ${parent.name} contar nos totais da casa`
+                            : `Tirar ${parent.name} dos totais da casa`
+                        }
+                        title={
+                          parent.excludedFromTotals
+                            ? "Fora dos totais da casa"
+                            : "Conta nos totais da casa"
+                        }
+                        onClick={() => toggleTotals(parent)}
+                      >
+                        {parent.excludedFromTotals ? (
+                          <EyeOff aria-hidden />
+                        ) : (
+                          <Eye aria-hidden />
+                        )}
+                      </Button>
                       <Button
                         variant="ghost"
                         size="icon"

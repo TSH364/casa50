@@ -432,3 +432,26 @@ export function projectMonthEnd(
   if (elapsed <= 0) return spentCents;
   return Math.round((spentCents / Math.min(elapsed, total)) * total);
 }
+
+/**
+ * Tira da lista os lancamentos das categorias que nao contam nos totais.
+ *
+ * Vive aqui, e nao solto na camada de consulta, porque e uma REGRA e precisa
+ * de teste: escrita ao contrario ela some com dado sem fazer barulho.
+ *
+ * Lancamento sem categoria nunca e excluido. Em SQL, `category_id NOT IN (...)`
+ * avalia como nulo para essas linhas e as descarta em silencio - e "sem
+ * categoria" e justamente o recorte que mais importa depois de importar uma
+ * fatura. A condicao aqui e explicita para que esse caso nao dependa de como
+ * um banco trata nulo.
+ */
+export function withoutExcludedCategories(
+  transactions: readonly Transaction[],
+  excludedCategoryIds: readonly string[],
+): Transaction[] {
+  if (excludedCategoryIds.length === 0) return [...transactions];
+  const fora = new Set(excludedCategoryIds);
+  return transactions.filter(
+    (t) => t.categoryId === null || !fora.has(t.categoryId),
+  );
+}

@@ -11,6 +11,8 @@ interface Props {
   month: MonthKey;
   memberId: string | null;
   cardId: string | null;
+  /** Categorias fora dos totais da casa. Vem de `houseView`. */
+  excludeCategoryIds: string[];
 }
 
 export function ByCategorySkeleton() {
@@ -29,9 +31,15 @@ export function ByCategorySkeleton() {
   );
 }
 
-export async function ByCategory({ houseId, month, memberId, cardId }: Props) {
+export async function ByCategory({
+  houseId,
+  month,
+  memberId,
+  cardId,
+  excludeCategoryIds,
+}: Props) {
   const [transactions, categories] = await Promise.all([
-    listTransactions(houseId, { month }),
+    listTransactions(houseId, { month, excludeCategoryIds }),
     listCategories(houseId),
   ]);
 

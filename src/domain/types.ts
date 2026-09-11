@@ -91,6 +91,12 @@ export interface Category {
   icon: string | null;
   parentId: string | null;
   isActive: boolean;
+  /**
+   * Quando verdadeiro, os lancamentos desta categoria ficam fora dos totais,
+   * medias e previsoes da casa. Continuam visiveis e editaveis em Extratos:
+   * a marca diz "isto nao e gasto da casa", nao "esconda isto".
+   */
+  excludedFromTotals: boolean;
 }
 
 export interface Installment {

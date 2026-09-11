@@ -3,6 +3,8 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { getActiveHouse, listMembers } from "@/lib/houses";
+import { houseView } from "@/lib/house-view";
+import { TotalsNote } from "@/components/totals-note";
 import { listCards, listCategories, listMonthsWithData } from "@/data/queries";
 import { currentMonth, isMonthKey, monthLabel } from "@/domain/month";
 import { Card, CardHeader } from "@/components/ui/card";
@@ -41,18 +43,25 @@ function resolveMonth(
 export default async function InicioPage({
   searchParams,
 }: {
-  searchParams: Promise<{ mes?: string; membro?: string; cartao?: string }>;
+  searchParams: Promise<{
+    mes?: string;
+    membro?: string;
+    cartao?: string;
+    totais?: string;
+  }>;
 }) {
   const { active } = await getActiveHouse();
   if (!active) notFound();
 
   const params = await searchParams;
-  const [members, cards, categories, monthsWithData] = await Promise.all([
+  const [members, cards, view, monthsWithData] = await Promise.all([
     listMembers(active.id),
     listCards(active.id),
-    listCategories(active.id),
+    houseView(active.id, params.totais),
     listMonthsWithData(active.id),
   ]);
+  const categories = view.categories;
+  const excludeCategoryIds = view.excludeCategoryIds;
 
   const { month, redirected } = resolveMonth(params.mes, monthsWithData);
   const memberId = params.membro ?? null;
@@ -61,7 +70,12 @@ export default async function InicioPage({
   // A chave muda com os filtros, então o Suspense volta a suspender e os
   // cards caem em skeleton — nunca exibem o número do mês anterior sob o
   // título do mês novo (secao 20).
-  const key = `${month}:${memberId ?? "todos"}:${cardId ?? "todos"}`;
+  // A lente de totais entra na chave: trocar de "só a casa" para "tudo" tem
+  // de fazer os cards suspenderem, e não mostrar o número antigo sob o
+  // rótulo novo.
+  const key = `${month}:${memberId ?? "todos"}:${cardId ?? "todos"}:${
+    view.showingAll ? "tudo" : "casa"
+  }`;
 
   return (
     <div className="mx-auto max-w-3xl space-y-4">
@@ -106,17 +120,28 @@ export default async function InicioPage({
         />
       ) : null}
 
+      <TotalsNote
+        view={view}
+        month={month}
+        extraParams={{ membro: memberId, cartao: cardId }}
+      />
+
       <Suspense key={`resumo:${key}`} fallback={<SummarySkeleton />}>
         <Summary
           houseId={active.id}
           month={month}
           memberId={memberId}
           cardId={cardId}
+          excludeCategoryIds={excludeCategoryIds}
         />
       </Suspense>
 
-      <Suspense key={`fluxo:${month}`} fallback={<FlowMapSkeleton />}>
-        <FlowMap houseId={active.id} month={month} />
+      <Suspense key={`fluxo:${key}`} fallback={<FlowMapSkeleton />}>
+        <FlowMap
+          houseId={active.id}
+          month={month}
+          excludeCategoryIds={excludeCategoryIds}
+        />
       </Suspense>
 
       <Suspense key={`categorias:${key}`} fallback={<ByCategorySkeleton />}>
@@ -125,11 +150,17 @@ export default async function InicioPage({
           month={month}
           memberId={memberId}
           cardId={cardId}
+          excludeCategoryIds={excludeCategoryIds}
         />
       </Suspense>
 
-      <Suspense key={`paineis:${month}`} fallback={<PanelsSkeleton />}>
-        <MonthPanels houseId={active.id} month={month} members={members} />
+      <Suspense key={`paineis:${key}`} fallback={<PanelsSkeleton />}>
+        <MonthPanels
+          houseId={active.id}
+          month={month}
+          members={members}
+          excludeCategoryIds={excludeCategoryIds}
+        />
       </Suspense>
 
       <Card>

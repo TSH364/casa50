@@ -154,3 +154,48 @@ export async function deleteCategory(id: string): Promise<FormState> {
   revalidatePath("/extratos");
   return { ok: true };
 }
+
+/**
+ * Marca (ou desmarca) a categoria como fora dos totais da casa.
+ *
+ * O caso que originou isto: despesa de trabalho passando pelo cartão pessoal.
+ * Com ela dentro, metade do "gasto da casa" era de empresa, e a média, a
+ * previsão e a sugestão de orçamento descreviam outra vida.
+ *
+ * Marcar não esconde nem apaga nada — os lançamentos continuam em Extratos,
+ * editáveis, e cada tela de conta avisa por escrito o que ficou de fora.
+ */
+export async function setCategoryExcludedFromTotals(
+  id: string,
+  excluded: boolean,
+): Promise<FormState> {
+  if (!z.string().uuid().safeParse(id).success) {
+    return { error: "Categoria inválida." };
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("categories")
+    .update({ excluded_from_totals: excluded })
+    .eq("id", id);
+
+  if (error) {
+    console.error("[categorias] falha ao marcar fora dos totais", {
+      code: error.code,
+    });
+    return { error: "Não foi possível alterar a categoria." };
+  }
+
+  // Toda tela que soma dinheiro muda de resposta com isto.
+  for (const path of [
+    "/categorias",
+    "/inicio",
+    "/insights",
+    "/previsao",
+    "/orcamentos",
+    "/extratos",
+  ]) {
+    revalidatePath(path);
+  }
+  return { ok: true };
+}

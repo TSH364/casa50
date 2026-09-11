@@ -61,9 +61,12 @@ function periodo(event: CalendarEvent): string {
 export async function AgendaPanel({
   houseId,
   month,
+  excludeCategoryIds,
 }: {
   houseId: string;
   month: MonthKey;
+  /** Categorias fora dos totais da casa. Vem de `houseView`. */
+  excludeCategoryIds: string[];
 }) {
   const historyFrom = addMonths(month, -HISTORY);
   const lastDay = `${month}-${String(daysInMonth(month)).padStart(2, "0")}`;
@@ -76,6 +79,7 @@ export async function AgendaPanel({
     listTransactions(houseId, {
       fromMonth: historyFrom,
       toMonth: addMonths(month, 1),
+      excludeCategoryIds,
       limit: 3000,
     }),
   ]);

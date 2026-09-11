@@ -9,6 +9,7 @@ import {
   suggestBudget,
   summarizeMonth,
   totalsByCategory,
+  withoutExcludedCategories,
 } from "@/domain/finance";
 import { addMonths, daysRemaining, monthDiff, monthOf, monthRange } from "@/domain/month";
 import type { Transaction } from "@/domain/types";
@@ -399,5 +400,41 @@ describe("categoryMatrix", () => {
       MESES,
     );
     expect(m.categoryIds).toEqual(["mercado"]);
+  });
+});
+
+describe("withoutExcludedCategories", () => {
+  const tsh = "cat-tsh";
+  const mercado = "cat-mercado";
+
+  function lista() {
+    return [
+      tx({ id: "a", categoryId: tsh, amount: 5000 }),
+      tx({ id: "b", categoryId: mercado, amount: 100 }),
+      tx({ id: "c", categoryId: null, amount: 200 }),
+    ];
+  }
+
+  it("tira só as categorias marcadas", () => {
+    const out = withoutExcludedCategories(lista(), [tsh]);
+    expect(out.map((t) => t.id)).toEqual(["b", "c"]);
+  });
+
+  it("NUNCA tira lançamento sem categoria", () => {
+    // A armadilha do SQL: `category_id NOT IN (...)` é nulo para estas linhas
+    // e as descartaria caladas — e é justamente a lista do que falta
+    // categorizar depois de importar uma fatura.
+    const out = withoutExcludedCategories(lista(), [tsh, mercado]);
+    expect(out.map((t) => t.id)).toEqual(["c"]);
+  });
+
+  it("sem nada marcado, devolve tudo", () => {
+    expect(withoutExcludedCategories(lista(), [])).toHaveLength(3);
+  });
+
+  it("não altera a lista recebida", () => {
+    const original = lista();
+    withoutExcludedCategories(original, [tsh]);
+    expect(original).toHaveLength(3);
   });
 });
