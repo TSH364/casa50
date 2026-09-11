@@ -7,7 +7,7 @@ import { getCurrentUser } from "@/lib/supabase/server";
 import { signOut } from "@/app/entrar/actions";
 import { syncStaleCalendars } from "@/actions/calendar";
 import { Button } from "@/components/ui/button";
-import { buildInfo, buildLabel } from "@/lib/version";
+import { buildInfo, buildLabel, versionLabel } from "@/lib/version";
 
 export default async function AppLayout({
   children,
@@ -54,15 +54,18 @@ export default async function AppLayout({
             {/*
               Versão do build, discreta mas em toda tela: serve para conferir
               num relance se a atualização entrou mesmo, sem depender de
-              adivinhar se a página veio do cache. O texto completo - branch,
-              ambiente e horário do build - fica na tela Casa, porque `title`
-              não abre no toque e aqui só cabe o commit.
+              adivinhar se a página veio do cache.
+
+              Aqui vai o número ("v0.2"), não o commit: número se lê, se guarda
+              e se fala ao telefone; `ceef648` não. O commit não some - ele
+              continua na tela Casa, junto com ambiente e horário do build, que
+              é onde se procura quando algo deu errado.
             */}
             <span
               title={buildLabel(build)}
               className="tabular text-[11px] text-ink-faint"
             >
-              {build.sha}
+              {versionLabel(build)}
             </span>
             <form action={signOut}>
               <Button variant="ghost" size="sm" type="submit">

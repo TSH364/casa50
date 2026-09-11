@@ -1,5 +1,28 @@
 import { execSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import type { NextConfig } from "next";
+
+/**
+ * Numero de versao legivel, vindo do `package.json`.
+ *
+ * O commit responde "qual build exatamente", mas nao se le nem se repete em
+ * voz alta. "v0.2" e o numero que serve para conversar sobre o app - e, por
+ * ser escrito a mao, ele diz o que mudou de tamanho: 0.2 para 0.3 e coisa
+ * nova, 0.2 para 0.2.1 e conserto.
+ *
+ * Le com `fs` em vez de `import`: o arquivo de configuracao roda antes do
+ * TypeScript resolver JSON, e uma versao errada aqui e pior que nenhuma.
+ */
+function appVersion(): string {
+  try {
+    const pkg = JSON.parse(readFileSync("./package.json", "utf8")) as {
+      version?: string;
+    };
+    return pkg.version ?? "";
+  } catch {
+    return "";
+  }
+}
 
 /**
  * Identidade do build, congelada aqui e embutida no bundle.
@@ -35,6 +58,7 @@ const nextConfig: NextConfig = {
     serverActions: { bodySizeLimit: "10mb" },
   },
   env: {
+    APP_VERSION: appVersion(),
     APP_BUILD_SHA: commitSha(),
     APP_BUILD_REF: process.env.VERCEL_GIT_COMMIT_REF ?? "",
     // production | preview | development na Vercel; vazio fora dela.
