@@ -501,3 +501,29 @@ export async function listCalendarEvents(
   if (error) fail("os eventos da agenda", error);
   return (data ?? []).map(mapCalendarEvent);
 }
+
+/**
+ * Propostas de subcategoria que a casa ja recusou.
+ *
+ * Devolve chaves `categoria|proposta` para a tela filtrar. Se a consulta
+ * falhar - tabela ainda nao migrada, por exemplo - devolve vazio em vez de
+ * derrubar a pagina: sem as recusas a tela mostra sugestao demais, o que e
+ * chato; sem a pagina, a casa perde o gerenciador de categorias inteiro.
+ */
+export async function listSubcategoryDismissals(
+  houseId: string,
+): Promise<Set<string>> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("subcategory_dismissals")
+    .select("category_id, suggestion_key")
+    .eq("house_id", houseId);
+
+  if (error) {
+    console.error("[categorias] falha ao ler as recusas", { code: error.code });
+    return new Set();
+  }
+  return new Set(
+    (data ?? []).map((r) => `${r.category_id}|${r.suggestion_key}`),
+  );
+}
