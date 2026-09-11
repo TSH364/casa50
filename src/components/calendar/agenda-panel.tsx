@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { CalendarDays, MapPin } from "lucide-react";
+import { CalendarDays } from "lucide-react";
 import {
   listCalendarEvents,
   listCalendarSources,
@@ -7,6 +7,7 @@ import {
 } from "@/data/queries";
 import {
   EVENT_KIND_LABEL,
+  eventCandidates,
   eventDaysInMonth,
   eventsInMonth,
   isCostly,
@@ -18,6 +19,7 @@ import { formatCents } from "@/lib/money";
 import { Card, CardHeader } from "@/components/ui/card";
 import { EmptyState, Skeleton } from "@/components/states";
 import { Button } from "@/components/ui/button";
+import { EventRows, type EventRow } from "./event-rows";
 import type { CalendarEvent, MonthKey } from "@/domain/types";
 
 /**
@@ -114,6 +116,22 @@ export async function AgendaPanel({
     spendDuringEvents(doMes, transactions).map((s) => [s.event.id, s]),
   );
 
+  const linhas: EventRow[] = doMes.map((event) => {
+    const gasto = gastoPorEvento.get(event.id);
+    return {
+      id: event.id,
+      title: event.title,
+      location: event.location,
+      kind: event.kind,
+      isCostly: isCostly(event.kind),
+      periodo: periodo(event),
+      daysInMonth: eventDaysInMonth(event, month),
+      totalCents: gasto?.totalCents ?? 0,
+      confirmedCount: gasto?.confirmedCount ?? 0,
+      candidates: eventCandidates(event, transactions),
+    };
+  });
+
   const jaPassou = month < currentMonth();
   const custosos = pressure.events;
   const diasComCusto = custosos.reduce((sum, e) => sum + e.daysInMonth, 0);
@@ -187,47 +205,12 @@ export async function AgendaPanel({
             </div>
           ) : null}
 
-          <ul className="space-y-2">
-            {doMes.map((event) => {
-              const gasto = gastoPorEvento.get(event.id);
-              const dias = eventDaysInMonth(event, month);
-              return (
-                <li
-                  key={event.id}
-                  className="rounded-[--radius-control] bg-surface-2 px-3 py-2.5"
-                >
-                  <div className="flex items-baseline justify-between gap-3">
-                    <span className="min-w-0 flex-1 text-sm text-ink">{event.title}</span>
-                    <span className="tabular shrink-0 text-[12px] text-ink-faint">
-                      {periodo(event)}
-                    </span>
-                  </div>
-
-                  <p className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[12px] text-ink-faint">
-                    <span className={isCostly(event.kind) ? "text-attention" : undefined}>
-                      {EVENT_KIND_LABEL[event.kind]}
-                    </span>
-                    {dias > 1 ? <span>{dias} dias no mês</span> : null}
-                    {event.location ? (
-                      <span className="flex min-w-0 items-center gap-1">
-                        <MapPin className="size-3 shrink-0" aria-hidden />
-                        <span className="truncate">{event.location}</span>
-                      </span>
-                    ) : null}
-                    {gasto && gasto.totalCents > 0 ? (
-                      <span className="tabular text-ink-muted">
-                        {formatCents(gasto.totalCents)} nos dias
-                      </span>
-                    ) : null}
-                  </p>
-                </li>
-              );
-            })}
-          </ul>
+          <EventRows rows={linhas} />
 
           <p className="mt-3 text-[12px] text-ink-faint">
-            O valor ao lado do compromisso é o que saiu <em>nos dias</em> dele —
-            tudo que foi lançado naquelas datas, não só o que a viagem causou.
+            Abra um compromisso para dizer o que é dele e o que não é. Sem essa
+            confirmação, o valor ao lado é só o que saiu <em>nos dias</em> — tudo
+            que foi lançado naquelas datas, não só o que o compromisso causou.
           </p>
         </>
       )}

@@ -144,6 +144,16 @@ export interface Transaction {
   recurringId: string | null;
   reconciledWithId: string | null;
 
+  /**
+   * Compromisso da agenda a que este lancamento pertence.
+   *
+   * Junto com `eventLinkDecided` forma tres estados: sem decisao vale o
+   * palpite por data; decidido com evento e vinculo confirmado; decidido sem
+   * evento quer dizer "nao e de compromisso nenhum".
+   */
+  calendarEventId: string | null;
+  eventLinkDecided: boolean;
+
   isHidden: boolean;
   isReconciled: boolean;
 

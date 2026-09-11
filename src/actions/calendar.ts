@@ -425,3 +425,62 @@ export async function syncStaleCalendars(): Promise<void> {
     // quebrar uma resposta que ja saiu.
   }
 }
+
+/**
+ * Registra a decisão da casa sobre um lançamento e um compromisso.
+ *
+ * `eventId` com valor vincula; `null` diz "não é de compromisso nenhum". Nos
+ * dois casos a decisão fica marcada, e é a marca — não o valor do vínculo —
+ * que faz o app parar de chutar por data naquela linha.
+ */
+export async function setTransactionEventLink(
+  transactionId: string,
+  eventId: string | null,
+): Promise<FormState> {
+  const id = z.string().uuid();
+  if (!id.safeParse(transactionId).success) {
+    return { error: "Lançamento inválido." };
+  }
+  if (eventId !== null && !id.safeParse(eventId).success) {
+    return { error: "Compromisso inválido." };
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("transactions")
+    .update({ calendar_event_id: eventId, event_link_decided: true })
+    .eq("id", transactionId);
+
+  if (error) {
+    console.error("[agenda] falha ao vincular", { code: error.code });
+    return { error: "Não foi possível registrar o vínculo." };
+  }
+
+  revalidatePath("/previsao");
+  revalidatePath("/insights");
+  return { ok: true };
+}
+
+/** Desfaz a decisão: o lançamento volta a valer pelo palpite de data. */
+export async function clearTransactionEventLink(
+  transactionId: string,
+): Promise<FormState> {
+  if (!z.string().uuid().safeParse(transactionId).success) {
+    return { error: "Lançamento inválido." };
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("transactions")
+    .update({ calendar_event_id: null, event_link_decided: false })
+    .eq("id", transactionId);
+
+  if (error) {
+    console.error("[agenda] falha ao limpar vínculo", { code: error.code });
+    return { error: "Não foi possível desfazer o vínculo." };
+  }
+
+  revalidatePath("/previsao");
+  revalidatePath("/insights");
+  return { ok: true };
+}
