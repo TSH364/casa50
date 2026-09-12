@@ -56,8 +56,27 @@ const FDS = [
   "2026-07-04", "2026-07-12", "2026-07-19", "2026-07-26",
 ];
 
+/**
+ * Um estabelecimento onde a casa gastou, nas datas dadas.
+ *
+ * O valor VARIA em torno do informado, de propósito. A versão anterior deste
+ * ajudante repetia o mesmo valor em todas as visitas, e isso não é o que um
+ * extrato real mostra: MEDIDO nos 584 lançamentos importados, o restaurante
+ * mais frequentado tem 11 valores distintos em 14 visitas, e o mais constante
+ * de todos - uma confeitaria - ainda tem 4 valores em 10. Valor sempre igual é
+ * a assinatura do faturamento de uma máquina, não de uma escolha, e o motor
+ * passou a usar isso como sinal. Fixture com valor fixo fingia ser assinatura.
+ */
 function loja(merchant: string, datas: string[], valor: number) {
-  return datas.map((d) => tx({ date: d, merchantNormalized: merchant, amount: valor }));
+  return datas.map((d, i) =>
+    tx({
+      date: d,
+      merchantNormalized: merchant,
+      // Centavos diferentes por visita: varia sem mudar a ordem de grandeza,
+      // então as asserções de mediana continuam valendo.
+      amount: Math.round((valor + (i % 5) * 0.37) * 100) / 100,
+    }),
+  );
 }
 
 describe("suggestSubcategories — o caso real do Vinicius", () => {
@@ -213,5 +232,57 @@ describe("a regua e o proprio habito da casa", () => {
       (s) => s.key === "fim_de_semana",
     );
     expect(fds?.merchants.map((m) => m.merchant)).toContain("PADARIA");
+  });
+});
+
+describe("assinatura não é comportamento", () => {
+  /**
+   * O caso que criou esta regra, saído dos dados reais: o motor propunha, com
+   * toda a confiança, "Assinaturas > Fim de semana" para um serviço que cobra
+   * todo domingo, e "Assinaturas > Rotina de dia útil" para streaming. Nenhuma
+   * das duas diz nada — o dia de uma assinatura é o do faturamento do
+   * fornecedor, não o da vida de quem paga.
+   */
+  function assinatura(merchant: string, datas: string[], valor: number) {
+    return datas.map((d) => tx({ date: d, merchantNormalized: merchant, amount: valor }));
+  }
+
+  it("serviço que cobra todo domingo não vira gasto de fim de semana", () => {
+    // 11 cobranças, todas em fim de semana, todas do mesmo valor.
+    const domingos = [
+      "2026-06-07", "2026-06-14", "2026-06-21", "2026-06-28",
+      "2026-07-05", "2026-07-12", "2026-07-19", "2026-07-26",
+      "2026-08-02", "2026-08-09", "2026-08-16",
+    ];
+    const sugestoes = suggestSubcategories(assinatura("SERVICO AI", domingos, 53.99));
+    expect(sugestoes).toEqual([]);
+  });
+
+  it("streaming cobrado em dia útil não vira rotina de dia útil", () => {
+    const sugestoes = suggestSubcategories([
+      ...assinatura("STREAMING", UTEIS.slice(0, 6), 79.9),
+      ...assinatura("OUTRO STREAMING", UTEIS.slice(2, 8), 29.9),
+    ]);
+    expect(sugestoes).toEqual([]);
+  });
+
+  it("cobrança que muda de valor mas cai sempre no mesmo dia do mês também sai", () => {
+    // O caso do serviço por uso: o valor varia, mas o dia é do faturamento.
+    const todoDia16 = ["2026-05-16", "2026-06-16", "2026-07-16", "2026-08-16"];
+    const sugestoes = suggestSubcategories([
+      ...todoDia16.map((d, i) =>
+        tx({ date: d, merchantNormalized: "SERVICO POR USO", amount: 40 + i * 11 }),
+      ),
+      ...todoDia16.map((d, i) =>
+        tx({ date: d, merchantNormalized: "OUTRO POR USO", amount: 25 + i * 7 }),
+      ),
+    ]);
+    expect(sugestoes).toEqual([]);
+  });
+
+  it("mas um restaurante que varia de valor continua propondo", () => {
+    // A contraprova: sem ela, a regra poderia estar calando tudo.
+    const sugestoes = suggestSubcategories(loja("SUBITO RICE", UTEIS, 43.52));
+    expect(sugestoes.find((s) => s.key === "rotina")).toBeDefined();
   });
 });
