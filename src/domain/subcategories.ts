@@ -1,6 +1,7 @@
 import type { Cents } from "@/lib/money";
 import type { IsoDate, Transaction } from "./types";
 import { spendingCents } from "./finance";
+import { fixedChargeMerchants } from "./recurring";
 
 /**
  * Sugestao de subcategoria a partir do comportamento (secao 14).
@@ -37,11 +38,6 @@ const TICKET_MERCADO = 8_000;
 
 /** A partir daqui, "so acontece em dia util" deixa de ser coincidencia. */
 const DIA_UTIL_FORTE = 0.85;
-
-/** Minimo de cobrancas para o dia do mes valer como sinal de faturamento. */
-const MIN_PARA_DIA_DO_MES = 4;
-/** Acima disto, cair sempre no mesmo dia do mes e calendario de cobranca. */
-const MESMO_DIA_DO_MES = 0.75;
 
 /**
  * Quanto o fim de semana precisa pesar acima do normal da categoria.
@@ -152,39 +148,6 @@ function baseDiaUtil(transactions: readonly Transaction[]): number {
   return base;
 }
 
-/**
- * A cobranca e de uma MAQUINA, e nao de uma escolha?
- *
- * Esta funcao existe porque a primeira versao propunha, com toda a confianca,
- * "Assinaturas > Fim de semana" para um servico que cobra todo domingo, e
- * "Assinaturas > Rotina de dia util" para a Netflix. Nenhuma das duas diz nada:
- * o dia de uma assinatura e o do faturamento do fornecedor, nao o da vida de
- * quem paga. Dia da semana so e evidencia onde a pessoa ESCOLHE o dia.
- *
- * MEDIDO nos 584 lancamentos reais, e a separacao e limpa, sem fronteira:
- *
- *   - toda assinatura cobra SEMPRE o mesmo valor - 1 valor distinto em 5, 8,
- *     11 cobrancas (Netflix, Google, Apple, Starlink, anuidade, contabilidade);
- *   - todo estabelecimento de comportamento varia - o mais constante deles,
- *     uma confeitaria com 10 visitas, ja tem 4 valores distintos.
- *
- * O segundo sinal pega o que o primeiro deixa passar: cobranca que muda de
- * valor mas cai sempre no MESMO DIA DO MES (Starlink, ChatGPT por uso). Exige
- * quatro ocorrencias porque com tres o mesmo dia ainda sai por acaso.
- */
-function pareceCobrancaFixa(valores: readonly Cents[], datas: readonly IsoDate[]): boolean {
-  if (new Set(valores).size === 1) return true;
-
-  if (datas.length < MIN_PARA_DIA_DO_MES) return false;
-  const porDiaDoMes = new Map<string, number>();
-  for (const data of datas) {
-    const dia = data.slice(8, 10);
-    porDiaDoMes.set(dia, (porDiaDoMes.get(dia) ?? 0) + 1);
-  }
-  const maior = Math.max(...porDiaDoMes.values());
-  return maior / datas.length > MESMO_DIA_DO_MES;
-}
-
 /** Em que balde o estabelecimento cai. `null` = nao da para dizer. */
 function classify(stat: MerchantStat, base: number): SuggestionKey | null {
   // O nome vence o ticket: hortifruti de R$ 90 e mercado, jantar de R$ 90 nao.
@@ -250,13 +213,17 @@ export function suggestSubcategories(
     porEstabelecimento.set(key, atual);
   }
 
+  const fixed = fixedChargeMerchants(transactions);
+
   const stats: MerchantStat[] = [];
   for (const [merchant, dados] of porEstabelecimento) {
     if (dados.valores.length < MIN_LANCAMENTOS_ESTABELECIMENTO) continue;
     // Assinatura fica de fora inteira, e nao so do balde: o dia dela nao e
     // escolha de ninguem, entao ela nao pode nem propor nem entrar no numero
-    // de uma proposta que outro estabelecimento levantou.
-    if (pareceCobrancaFixa(dados.valores, dados.datas)) continue;
+    // de uma proposta que outro estabelecimento levantou. O reconhecimento
+    // mora em `recurring.ts`, compartilhado com o vinculo de compromisso -
+    // sao a mesma pergunta, e duas copias dela divergiriam.
+    if (fixed.has(merchant)) continue;
     stats.push({
       merchant,
       label: dados.label,

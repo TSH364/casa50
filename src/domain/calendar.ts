@@ -9,6 +9,11 @@ import type {
 } from "./types";
 import { daysInMonth } from "./month";
 import { spendingCents } from "./finance";
+import {
+  fixedChargeMerchants,
+  notEventSpend,
+  type NotEventReason,
+} from "./recurring";
 
 /**
  * Agenda: do compromisso marcado ao gasto previsto.
@@ -271,10 +276,18 @@ export function spendDuringEvents(
   // Indice por data para o resto: sem ele a varredura seria eventos x
   // lancamentos, o que numa agenda de um ano com tres mil linhas de fatura
   // passa de seis milhoes de comparacoes a cada render da pagina.
+  //
+  // O que o app SABE que nao e do compromisso fica fora do indice, e portanto
+  // fora do palpite por data. Sem isso, a parcela - que guarda a data da
+  // compra original e reaparece todo mes com ela - somava a mesma compra
+  // varias vezes num unico dia: MEDIDO na base real, um compromisso em
+  // 10/11/2025 somaria R$ 4.884 onde existe uma cobranca de R$ 2.442.
+  const fixed = fixedChargeMerchants(transactions);
   const byDate = new Map<IsoDate, Transaction[]>();
   for (const t of transactions) {
     if (taken.has(t.id)) continue;
     if (!countable(t) || spendingCents(t) <= 0) continue;
+    if (notEventSpend(t, fixed) !== null) continue;
     const list = byDate.get(t.date);
     if (list) list.push(t);
     else byDate.set(t.date, [t]);
@@ -492,6 +505,14 @@ export interface EventCandidate {
    * `guess` - ninguem opinou; entra na conta so pela data.
    */
   state: "linked" | "excluded" | "guess";
+  /**
+   * Motivo pelo qual o app ja deixou de fora, sem ninguem mandar.
+   *
+   * `null` quando entra normalmente. Preenchido, a linha aparece apagada e com
+   * o motivo escrito - continua clicavel, porque uma passagem parcelada PODE
+   * ser da viagem e so a pessoa sabe.
+   */
+  autoExcluded: NotEventReason | null;
 }
 
 /**
@@ -508,6 +529,7 @@ export function eventCandidates(
 ): EventCandidate[] {
   const from = dayNumber(event.startsOn);
   const to = Math.min(dayNumber(event.endsOn), from + MAX_EVENT_DAYS);
+  const fixed = fixedChargeMerchants(transactions);
 
   const out: EventCandidate[] = [];
   for (const t of transactions) {
@@ -520,14 +542,25 @@ export function eventCandidates(
     const vinculado = t.eventLinkDecided && t.calendarEventId === event.id;
     if (!nosDias && !vinculado) continue;
 
+    // Decisao humana apaga o motivo automatico: quem vinculou a mao ja
+    // respondeu a pergunta, e o app nao volta a discuti-la.
+    const motivo = t.eventLinkDecided ? null : notEventSpend(t, fixed);
+
     out.push({
       id: t.id,
       description: t.merchantAlias ?? t.description,
       date: t.date,
       spendCents: spend,
       state: vinculado ? "linked" : t.eventLinkDecided ? "excluded" : "guess",
+      autoExcluded: motivo,
     });
   }
 
-  return out.sort((a, b) => b.spendCents - a.spendCents);
+  // Os deixados de fora descem para o fim: a lista existe para decidir o que
+  // E do compromisso, e o que o app ja resolveu nao deve disputar o topo.
+  return out.sort((a, b) => {
+    const fora = Number(a.autoExcluded !== null) - Number(b.autoExcluded !== null);
+    if (fora !== 0) return fora;
+    return b.spendCents - a.spendCents;
+  });
 }

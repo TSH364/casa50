@@ -5,6 +5,7 @@ import {
   dailyBaselineCents,
   eventDays,
   eventDaysInMonth,
+  eventCandidates,
   eventsInMonth,
   monthPressure,
   spendDuringEvents,
@@ -450,5 +451,88 @@ describe("spendDuringEvents — decisão de pessoa vence a data", () => {
     );
     expect(resultado[0]?.totalCents).toBe(9_000);
     expect(resultado[0]?.confirmedCount).toBe(0);
+  });
+});
+
+describe("o que o app SABE que não é do compromisso", () => {
+  /**
+   * A parcela é o caso que motivou isto, e o número vem da base real.
+   *
+   * Ela guarda a data da COMPRA original, então todas as parcelas de uma
+   * compra caem no mesmo dia do calendário. MEDIDO: um compromisso em
+   * 10/11/2025 veria a mesma compra duas vezes e somaria R$ 4.884 onde existe
+   * uma cobrança de R$ 2.442; um em 07/01/2026 veria sete parcelas e somaria
+   * R$ 3.990 por uma compra de R$ 570.
+   */
+  const festa = ev({
+    id: "festa",
+    kind: "celebration",
+    startsOn: "2026-08-10",
+    endsOn: "2026-08-10",
+  });
+
+  function parcela(current: number, total: number) {
+    return tx({
+      date: "2026-08-10",
+      amount: 570,
+      merchantNormalized: "MERCADOLIVRE 2PRODUTO",
+      installment: { current, total, value: null },
+    });
+  }
+
+  it("sete parcelas da mesma compra não somam sete vezes na festa", () => {
+    const lancamentos = [
+      ...Array.from({ length: 7 }, (_, i) => parcela(i + 1, 10)),
+      tx({ date: "2026-08-10", amount: 120, merchantNormalized: "CONFEITARIA" }),
+    ];
+
+    const [resultado] = spendDuringEvents([festa], lancamentos);
+    // Só o bolo. As R$ 3.990 de parcela ficam de fora.
+    expect(resultado?.totalCents).toBe(12_000);
+  });
+
+  it("assinatura que cai no dia do compromisso não entra", () => {
+    const lancamentos = [
+      // Mesmo valor sempre: é cobrança de máquina, não escolha.
+      ...["2026-06-10", "2026-07-10", "2026-08-10"].map((d) =>
+        tx({ date: d, amount: 79.9, merchantNormalized: "STREAMING" }),
+      ),
+      tx({ date: "2026-08-10", amount: 120, merchantNormalized: "CONFEITARIA" }),
+    ];
+
+    const [resultado] = spendDuringEvents([festa], lancamentos);
+    expect(resultado?.totalCents).toBe(12_000);
+  });
+
+  it("a lista mostra a parcela com o motivo, em vez de escondê-la", () => {
+    // Esconder impediria o gesto que importa: uma passagem parcelada PODE ser
+    // da viagem, e só a pessoa sabe.
+    const candidatos = eventCandidates(festa, [
+      parcela(3, 10),
+      tx({ date: "2026-08-10", amount: 120, merchantNormalized: "CONFEITARIA" }),
+    ]);
+
+    expect(candidatos).toHaveLength(2);
+    const fora = candidatos.find((c) => c.autoExcluded !== null);
+    expect(fora?.autoExcluded).toBe("installment");
+    // E desce para o fim, apesar de ser a de maior valor.
+    expect(candidatos[0]?.autoExcluded).toBeNull();
+  });
+
+  it("decisão da pessoa vence o motivo automático", () => {
+    // A passagem parcelada que ELA disse que é da viagem conta, e a linha
+    // deixa de exibir motivo nenhum.
+    const vinculada = {
+      ...parcela(1, 10),
+      eventLinkDecided: true,
+      calendarEventId: "festa",
+    };
+
+    const [resultado] = spendDuringEvents([festa], [vinculada]);
+    expect(resultado?.totalCents).toBe(57_000);
+
+    const candidatos = eventCandidates(festa, [vinculada]);
+    expect(candidatos[0]?.state).toBe("linked");
+    expect(candidatos[0]?.autoExcluded).toBeNull();
   });
 });

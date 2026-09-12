@@ -10,7 +10,21 @@ import {
 import { formatCents } from "@/lib/money";
 import { cn } from "@/lib/utils";
 import { EVENT_KIND_LABEL, type EventCandidate } from "@/domain/calendar";
+import type { NotEventReason } from "@/domain/recurring";
 import type { EventKind } from "@/domain/types";
+
+/**
+ * Por que o app deixou um lançamento de fora, em palavras que se conferem.
+ *
+ * A parcela é o caso que motivou isto: ela guarda a data da COMPRA original,
+ * então todas as parcelas caem no mesmo dia do calendário e um compromisso
+ * naquele dia somava a mesma compra várias vezes.
+ */
+const MOTIVO_FORA: Record<NotEventReason, string> = {
+  installment: "parcela de uma compra anterior — guarda a data da compra",
+  same_amount: "cobrança fixa, sempre do mesmo valor",
+  same_day: "cobrança mensal, sempre no mesmo dia",
+};
 
 export interface EventRow {
   id: string;
@@ -156,9 +170,10 @@ function EventItem({
                       <span
                         className={cn(
                           "min-w-0 flex-1 break-words text-[13px] leading-snug",
-                          c.state === "excluded"
-                            ? "text-ink-faint line-through"
+                          c.state === "excluded" || c.autoExcluded
+                            ? "text-ink-faint"
                             : "text-ink-muted",
+                          c.state === "excluded" && "line-through",
                         )}
                       >
                         {c.description}
@@ -166,12 +181,22 @@ function EventItem({
                       <span
                         className={cn(
                           "tabular shrink-0 text-[13px]",
-                          c.state === "excluded" ? "text-ink-faint" : "text-ink",
+                          c.state === "excluded" || c.autoExcluded
+                            ? "text-ink-faint"
+                            : "text-ink",
                         )}
                       >
                         {formatCents(c.spendCents)}
                       </span>
                     </div>
+
+                    {/* O motivo, escrito. "Isto é parcela" se confere olhando o
+                        lançamento; "o app achou melhor" não se confere. */}
+                    {c.autoExcluded ? (
+                      <p className="mt-0.5 pl-7 text-[11px] text-ink-faint">
+                        {MOTIVO_FORA[c.autoExcluded]}
+                      </p>
+                    ) : null}
 
                     {/* Três botões seriam demais: o estado decidido mostra só
                         o caminho de volta. */}
@@ -185,13 +210,18 @@ function EventItem({
                           >
                             <Check aria-hidden /> É
                           </Acao>
-                          <Acao
-                            label="Não é deste compromisso"
-                            disabled={pending}
-                            onClick={() => decidir(c.id, null)}
-                          >
-                            <Minus aria-hidden /> Não é
-                          </Acao>
+                          {/* O "não é" some no que o app já deixou de fora: ele
+                              já está fora. O "é" continua, porque uma passagem
+                              parcelada PODE ser da viagem, e só a pessoa sabe. */}
+                          {c.autoExcluded ? null : (
+                            <Acao
+                              label="Não é deste compromisso"
+                              disabled={pending}
+                              onClick={() => decidir(c.id, null)}
+                            >
+                              <Minus aria-hidden /> Não é
+                            </Acao>
+                          )}
                         </>
                       ) : (
                         <Acao
