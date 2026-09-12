@@ -3,6 +3,7 @@ import type { Cents } from "@/lib/money";
 import { toCents } from "@/lib/money";
 import { addMonths, daysInMonth, monthDiff } from "./month";
 import { spendingCents } from "./finance";
+import { merchantKey, merchantLabel } from "./merchants";
 
 /**
  * Parcelas, recorrências, conciliação e previsão (secoes 9, 10 e 11).
@@ -288,7 +289,11 @@ export function detectRecurrences(
   for (const t of transactions) {
     if (t.isHidden || t.installment !== null) continue;
     if (t.type !== "expense" && t.type !== "fee") continue;
-    const key = t.merchantNormalized ?? "";
+    // Mesma chave que o resto do app usa para contar por estabelecimento.
+    // Juntar as grafias do marketplace nao cria recorrencia falsa: a regra de
+    // dispersao abaixo recusa valores que variam, e compra de marketplace
+    // varia de R$ 19 a R$ 4.841 na base real.
+    const key = merchantKey(t) ?? "";
     if (key === "") continue;
     const list = groups.get(key);
     if (list) list.push(t);
@@ -332,7 +337,7 @@ export function detectRecurrences(
     const newest = byMonth.get(tail[tail.length - 1]!)!;
     candidates.push({
       merchantNormalized: merchant,
-      description: newest.merchantAlias ?? newest.description,
+      description: merchantLabel(newest),
       amountCents: typical,
       months: tail,
       expectedDay,
