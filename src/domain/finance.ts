@@ -517,8 +517,55 @@ export interface DaySpend {
   step: 0 | 1 | 2 | 3 | 4;
 }
 
+export interface DailySpending {
+  /**
+   * Mes que a grade desenha. E o mes das COMPRAS, e nao o da fatura - os dois
+   * quase nunca coincidem, e confundi-los foi o defeito que esta funcao ja
+   * teve.
+   */
+  month: MonthKey;
+  days: DaySpend[];
+  /** Gasto da selecao que caiu fora do mes desenhado. */
+  outsideCents: Cents;
+  outsideCount: number;
+  /**
+   * O que sobrou, mes a mes, do mais recente para o mais antigo.
+   *
+   * Discriminado porque "fora do mes" tem duas causas bem diferentes, e
+   * chamar as duas de parcela seria mentira: a fatura de agosto cobra compras
+   * de 25/06 a 28/07, entao o pedaco de JUNHO e gasto corrente que so nao
+   * coube na grade de julho; ja uma compra de outubro passado e parcela, que
+   * guarda a data original. Quem le precisa poder distinguir.
+   */
+  outsideByMonth: { month: MonthKey; totalCents: Cents; count: number }[];
+}
+
 /**
- * Gasto de cada dia do mes, ja com a intensidade para o calendario.
+ * Em que mes as COMPRAS desta selecao caem.
+ *
+ * Por quantidade de lancamentos, nao por valor: uma parcela antiga e grande
+ * mudaria o mes inteiro de lugar sozinha, e o calendario e sobre o ritmo dos
+ * dias. Empate fica com o mes mais recente, que e o que a casa lembra.
+ */
+function mesDasCompras(datas: readonly IsoDate[], fallback: MonthKey): MonthKey {
+  const porMes = new Map<MonthKey, number>();
+  for (const data of datas) {
+    const mes = data.slice(0, 7);
+    porMes.set(mes, (porMes.get(mes) ?? 0) + 1);
+  }
+  let escolhido: MonthKey | null = null;
+  let maior = 0;
+  for (const [mes, n] of porMes) {
+    if (n > maior || (n === maior && escolhido !== null && mes > escolhido)) {
+      escolhido = mes;
+      maior = n;
+    }
+  }
+  return escolhido ?? fallback;
+}
+
+/**
+ * Gasto de cada dia, ja com a intensidade para o calendario.
  *
  * A intensidade sai de QUARTIS dos dias com gasto, nao de uma fracao do
  * maior dia. Numa fatura real um unico dia de R$ 9.597 convive com dezenas de
@@ -528,12 +575,25 @@ export interface DaySpend {
  *
  * Todo dia do mes aparece, inclusive os sem gasto - o ponto do calendario e
  * justamente ver os vazios.
+ *
+ * DOIS MESES DIFERENTES CONVIVEM AQUI, e a primeira versao desta funcao os
+ * tratou como um so. `month` seleciona pela FATURA, como o resto do app; as
+ * datas dos lancamentos sao as das COMPRAS, que acontecem no periodo fechado
+ * ANTES dela. MEDIDO nas 596 linhas reais: em nenhuma das oito faturas ha um
+ * unico lancamento cuja data caia dentro do mes da propria fatura - zero de
+ * 596. Montar a grade sobre os dias de `month` procurava "2026-08-13" num
+ * conjunto que so tinha "2026-07-13", e o calendario saia vazio SEMPRE.
+ *
+ * Por isso a grade e desenhada sobre o mes em que as compras de fato caem,
+ * deduzido dos dados. O que sobra fora dele - tipicamente parcelas de compras
+ * antigas, que carregam a data original - volta em `outsideCents` para a tela
+ * dizer, em vez de sumir e quebrar a soma.
  */
 export function dailySpending(
   transactions: readonly Transaction[],
   month: MonthKey,
   options: SummaryOptions = {},
-): DaySpend[] {
+): DailySpending {
   const porDia = new Map<IsoDate, { totalCents: Cents; count: number }>();
 
   for (const t of transactions) {
@@ -547,22 +607,49 @@ export function dailySpending(
     porDia.set(t.date, atual);
   }
 
-  const valores = [...porDia.values()].map((v) => v.totalCents).sort((a, b) => a - b);
+  const gridMonth = mesDasCompras(
+    [...porDia.entries()].flatMap(([data, v]) => Array<IsoDate>(v.count).fill(data)),
+    month,
+  );
+
+  // Os quartis olham so os dias desenhados: incluir uma parcela de um ano
+  // atras deslocaria os cortes de um mes que ela nem aparece.
+  const noMes = [...porDia.entries()].filter(([data]) => data.startsWith(gridMonth));
+  const valores = noMes.map(([, v]) => v.totalCents).sort((a, b) => a - b);
   const quartil = (p: number) =>
     valores.length === 0 ? 0 : valores[Math.min(valores.length - 1, Math.floor(valores.length * p))]!;
   const cortes = [quartil(0.25), quartil(0.5), quartil(0.75)];
 
-  const total = daysInMonth(month);
-  const out: DaySpend[] = [];
+  const total = daysInMonth(gridMonth);
+  const days: DaySpend[] = [];
   for (let day = 1; day <= total; day += 1) {
-    const date = `${month}-${String(day).padStart(2, "0")}`;
+    const date = `${gridMonth}-${String(day).padStart(2, "0")}`;
     const encontrado = porDia.get(date);
     const cents = encontrado?.totalCents ?? 0;
     let step: DaySpend["step"] = 0;
     if (cents > 0) {
       step = cents <= cortes[0]! ? 1 : cents <= cortes[1]! ? 2 : cents <= cortes[2]! ? 3 : 4;
     }
-    out.push({ date, day, totalCents: cents, count: encontrado?.count ?? 0, step });
+    days.push({ date, day, totalCents: cents, count: encontrado?.count ?? 0, step });
   }
-  return out;
+
+  let outsideCents = 0;
+  let outsideCount = 0;
+  const porMesDeFora = new Map<MonthKey, { totalCents: Cents; count: number }>();
+  for (const [data, v] of porDia) {
+    if (data.startsWith(gridMonth)) continue;
+    outsideCents += v.totalCents;
+    outsideCount += v.count;
+    const mes = data.slice(0, 7);
+    const atual = porMesDeFora.get(mes) ?? { totalCents: 0, count: 0 };
+    atual.totalCents += v.totalCents;
+    atual.count += v.count;
+    porMesDeFora.set(mes, atual);
+  }
+
+  const outsideByMonth = [...porMesDeFora.entries()]
+    .map(([mes, v]) => ({ month: mes, ...v }))
+    .sort((a, b) => (a.month < b.month ? 1 : -1));
+
+  return { month: gridMonth, days, outsideCents, outsideCount, outsideByMonth };
 }

@@ -492,15 +492,35 @@ describe("itemsByCategory", () => {
 });
 
 describe("dailySpending", () => {
+  /**
+   * Compra de julho, cobrada na fatura de agosto.
+   *
+   * A data FORA do mês da fatura não é um caso de borda inventado: é a regra.
+   * MEDIDO nos oito meses reais importados - em nenhuma das oito faturas há um
+   * único lançamento cuja data caia dentro do mês da própria fatura, zero de
+   * 596. A versão anterior destes testes usava data e fatura no mesmo mês, e
+   * foi essa ficção que deixou passar um calendário que nascia sempre vazio.
+   */
   function dia(d: number, valor: number) {
-    return tx({ date: `2026-08-${String(d).padStart(2, "0")}`, amount: valor });
+    return tx({
+      date: `2026-07-${String(d).padStart(2, "0")}`,
+      invoiceMonth: "2026-08",
+      amount: valor,
+    });
   }
 
+  it("desenha o mês das COMPRAS, não o da fatura", () => {
+    const r = dailySpending([dia(13, 100)], "2026-08");
+    expect(r.month).toBe("2026-07");
+    expect(r.days).toHaveLength(31);
+    expect(r.days.find((d) => d.day === 13)?.totalCents).toBe(10_000);
+  });
+
   it("traz todos os dias do mês, inclusive os sem gasto", () => {
-    const dias = dailySpending([dia(5, 100)], "2026-08");
-    expect(dias).toHaveLength(31);
-    expect(dias[0]?.totalCents).toBe(0);
-    expect(dias[0]?.step).toBe(0);
+    const r = dailySpending([dia(5, 100)], "2026-08");
+    expect(r.days).toHaveLength(31);
+    expect(r.days[0]?.totalCents).toBe(0);
+    expect(r.days[0]?.step).toBe(0);
   });
 
   it("um dia gigante não apaga o resto do mês", () => {
@@ -511,32 +531,68 @@ describe("dailySpending", () => {
       ...Array.from({ length: 8 }, (_, i) => dia(i + 13, 200)),
       dia(25, 9597),
     ];
-    const dias = dailySpending(lancamentos, "2026-08");
-    const passos = new Set(dias.filter((d) => d.totalCents > 0).map((d) => d.step));
+    const r = dailySpending(lancamentos, "2026-08");
+    const passos = new Set(r.days.filter((d) => d.totalCents > 0).map((d) => d.step));
     // Mais de um passo em uso: o calendário tem relevo.
     expect(passos.size).toBeGreaterThan(1);
-    expect(dias.find((d) => d.day === 25)?.step).toBe(4);
+    expect(r.days.find((d) => d.day === 25)?.step).toBe(4);
   });
 
   it("dia sem gasto é passo 0, e nunca passo 1", () => {
-    const dias = dailySpending([dia(5, 1)], "2026-08");
-    expect(dias.find((d) => d.day === 6)?.step).toBe(0);
-    expect(dias.find((d) => d.day === 5)?.step).toBeGreaterThan(0);
+    const r = dailySpending([dia(5, 1)], "2026-08");
+    expect(r.days.find((d) => d.day === 6)?.step).toBe(0);
+    expect(r.days.find((d) => d.day === 5)?.step).toBeGreaterThan(0);
   });
 
   it("soma vários lançamentos do mesmo dia e conta quantos são", () => {
-    const dias = dailySpending([dia(7, 30), dia(7, 20)], "2026-08");
-    const sete = dias.find((d) => d.day === 7);
+    const r = dailySpending([dia(7, 30), dia(7, 20)], "2026-08");
+    const sete = r.days.find((d) => d.day === 7);
     expect(sete?.totalCents).toBe(5_000);
     expect(sete?.count).toBe(2);
   });
 
   it("fecha com o total do mês", () => {
     const lancamentos = [dia(3, 100), dia(9, 250), dia(9, 50)];
-    const soma = dailySpending(lancamentos, "2026-08").reduce(
-      (s, d) => s + d.totalCents,
-      0,
-    );
+    const r = dailySpending(lancamentos, "2026-08");
+    const soma = r.days.reduce((s, d) => s + d.totalCents, 0) + r.outsideCents;
     expect(soma).toBe(40_000);
+  });
+
+  it("parcela antiga não muda o mês da grade, e é declarada à parte", () => {
+    // Parcelas guardam a data da compra original. Uma compra de R$ 2.000 feita
+    // em outubro não pode arrastar o calendário de julho para outubro - por
+    // isso o mês sai da CONTAGEM de lançamentos, não do valor.
+    const lancamentos = [
+      ...Array.from({ length: 6 }, (_, i) => dia(i + 1, 40)),
+      tx({ date: "2025-10-14", invoiceMonth: "2026-08", amount: 2000 }),
+    ];
+    const r = dailySpending(lancamentos, "2026-08");
+    expect(r.month).toBe("2026-07");
+    expect(r.outsideCents).toBe(200_000);
+    expect(r.outsideCount).toBe(1);
+  });
+
+  it("separa a compra do mês vizinho da parcela antiga", () => {
+    // Na fatura real de agosto, 10 dos 13 lançamentos de fora eram compras de
+    // JUNHO - o cartão fecha no meio do mês - e só 3 eram parcelas velhas.
+    // Chamar os treze de parcela seria mentira, então vêm discriminados.
+    const lancamentos = [
+      ...Array.from({ length: 6 }, (_, i) => dia(i + 1, 40)),
+      tx({ date: "2026-06-28", invoiceMonth: "2026-08", amount: 100 }),
+      tx({ date: "2026-06-29", invoiceMonth: "2026-08", amount: 50 }),
+      tx({ date: "2025-10-14", invoiceMonth: "2026-08", amount: 99 }),
+    ];
+    const r = dailySpending(lancamentos, "2026-08");
+    expect(r.outsideByMonth).toEqual([
+      { month: "2026-06", totalCents: 15_000, count: 2 },
+      { month: "2025-10", totalCents: 9_900, count: 1 },
+    ]);
+  });
+
+  it("sem lançamento nenhum, desenha o mês pedido em vez de sumir", () => {
+    const r = dailySpending([], "2026-08");
+    expect(r.month).toBe("2026-08");
+    expect(r.days).toHaveLength(31);
+    expect(r.outsideCents).toBe(0);
   });
 });
