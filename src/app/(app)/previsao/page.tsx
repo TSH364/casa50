@@ -3,6 +3,8 @@ import { Suspense } from "react";
 import { notFound } from "next/navigation";
 import { CalendarClock, CreditCard } from "lucide-react";
 import { getActiveHouse, listMembers } from "@/lib/houses";
+import { houseView } from "@/lib/house-view";
+import { TotalsNote } from "@/components/totals-note";
 import {
   listCards,
   listCategories,
@@ -28,7 +30,7 @@ export const metadata: Metadata = { title: "Previsão · Fluxo" };
 export default async function PrevisaoPage({
   searchParams,
 }: {
-  searchParams: Promise<{ mes?: string }>;
+  searchParams: Promise<{ mes?: string; totais?: string }>;
 }) {
   const { active } = await getActiveHouse();
   if (!active) notFound();
@@ -37,6 +39,9 @@ export default async function PrevisaoPage({
   const month =
     params.mes && isMonthKey(params.mes) ? params.mes : currentMonth();
 
+  const view = await houseView(active.id, params.totais);
+  const excludeCategoryIds = view.excludeCategoryIds;
+
   const [transactions, recurrences, categories, cards, members] =
     await Promise.all([
       // Doze meses para trás: a detecção de recorrência precisa de sequência,
@@ -44,6 +49,7 @@ export default async function PrevisaoPage({
       listTransactions(active.id, {
         fromMonth: addMonths(month, -12),
         toMonth: month,
+        excludeCategoryIds,
         limit: 3000,
       }),
       listRecurrences(active.id),
@@ -84,10 +90,16 @@ export default async function PrevisaoPage({
         <MonthSwitcher month={month} />
       </header>
 
+      <TotalsNote view={view} month={month} />
+
       {/* A agenda vem primeiro: é a informação que chega antes de tudo o
           mais, e é ela que explica um mês fora do padrão. */}
       <Suspense fallback={<AgendaPanelSkeleton />}>
-        <AgendaPanel houseId={active.id} month={month} />
+        <AgendaPanel
+          houseId={active.id}
+          month={month}
+          excludeCategoryIds={excludeCategoryIds}
+        />
       </Suspense>
 
       <Card>

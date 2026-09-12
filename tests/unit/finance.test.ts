@@ -2,13 +2,16 @@ import { describe, expect, it } from "vitest";
 import {
   budgetProgress,
   categoryMatrix,
+  dailySpending,
   committedInstallments,
   incomeCents,
+  itemsByCategory,
   spendingCents,
   spendingOfCents,
   suggestBudget,
   summarizeMonth,
   totalsByCategory,
+  withoutExcludedCategories,
 } from "@/domain/finance";
 import { addMonths, daysRemaining, monthDiff, monthOf, monthRange } from "@/domain/month";
 import type { Transaction } from "@/domain/types";
@@ -47,6 +50,8 @@ function tx(partial: Partial<Transaction> = {}): Transaction {
     installment: null,
     recurringId: null,
     reconciledWithId: null,
+    calendarEventId: null,
+    eventLinkDecided: false,
     isHidden: false,
     isReconciled: false,
     createdBy: null,
@@ -399,5 +404,139 @@ describe("categoryMatrix", () => {
       MESES,
     );
     expect(m.categoryIds).toEqual(["mercado"]);
+  });
+});
+
+describe("withoutExcludedCategories", () => {
+  const tsh = "cat-tsh";
+  const mercado = "cat-mercado";
+
+  function lista() {
+    return [
+      tx({ id: "a", categoryId: tsh, amount: 5000 }),
+      tx({ id: "b", categoryId: mercado, amount: 100 }),
+      tx({ id: "c", categoryId: null, amount: 200 }),
+    ];
+  }
+
+  it("tira só as categorias marcadas", () => {
+    const out = withoutExcludedCategories(lista(), [tsh]);
+    expect(out.map((t) => t.id)).toEqual(["b", "c"]);
+  });
+
+  it("NUNCA tira lançamento sem categoria", () => {
+    // A armadilha do SQL: `category_id NOT IN (...)` é nulo para estas linhas
+    // e as descartaria caladas — e é justamente a lista do que falta
+    // categorizar depois de importar uma fatura.
+    const out = withoutExcludedCategories(lista(), [tsh, mercado]);
+    expect(out.map((t) => t.id)).toEqual(["c"]);
+  });
+
+  it("sem nada marcado, devolve tudo", () => {
+    expect(withoutExcludedCategories(lista(), [])).toHaveLength(3);
+  });
+
+  it("não altera a lista recebida", () => {
+    const original = lista();
+    withoutExcludedCategories(original, [tsh]);
+    expect(original).toHaveLength(3);
+  });
+});
+
+describe("itemsByCategory", () => {
+  const mercado = "cat-mercado";
+
+  const lancamentos = [
+    tx({ id: "1", categoryId: mercado, amount: 100, date: "2026-08-03" }),
+    tx({ id: "2", categoryId: mercado, amount: 250, date: "2026-08-10" }),
+    tx({ id: "3", categoryId: null, amount: 70, date: "2026-08-11" }),
+    // Não entram: pagamento de fatura vale zero, e oculto não conta.
+    tx({ id: "4", categoryId: mercado, amount: 900, type: "payment" }),
+    tx({ id: "5", categoryId: mercado, amount: 40, isHidden: true }),
+    // Outro mês.
+    tx({ id: "6", categoryId: mercado, amount: 500, invoiceMonth: "2026-07" }),
+  ];
+
+  it("a lista fecha com o total que ela detalha", () => {
+    // É o ponto da função: uma lista que não soma o número que está ao lado
+    // dela é pior do que não ter lista.
+    const totais = totalsByCategory(lancamentos, "2026-08");
+    const itens = itemsByCategory(lancamentos, "2026-08");
+
+    for (const total of totais) {
+      const soma = (itens.get(total.categoryId) ?? []).reduce(
+        (s, i) => s + i.spendCents,
+        0,
+      );
+      expect(soma).toBe(total.totalCents);
+    }
+  });
+
+  it("agrupa sem categoria numa chave própria", () => {
+    const itens = itemsByCategory(lancamentos, "2026-08");
+    expect(itens.get(null)?.map((i) => i.id)).toEqual(["3"]);
+  });
+
+  it("ordena do maior para o menor", () => {
+    const itens = itemsByCategory(lancamentos, "2026-08");
+    expect(itens.get(mercado)?.map((i) => i.id)).toEqual(["2", "1"]);
+  });
+
+  it("traz a parcela quando existe", () => {
+    const itens = itemsByCategory(
+      [tx({ id: "p", categoryId: mercado, installment: { current: 3, total: 10, value: null } })],
+      "2026-08",
+    );
+    expect(itens.get(mercado)?.[0]?.installment).toBe("3/10");
+  });
+});
+
+describe("dailySpending", () => {
+  function dia(d: number, valor: number) {
+    return tx({ date: `2026-08-${String(d).padStart(2, "0")}`, amount: valor });
+  }
+
+  it("traz todos os dias do mês, inclusive os sem gasto", () => {
+    const dias = dailySpending([dia(5, 100)], "2026-08");
+    expect(dias).toHaveLength(31);
+    expect(dias[0]?.totalCents).toBe(0);
+    expect(dias[0]?.step).toBe(0);
+  });
+
+  it("um dia gigante não apaga o resto do mês", () => {
+    // O caso da fatura real: um dia de R$ 9.597 convivendo com dezenas de
+    // R$ 40. Dividido pelo máximo, o mês inteiro cairia no passo 1.
+    const lancamentos = [
+      ...Array.from({ length: 12 }, (_, i) => dia(i + 1, 40)),
+      ...Array.from({ length: 8 }, (_, i) => dia(i + 13, 200)),
+      dia(25, 9597),
+    ];
+    const dias = dailySpending(lancamentos, "2026-08");
+    const passos = new Set(dias.filter((d) => d.totalCents > 0).map((d) => d.step));
+    // Mais de um passo em uso: o calendário tem relevo.
+    expect(passos.size).toBeGreaterThan(1);
+    expect(dias.find((d) => d.day === 25)?.step).toBe(4);
+  });
+
+  it("dia sem gasto é passo 0, e nunca passo 1", () => {
+    const dias = dailySpending([dia(5, 1)], "2026-08");
+    expect(dias.find((d) => d.day === 6)?.step).toBe(0);
+    expect(dias.find((d) => d.day === 5)?.step).toBeGreaterThan(0);
+  });
+
+  it("soma vários lançamentos do mesmo dia e conta quantos são", () => {
+    const dias = dailySpending([dia(7, 30), dia(7, 20)], "2026-08");
+    const sete = dias.find((d) => d.day === 7);
+    expect(sete?.totalCents).toBe(5_000);
+    expect(sete?.count).toBe(2);
+  });
+
+  it("fecha com o total do mês", () => {
+    const lancamentos = [dia(3, 100), dia(9, 250), dia(9, 50)];
+    const soma = dailySpending(lancamentos, "2026-08").reduce(
+      (s, d) => s + d.totalCents,
+      0,
+    );
+    expect(soma).toBe(40_000);
   });
 });

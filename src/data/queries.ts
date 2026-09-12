@@ -1,4 +1,5 @@
 import "server-only";
+import { withoutExcludedCategories } from "@/domain/finance";
 import { createClient } from "@/lib/supabase/server";
 import type {
   Budget,
@@ -111,6 +112,18 @@ export interface TransactionFilter {
   categoryId?: string | null;
   /** Busca livre em descrição e estabelecimento. */
   search?: string;
+  /**
+   * Categorias que não contam nos totais da casa.
+   *
+   * O corte acontece aqui, e em nenhum outro lugar: se cada tela filtrasse por
+   * conta própria, uma acabaria esquecida e os números deixariam de bater
+   * entre si - foi exatamente assim que o total da fatura já saiu negativo
+   * uma vez, com duas cópias da mesma regra divergindo.
+   *
+   * Lançamento sem categoria nunca é excluído: ausência de categoria não é o
+   * mesmo que pertencer a uma categoria excluída.
+   */
+  excludeCategoryIds?: readonly string[];
   limit?: number;
 }
 
@@ -155,7 +168,12 @@ export async function listTransactions(
     .limit(filter.limit ?? 500);
 
   if (error) fail("os lançamentos", error);
-  return (data ?? []).map(mapTransaction);
+  const rows = (data ?? []).map(mapTransaction);
+
+  // O corte é feito em memória, e não como filtro no PostgREST: em SQL,
+  // `category_id NOT IN (...)` descarta em silêncio as linhas com categoria
+  // nula. A regra mora no domínio, onde tem teste.
+  return withoutExcludedCategories(rows, filter.excludeCategoryIds ?? []);
 }
 
 export async function getTransaction(id: string): Promise<Transaction | null> {
@@ -482,4 +500,30 @@ export async function listCalendarEvents(
 
   if (error) fail("os eventos da agenda", error);
   return (data ?? []).map(mapCalendarEvent);
+}
+
+/**
+ * Propostas de subcategoria que a casa ja recusou.
+ *
+ * Devolve chaves `categoria|proposta` para a tela filtrar. Se a consulta
+ * falhar - tabela ainda nao migrada, por exemplo - devolve vazio em vez de
+ * derrubar a pagina: sem as recusas a tela mostra sugestao demais, o que e
+ * chato; sem a pagina, a casa perde o gerenciador de categorias inteiro.
+ */
+export async function listSubcategoryDismissals(
+  houseId: string,
+): Promise<Set<string>> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("subcategory_dismissals")
+    .select("category_id, suggestion_key")
+    .eq("house_id", houseId);
+
+  if (error) {
+    console.error("[categorias] falha ao ler as recusas", { code: error.code });
+    return new Set();
+  }
+  return new Set(
+    (data ?? []).map((r) => `${r.category_id}|${r.suggestion_key}`),
+  );
 }

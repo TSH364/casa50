@@ -95,8 +95,21 @@ function summarize(
  * Carregado uma vez por operação e passado adiante: a resolução roda por
  * lançamento, e ir ao banco a cada linha seria uma consulta por compra.
  */
+/**
+ * O que uma regra aprendida manda fazer com um estabelecimento.
+ *
+ * Passou a carregar a subcategoria quando o app comecou a PROPOR subcategorias
+ * por comportamento (secao 14): antes disso a coluna `subcategory_id` existia
+ * em `learned_rules` e nao era lida por ninguem, entao a subcategoria decidida
+ * numa fatura se perdia na seguinte.
+ */
+interface RuleTarget {
+  categoryId: string | null;
+  subcategoryId: string | null;
+}
+
 interface CategoryMaps {
-  ruleByPattern: Map<string, string | null>;
+  ruleByPattern: Map<string, RuleTarget>;
   byName: Map<string, string>;
   nameById: Map<string, string>;
   /**
@@ -115,7 +128,7 @@ async function loadCategoryMaps(
   const [{ data: rules }, { data: categories }] = await Promise.all([
     supabase
       .from("learned_rules")
-      .select("normalized_pattern, category_id")
+      .select("normalized_pattern, category_id, subcategory_id")
       .eq("house_id", houseId),
     supabase
       .from("categories")
@@ -143,7 +156,10 @@ async function loadCategoryMaps(
     ruleByPattern: new Map(
       (rules ?? []).map((r) => [
         String(r.normalized_pattern),
-        r.category_id as string | null,
+        {
+          categoryId: r.category_id as string | null,
+          subcategoryId: r.subcategory_id as string | null,
+        },
       ]),
     ),
     byName,
@@ -187,7 +203,7 @@ function resolveCategoryId(
   const literal = (name: string | null) =>
     name ? maps.byName.get(normalizeMerchant(name)) : undefined;
 
-  const fromRule = maps.ruleByPattern.get(input.merchantNormalized);
+  const fromRule = maps.ruleByPattern.get(input.merchantNormalized)?.categoryId;
   const fromMerchant = canonical(categoryFromMerchant(input.merchantNormalized));
   const fromHint = input.categoryHint
     ? (literal(input.categoryHint) ??
@@ -196,6 +212,25 @@ function resolveCategoryId(
   const fromType = input.type === "fee" ? canonical("Tarifas") : undefined;
 
   return fromRule ?? fromMerchant ?? fromHint ?? fromType ?? null;
+}
+
+/**
+ * Subcategoria que a regra aprendida manda, se houver.
+ *
+ * So vale quando a regra e a linha concordam sobre a categoria-mae. Sem essa
+ * checagem, uma linha que caiu em Mercado pelo nome da loja receberia a
+ * subcategoria "Rotina de dia util" de Alimentacao, e a subcategoria ficaria
+ * pendurada numa arvore a que nao pertence.
+ */
+function resolveSubcategoryId(
+  merchantNormalized: string,
+  categoryId: string | null,
+  maps: CategoryMaps,
+): string | null {
+  if (categoryId === null) return null;
+  const rule = maps.ruleByPattern.get(merchantNormalized);
+  if (!rule || rule.categoryId !== categoryId) return null;
+  return rule.subcategoryId;
 }
 
 /**
@@ -494,6 +529,12 @@ export async function commitImport(input: unknown): Promise<CommitResult> {
     return { error: "Não foi possível registrar a importação." };
   }
 
+  // As regras de novo, aqui: a revisao decidiu a CATEGORIA e o cliente devolveu
+  // essa escolha, mas a subcategoria nunca passa pelo navegador - sai da regra
+  // no servidor, no momento de gravar. Uma linha a mais no round-trip seria
+  // uma linha a mais que o cliente poderia forjar.
+  const maps = await loadCategoryMaps(supabase, houseId);
+
   const rows = toImport.map((d) => ({
     house_id: houseId,
     invoice_id: invoice.id,
@@ -512,6 +553,11 @@ export async function commitImport(input: unknown): Promise<CommitResult> {
     origin: "invoice" as const,
     status: "confirmed" as const,
     category_id: d.categoryId,
+    subcategory_id: resolveSubcategoryId(
+      d.merchantNormalized,
+      d.categoryId,
+      maps,
+    ),
     visibility: "shared" as const,
     installment_current: d.installmentCurrent,
     installment_total: d.installmentTotal,
@@ -682,25 +728,32 @@ export async function reclassifyInvoice(
   // categorias.
   const idsByCategory = new Map<string, string[]>();
   for (const row of semCategoria) {
+    const merchant = String(row.merchant_normalized ?? "");
     const categoryId = resolveCategoryId(
       {
-        merchantNormalized: String(row.merchant_normalized ?? ""),
+        merchantNormalized: merchant,
         categoryHint: (row.category_hint as string | null) ?? null,
         type: String(row.type),
       },
       maps,
     );
     if (categoryId === null) continue;
-    const list = idsByCategory.get(categoryId) ?? [];
+    // A subcategoria entra na mesma chave de agrupamento: sem isso ela viraria
+    // uma segunda gravacao por lancamento, e a reanalise existe justamente
+    // para nao ir ao banco linha a linha.
+    const subcategoryId = resolveSubcategoryId(merchant, categoryId, maps);
+    const key = `${categoryId}|${subcategoryId ?? ""}`;
+    const list = idsByCategory.get(key) ?? [];
     list.push(row.id as string);
-    idsByCategory.set(categoryId, list);
+    idsByCategory.set(key, list);
   }
 
   let updated = 0;
-  for (const [categoryId, ids] of idsByCategory) {
+  for (const [key, ids] of idsByCategory) {
+    const [categoryId, sub] = key.split("|");
     const { error } = await supabase
       .from("transactions")
-      .update({ category_id: categoryId })
+      .update({ category_id: categoryId, subcategory_id: sub || null })
       // O `is null` continua no update: entre a leitura e a gravação alguém
       // pode ter categorizado a linha à mão, e ela tem prioridade.
       .in("id", ids)

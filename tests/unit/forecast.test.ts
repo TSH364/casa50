@@ -40,6 +40,8 @@ function tx(overrides: Partial<Transaction> = {}): Transaction {
     installment: null,
     recurringId: null,
     reconciledWithId: null,
+    calendarEventId: null,
+    eventLinkDecided: false,
     isHidden: false,
     isReconciled: false,
     createdBy: null,

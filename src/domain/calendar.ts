@@ -64,8 +64,13 @@ const EVENT_RULES: { pattern: RegExp; kind: EventKind }[] = [
   },
   {
     kind: "health",
+    // "dr." e "dra." ficaram DE FORA, e o motivo esta numa agenda real: o
+    // endereco entra na busca junto com o titulo, e meia cidade brasileira
+    // mora em "Rua Dr. Fulano". Com esses dois tokens, "Retirar diploma" na
+    // Rua Dr. Alvaro Alvim virava consulta medica, e um almoco na Av. Dr.
+    // Arnaldo tambem. Duas letras casam por acaso; os nomes abaixo, nao.
     pattern:
-      /\b(consulta|dentista|m[eé]dic[oa]|exame|laborat[oó]rio|psic[oó]log[oa]|psiquiatra|terapia|fisioterapia|nutricionista|vacina|cirurgia|hospital|oftalmo|dermato|check[ -]?up|dr\.?|dra\.?)\b/i,
+      /\b(consulta|dentista|m[eé]dic[oa]|exame|laborat[oó]rio|psiquiatra|terapia|fisioterapia|vacina|cirurgia|hospital|pronto[ -]?socorro|check[ -]?up|vet|odonto\w*|psic[oó]log\w*|nutricion\w*|oftalmo\w*|dermato\w*|cardiolog\w*|ortoped\w*|pediatr\w*|ginecolog\w*|endocrino\w*|urolog\w*|veterin\w*)\b/i,
   },
   {
     kind: "education",
@@ -221,6 +226,8 @@ export interface EventSpend {
    */
   totalCents: Cents;
   days: number;
+  /** Quantos dos lancamentos acima foram confirmados por uma pessoa. */
+  confirmedCount: number;
 }
 
 function countable(t: Transaction): boolean {
@@ -245,19 +252,33 @@ export function spendDuringEvents(
     return eventDays(a) - eventDays(b);
   });
 
-  // Indice por data: sem ele a varredura seria eventos x lancamentos, o que
-  // numa agenda de um ano com tres mil linhas de fatura passa de seis milhoes
-  // de comparacoes a cada render da pagina.
+  const byEvent = new Map<string, Transaction[]>(ranked.map((e) => [e.id, []]));
+  const taken = new Set<string>();
+
+  // Primeiro o que uma PESSOA decidiu. A decisao vale contra a data: uma
+  // lembranca comprada uma semana antes da festa pertence a festa, e a
+  // assinatura que caiu no meio da viagem nao pertence a viagem. Nada disso a
+  // coincidencia de datas consegue saber.
+  for (const t of transactions) {
+    if (!t.eventLinkDecided || !countable(t) || spendingCents(t) <= 0) continue;
+    taken.add(t.id);
+    // Decidido sem evento e "nao e de compromisso nenhum": sai da conta, e
+    // nao volta pela porta do palpite.
+    if (t.calendarEventId === null) continue;
+    byEvent.get(t.calendarEventId)?.push(t);
+  }
+
+  // Indice por data para o resto: sem ele a varredura seria eventos x
+  // lancamentos, o que numa agenda de um ano com tres mil linhas de fatura
+  // passa de seis milhoes de comparacoes a cada render da pagina.
   const byDate = new Map<IsoDate, Transaction[]>();
   for (const t of transactions) {
+    if (taken.has(t.id)) continue;
     if (!countable(t) || spendingCents(t) <= 0) continue;
     const list = byDate.get(t.date);
     if (list) list.push(t);
     else byDate.set(t.date, [t]);
   }
-
-  const byEvent = new Map<string, Transaction[]>(ranked.map((e) => [e.id, []]));
-  const taken = new Set<string>();
 
   for (const event of ranked) {
     const from = dayNumber(event.startsOn);
@@ -279,6 +300,7 @@ export function spendDuringEvents(
         transactions: list.sort((a, b) => a.date.localeCompare(b.date)),
         totalCents: list.reduce((sum, t) => sum + spendingCents(t), 0),
         days: eventDays(event),
+        confirmedCount: list.filter((t) => t.eventLinkDecided).length,
       };
     })
     .sort((a, b) => b.totalCents - a.totalCents);
@@ -457,4 +479,55 @@ export function budgetTotalCents(
   return budgets
     .filter((b) => b.month === month)
     .reduce((sum, b) => sum + toCents(b.limitAmount), 0);
+}
+
+export interface EventCandidate {
+  id: string;
+  description: string;
+  date: IsoDate;
+  spendCents: Cents;
+  /**
+   * `linked` - alguem confirmou que e deste compromisso.
+   * `excluded` - alguem disse que nao e (deste, ou de nenhum).
+   * `guess` - ninguem opinou; entra na conta so pela data.
+   */
+  state: "linked" | "excluded" | "guess";
+}
+
+/**
+ * O que a casa precisa ver para decidir o vinculo de um compromisso.
+ *
+ * Traz os lancamentos dos dias do evento em QUALQUER estado - inclusive os ja
+ * recusados - mais os que foram vinculados a ele de fora dos dias. Mostrar so
+ * o que esta contando agora impediria justamente o gesto de corrigir: quem
+ * marcou errado precisa reencontrar a linha para desmarcar.
+ */
+export function eventCandidates(
+  event: CalendarEvent,
+  transactions: readonly Transaction[],
+): EventCandidate[] {
+  const from = dayNumber(event.startsOn);
+  const to = Math.min(dayNumber(event.endsOn), from + MAX_EVENT_DAYS);
+
+  const out: EventCandidate[] = [];
+  for (const t of transactions) {
+    if (!countable(t)) continue;
+    const spend = spendingCents(t);
+    if (spend <= 0) continue;
+
+    const day = dayNumber(t.date);
+    const nosDias = day >= from && day <= to;
+    const vinculado = t.eventLinkDecided && t.calendarEventId === event.id;
+    if (!nosDias && !vinculado) continue;
+
+    out.push({
+      id: t.id,
+      description: t.merchantAlias ?? t.description,
+      date: t.date,
+      spendCents: spend,
+      state: vinculado ? "linked" : t.eventLinkDecided ? "excluded" : "guess",
+    });
+  }
+
+  return out.sort((a, b) => b.spendCents - a.spendCents);
 }

@@ -45,6 +45,8 @@ function tx(overrides: Partial<Transaction> = {}): Transaction {
     installment: null,
     recurringId: null,
     reconciledWithId: null,
+    calendarEventId: null,
+    eventLinkDecided: false,
     isHidden: false,
     isReconciled: false,
     createdBy: null,
@@ -339,5 +341,114 @@ describe("classifyEvent — ordem da tabela", () => {
 
   it("hospedagem sozinha ainda vale como viagem", () => {
     expect(classifyEvent("Pousada em Trindade")).toBe("trip");
+  });
+});
+
+describe("classifyEvent — armadilhas de uma agenda real", () => {
+  it("endereço em 'Rua Dr.' não transforma o compromisso em consulta", () => {
+    // O caso que apareceu na agenda de verdade: meia cidade brasileira mora
+    // numa rua com nome de doutor, e o local entra na busca junto do título.
+    expect(
+      classifyEvent("Retirar diploma — Belas Artes", "Rua Dr. Álvaro Alvim, 90, 6º andar"),
+    ).toBe("other");
+    expect(classifyEvent("Almoço", "Av. Dr. Arnaldo, 200")).toBe("other");
+    expect(classifyEvent("Reunião", "Praça Dr. João Mendes")).toBe("work");
+  });
+
+  it("continua reconhecendo consulta de verdade", () => {
+    expect(classifyEvent("Consulta – CARDIOLOGIA", "AL MADEIRA, 258")).toBe("health");
+    expect(classifyEvent("Dentista vini e Lari")).toBe("health");
+    expect(classifyEvent("Exame de sangue")).toBe("health");
+  });
+
+  it("veterinário conta como saúde", () => {
+    expect(classifyEvent("Vet Dori")).toBe("health");
+    expect(classifyEvent("Veterinária da Mel")).toBe("health");
+  });
+
+  it("especialidade pelo nome, não por abreviação", () => {
+    expect(classifyEvent("Ortopedista")).toBe("health");
+    expect(classifyEvent("Pediatra do Isaac")).toBe("health");
+  });
+});
+
+describe("spendDuringEvents — decisão de pessoa vence a data", () => {
+  const festa = ev({
+    id: "festa",
+    kind: "celebration",
+    startsOn: "2026-08-12",
+    endsOn: "2026-08-12",
+  });
+
+  it("o que foi marcado como 'não é do evento' sai da conta", () => {
+    // A assinatura que cobra no dia da festa não é despesa da festa, e é
+    // exatamente esse ruído que estragava a estimativa da próxima.
+    const resultado = spendDuringEvents(
+      [festa],
+      [
+        tx({ id: "bolo", date: "2026-08-12", amount: 300 }),
+        tx({
+          id: "netflix",
+          date: "2026-08-12",
+          amount: 55,
+          eventLinkDecided: true,
+          calendarEventId: null,
+        }),
+      ],
+    );
+    expect(resultado[0]?.totalCents).toBe(30_000);
+    expect(resultado[0]?.transactions.map((t) => t.id)).toEqual(["bolo"]);
+  });
+
+  it("o que foi vinculado entra mesmo caindo fora dos dias", () => {
+    // A lembrança comprada na semana anterior pertence à festa.
+    const resultado = spendDuringEvents(
+      [festa],
+      [
+        tx({
+          id: "presente",
+          date: "2026-08-05",
+          amount: 200,
+          eventLinkDecided: true,
+          calendarEventId: "festa",
+        }),
+      ],
+    );
+    expect(resultado[0]?.totalCents).toBe(20_000);
+    expect(resultado[0]?.confirmedCount).toBe(1);
+  });
+
+  it("a decisão manda contra o evento mais específico do dia", () => {
+    const viagem = ev({
+      id: "viagem",
+      kind: "trip",
+      startsOn: "2026-08-10",
+      endsOn: "2026-08-17",
+    });
+    // Pela data, o evento de um dia ganharia; a pessoa disse que é da viagem.
+    const resultado = spendDuringEvents(
+      [viagem, festa],
+      [
+        tx({
+          id: "hotel",
+          date: "2026-08-12",
+          amount: 800,
+          eventLinkDecided: true,
+          calendarEventId: "viagem",
+        }),
+      ],
+    );
+    const porId = new Map(resultado.map((r) => [r.event.id, r.totalCents]));
+    expect(porId.get("viagem")).toBe(80_000);
+    expect(porId.get("festa")).toBe(0);
+  });
+
+  it("sem decisão, continua valendo o palpite por data", () => {
+    const resultado = spendDuringEvents(
+      [festa],
+      [tx({ id: "x", date: "2026-08-12", amount: 90 })],
+    );
+    expect(resultado[0]?.totalCents).toBe(9_000);
+    expect(resultado[0]?.confirmedCount).toBe(0);
   });
 });

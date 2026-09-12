@@ -33,6 +33,8 @@ function tx(overrides: Partial<Transaction> = {}): Transaction {
     installment: null,
     recurringId: null,
     reconciledWithId: null,
+    calendarEventId: null,
+    eventLinkDecided: false,
     isHidden: false,
     isReconciled: false,
     createdBy: null,
@@ -50,6 +52,7 @@ const MERCADO: Category = {
   icon: null,
   parentId: null,
   isActive: true,
+  excludedFromTotals: false,
 };
 
 /** Mesma formatacao que os insights usam, para a asercao nao depender de

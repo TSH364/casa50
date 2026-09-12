@@ -9,6 +9,8 @@ import {
   TrendingUp,
 } from "lucide-react";
 import { getActiveHouse } from "@/lib/houses";
+import { houseView } from "@/lib/house-view";
+import { TotalsNote } from "@/components/totals-note";
 import {
   listBudgets,
   listCalendarEvents,
@@ -108,7 +110,7 @@ function InsightCard({ insight }: { insight: Insight }) {
 export default async function InsightsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ mes?: string }>;
+  searchParams: Promise<{ mes?: string; totais?: string }>;
 }) {
   const { active } = await getActiveHouse();
   if (!active) notFound();
@@ -117,14 +119,18 @@ export default async function InsightsPage({
   const month =
     params.mes && isMonthKey(params.mes) ? params.mes : currentMonth();
 
+  const view = await houseView(active.id, params.totais);
+  const excludeCategoryIds = view.excludeCategoryIds;
+
   const [transactions, categories, budgets, recurrences, events] =
     await Promise.all([
       listTransactions(active.id, {
         fromMonth: addMonths(month, -6),
         toMonth: month,
+        excludeCategoryIds,
         limit: 3000,
       }),
-      listCategories(active.id),
+      Promise.resolve(view.categories),
       listBudgets(active.id, month),
       listRecurrences(active.id),
       // Doze meses de agenda: o aprendizado de "quanto custa uma viagem"
@@ -162,6 +168,8 @@ export default async function InsightsPage({
       <header className="flex flex-wrap items-center justify-between gap-3">
         <MonthSwitcher month={month} />
       </header>
+
+      <TotalsNote view={view} month={month} />
 
       <Card>
         <CardHeader
@@ -204,7 +212,11 @@ export default async function InsightsPage({
         saíram, para o casal conferir a conclusão em vez de acreditar nela.
       */}
       <Suspense key={`matriz:${month}`} fallback={<CategoryMatrixSkeleton />}>
-        <CategoryMatrix houseId={active.id} month={month} />
+        <CategoryMatrix
+          houseId={active.id}
+          month={month}
+          excludeCategoryIds={excludeCategoryIds}
+        />
       </Suspense>
     </div>
   );

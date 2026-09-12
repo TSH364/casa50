@@ -56,17 +56,21 @@ export async function MonthPanels({
   houseId,
   month,
   members,
+  excludeCategoryIds,
 }: {
   houseId: string;
   month: MonthKey;
   members: MemberSummary[];
+  /** Categorias fora dos totais da casa. Vem de `houseView`. */
+  excludeCategoryIds: string[];
 }) {
   const [monthTransactions, history, recurrences, budgets, categories, settlements] =
     await Promise.all([
-      listTransactions(houseId, { month }),
+      listTransactions(houseId, { month, excludeCategoryIds }),
       listTransactions(houseId, {
         fromMonth: addMonths(month, -12),
         toMonth: month,
+      excludeCategoryIds,
         limit: 3000,
       }),
       listRecurrences(houseId),

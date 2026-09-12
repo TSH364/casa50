@@ -39,10 +39,13 @@ export async function RebalancePanel({
   houseId,
   month,
   categories,
+  excludeCategoryIds,
 }: {
   houseId: string;
   month: MonthKey;
   categories: Category[];
+  /** Categorias fora dos totais da casa. Vem de `houseView`. */
+  excludeCategoryIds: string[];
 }) {
   // Mês fechado não se replaneja: o dinheiro já saiu.
   if (month < currentMonth()) return null;
@@ -58,6 +61,7 @@ export async function RebalancePanel({
     listTransactions(houseId, {
       fromMonth: historyFrom,
       toMonth: addMonths(month, 1),
+      excludeCategoryIds,
       limit: 3000,
     }),
     listBudgets(houseId, month),

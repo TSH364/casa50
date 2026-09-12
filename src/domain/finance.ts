@@ -2,6 +2,7 @@ import { toCents, type Cents } from "@/lib/money";
 import { addMonths, daysInMonth, daysRemaining } from "./month";
 import type {
   ForecastStatus,
+  IsoDate,
   MonthKey,
   Transaction,
   TransactionType,
@@ -431,4 +432,137 @@ export function projectMonthEnd(
   const elapsed = total - daysRemaining(month, now) + 1;
   if (elapsed <= 0) return spentCents;
   return Math.round((spentCents / Math.min(elapsed, total)) * total);
+}
+
+/**
+ * Tira da lista os lancamentos das categorias que nao contam nos totais.
+ *
+ * Vive aqui, e nao solto na camada de consulta, porque e uma REGRA e precisa
+ * de teste: escrita ao contrario ela some com dado sem fazer barulho.
+ *
+ * Lancamento sem categoria nunca e excluido. Em SQL, `category_id NOT IN (...)`
+ * avalia como nulo para essas linhas e as descarta em silencio - e "sem
+ * categoria" e justamente o recorte que mais importa depois de importar uma
+ * fatura. A condicao aqui e explicita para que esse caso nao dependa de como
+ * um banco trata nulo.
+ */
+export function withoutExcludedCategories(
+  transactions: readonly Transaction[],
+  excludedCategoryIds: readonly string[],
+): Transaction[] {
+  if (excludedCategoryIds.length === 0) return [...transactions];
+  const fora = new Set(excludedCategoryIds);
+  return transactions.filter(
+    (t) => t.categoryId === null || !fora.has(t.categoryId),
+  );
+}
+
+export interface CategoryItem {
+  id: string;
+  description: string;
+  date: IsoDate;
+  /** Ja com o sinal contabil aplicado, igual ao que soma no total. */
+  spendCents: Cents;
+  installment: string | null;
+}
+
+/**
+ * Os lancamentos de cada categoria, sob exatamente o mesmo filtro que
+ * `totalsByCategory` usa para somar.
+ *
+ * Existe para a tela poder abrir uma categoria e mostrar do que o numero e
+ * feito. A condicao de entrada e a mesma da soma de proposito: uma lista que
+ * nao fecha com o total que ela detalha e pior do que nenhuma lista.
+ */
+export function itemsByCategory(
+  transactions: readonly Transaction[],
+  month: MonthKey,
+  options: SummaryOptions = {},
+): Map<string | null, CategoryItem[]> {
+  const out = new Map<string | null, CategoryItem[]>();
+
+  for (const t of transactions) {
+    if (!matches(t, month, options)) continue;
+    if (!REALIZED.includes(t.status)) continue;
+    const spend = spendingCents(t);
+    if (spend === 0) continue;
+
+    const item: CategoryItem = {
+      id: t.id,
+      description: t.merchantAlias ?? t.description,
+      date: t.date,
+      spendCents: spend,
+      installment: t.installment
+        ? `${t.installment.current}/${t.installment.total}`
+        : null,
+    };
+    const list = out.get(t.categoryId);
+    if (list) list.push(item);
+    else out.set(t.categoryId, [item]);
+  }
+
+  for (const list of out.values()) {
+    list.sort((a, b) => b.spendCents - a.spendCents);
+  }
+  return out;
+}
+
+export interface DaySpend {
+  date: IsoDate;
+  /** Dia do mes, 1..31. */
+  day: number;
+  totalCents: Cents;
+  count: number;
+  /** 0 = sem gasto; 1..4 = intensidade. */
+  step: 0 | 1 | 2 | 3 | 4;
+}
+
+/**
+ * Gasto de cada dia do mes, ja com a intensidade para o calendario.
+ *
+ * A intensidade sai de QUARTIS dos dias com gasto, nao de uma fracao do
+ * maior dia. Numa fatura real um unico dia de R$ 9.597 convive com dezenas de
+ * R$ 40: dividido pelo maximo, o mes inteiro cairia no passo 1 e o calendario
+ * mostraria um quadrado aceso num campo apagado. Por quartil, cada passo
+ * carrega mais ou menos um quarto dos dias e o desenho volta a ter relevo.
+ *
+ * Todo dia do mes aparece, inclusive os sem gasto - o ponto do calendario e
+ * justamente ver os vazios.
+ */
+export function dailySpending(
+  transactions: readonly Transaction[],
+  month: MonthKey,
+  options: SummaryOptions = {},
+): DaySpend[] {
+  const porDia = new Map<IsoDate, { totalCents: Cents; count: number }>();
+
+  for (const t of transactions) {
+    if (!matches(t, month, options)) continue;
+    if (!REALIZED.includes(t.status)) continue;
+    const spend = spendingCents(t);
+    if (spend <= 0) continue;
+    const atual = porDia.get(t.date) ?? { totalCents: 0, count: 0 };
+    atual.totalCents += spend;
+    atual.count += 1;
+    porDia.set(t.date, atual);
+  }
+
+  const valores = [...porDia.values()].map((v) => v.totalCents).sort((a, b) => a - b);
+  const quartil = (p: number) =>
+    valores.length === 0 ? 0 : valores[Math.min(valores.length - 1, Math.floor(valores.length * p))]!;
+  const cortes = [quartil(0.25), quartil(0.5), quartil(0.75)];
+
+  const total = daysInMonth(month);
+  const out: DaySpend[] = [];
+  for (let day = 1; day <= total; day += 1) {
+    const date = `${month}-${String(day).padStart(2, "0")}`;
+    const encontrado = porDia.get(date);
+    const cents = encontrado?.totalCents ?? 0;
+    let step: DaySpend["step"] = 0;
+    if (cents > 0) {
+      step = cents <= cortes[0]! ? 1 : cents <= cortes[1]! ? 2 : cents <= cortes[2]! ? 3 : 4;
+    }
+    out.push({ date, day, totalCents: cents, count: encontrado?.count ?? 0, step });
+  }
+  return out;
 }

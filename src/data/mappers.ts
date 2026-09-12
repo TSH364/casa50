@@ -71,7 +71,7 @@ export function mapCard(row: Record<string, unknown>): Card {
 }
 
 export const CATEGORY_COLUMNS =
-  "id, house_id, name, color, icon, parent_id, is_active";
+  "id, house_id, name, color, icon, parent_id, is_active, excluded_from_totals";
 
 export function mapCategory(row: Record<string, unknown>): Category {
   return {
@@ -82,6 +82,7 @@ export function mapCategory(row: Record<string, unknown>): Category {
     icon: (row.icon as string | null) ?? null,
     parentId: (row.parent_id as string | null) ?? null,
     isActive: row.is_active as boolean,
+    excludedFromTotals: (row.excluded_from_totals as boolean | null) ?? false,
   };
 }
 
@@ -92,6 +93,7 @@ export const TRANSACTION_COLUMNS = `
   type, origin, status, category_id, subcategory_id, note, receipt_url,
   visibility, split_type, split_percentage,
   installment_current, installment_total, installment_value,
+  calendar_event_id, event_link_decided,
   recurring_id, reconciled_with_id, is_hidden, is_reconciled,
   created_by, created_at, updated_at
 `;
@@ -141,6 +143,8 @@ export function mapTransaction(row: Record<string, unknown>): Transaction {
         : null,
 
     recurringId: (row.recurring_id as string | null) ?? null,
+    calendarEventId: (row.calendar_event_id as string | null) ?? null,
+    eventLinkDecided: (row.event_link_decided as boolean | null) ?? false,
     reconciledWithId: (row.reconciled_with_id as string | null) ?? null,
 
     isHidden: row.is_hidden as boolean,

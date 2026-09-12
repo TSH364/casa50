@@ -91,6 +91,12 @@ export interface Category {
   icon: string | null;
   parentId: string | null;
   isActive: boolean;
+  /**
+   * Quando verdadeiro, os lancamentos desta categoria ficam fora dos totais,
+   * medias e previsoes da casa. Continuam visiveis e editaveis em Extratos:
+   * a marca diz "isto nao e gasto da casa", nao "esconda isto".
+   */
+  excludedFromTotals: boolean;
 }
 
 export interface Installment {
@@ -137,6 +143,16 @@ export interface Transaction {
   installment: Installment | null;
   recurringId: string | null;
   reconciledWithId: string | null;
+
+  /**
+   * Compromisso da agenda a que este lancamento pertence.
+   *
+   * Junto com `eventLinkDecided` forma tres estados: sem decisao vale o
+   * palpite por data; decidido com evento e vinculo confirmado; decidido sem
+   * evento quer dizer "nao e de compromisso nenhum".
+   */
+  calendarEventId: string | null;
+  eventLinkDecided: boolean;
 
   isHidden: boolean;
   isReconciled: boolean;

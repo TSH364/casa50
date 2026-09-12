@@ -1,11 +1,10 @@
 import { listRecurrences, listTransactions } from "@/data/queries";
 import { spendingCents } from "@/domain/finance";
 import { forecastMonths } from "@/domain/forecast";
-import { addMonths, monthRange, monthShortLabel } from "@/domain/month";
-import { formatCents, formatCentsCompact } from "@/lib/money";
+import { addMonths, monthRange } from "@/domain/month";
 import { Card, CardHeader } from "@/components/ui/card";
 import { Skeleton } from "@/components/states";
-import { cn } from "@/lib/utils";
+import { FlowBars } from "./flow-bars";
 import type { MonthKey } from "@/domain/types";
 
 export function FlowMapSkeleton() {
@@ -29,9 +28,12 @@ export function FlowMapSkeleton() {
 export async function FlowMap({
   houseId,
   month,
+  excludeCategoryIds,
 }: {
   houseId: string;
   month: MonthKey;
+  /** Categorias fora dos totais da casa. Vem de `houseView`. */
+  excludeCategoryIds: string[];
 }) {
   const pastFrom = addMonths(month, -5);
 
@@ -39,6 +41,7 @@ export async function FlowMap({
     listTransactions(houseId, {
       fromMonth: addMonths(month, -12),
       toMonth: month,
+      excludeCategoryIds,
       limit: 3000,
     }),
     listRecurrences(houseId),
@@ -65,7 +68,6 @@ export async function FlowMap({
   }));
 
   const bars = [...realized, ...forecast];
-  const max = Math.max(...bars.map((b) => b.cents), 1);
   const hasAnyData = bars.some((b) => b.cents > 0);
 
   return (
@@ -81,45 +83,7 @@ export async function FlowMap({
         </p>
       ) : (
         <>
-          <ul className="flex items-end gap-1.5" style={{ height: "8rem" }}>
-            {bars.map((bar) => {
-              const height = Math.max(2, (bar.cents / max) * 100);
-              const isCurrent = bar.month === month;
-              return (
-                <li
-                  key={bar.month}
-                  className="flex h-full min-w-0 flex-1 flex-col justify-end gap-1"
-                >
-                  <span
-                    className="tabular block text-center text-[10px] text-ink-faint"
-                    aria-hidden
-                  >
-                    {bar.cents > 0 ? formatCentsCompact(bar.cents) : ""}
-                  </span>
-                  <span
-                    role="img"
-                    aria-label={`${monthShortLabel(bar.month)}: ${formatCents(bar.cents)}${
-                      bar.isForecast ? " (previsto)" : ""
-                    }`}
-                    className={cn(
-                      "block w-full rounded-t-[3px]",
-                      bar.isForecast
-                        ? // Hachura: previsão nunca ganha o mesmo preenchimento
-                          // sólido de um mês que realmente aconteceu.
-                          "border border-dashed border-brand/60 bg-brand/15"
-                        : isCurrent
-                          ? "bg-brand"
-                          : "bg-brand/50",
-                    )}
-                    style={{ height: `${height}%` }}
-                  />
-                  <span className="block truncate text-center text-[10px] text-ink-faint">
-                    {monthShortLabel(bar.month)}
-                  </span>
-                </li>
-              );
-            })}
-          </ul>
+          <FlowBars bars={bars} month={month} />
 
           <dl className="mt-3 flex flex-wrap gap-x-4 gap-y-1 border-t border-line pt-2.5 text-[12px]">
             <div className="flex items-center gap-1.5">
