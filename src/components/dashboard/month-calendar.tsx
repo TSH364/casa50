@@ -5,7 +5,7 @@ import { formatCents } from "@/lib/money";
 import { Card, CardHeader } from "@/components/ui/card";
 import { Skeleton } from "@/components/states";
 import { CalendarGrid, type CalendarDay } from "./calendar-grid";
-import type { MonthKey } from "@/domain/types";
+import type { Category, MonthKey } from "@/domain/types";
 
 export function MonthCalendarSkeleton() {
   return (
@@ -29,6 +29,7 @@ export async function MonthCalendar({
   memberId,
   cardId,
   excludeCategoryIds,
+  categories,
 }: {
   houseId: string;
   month: MonthKey;
@@ -36,6 +37,8 @@ export async function MonthCalendar({
   cardId: string | null;
   /** Categorias fora dos totais da casa. Vem de `houseView`. */
   excludeCategoryIds: string[];
+  /** Todas as categorias da casa, para colorir os lançamentos do dia. */
+  categories: Category[];
 }) {
   const ultimo = `${month}-${String(daysInMonth(month)).padStart(2, "0")}`;
 
@@ -51,14 +54,24 @@ export async function MonthCalendar({
 
   // Os lancamentos de cada dia, sob o mesmo filtro que somou os totais - uma
   // lista que nao fecha com o numero ao lado dela nao serve.
+  // A chave do mapa JA e a categoria - a cor sai daí sem consulta extra.
+  // Subcategoria herda a cor da mãe, então o ponto continua dizendo "isto é
+  // Alimentação" mesmo quando o lançamento está numa subcategoria dela.
+  const porCategoria = new Map(categories.map((c) => [c.id, c]));
   const porDia = new Map<string, CalendarDay["items"]>();
-  for (const lista of itemsByCategory(transactions, month, { memberId, cardId }).values()) {
+  for (const [categoryId, lista] of itemsByCategory(transactions, month, {
+    memberId,
+    cardId,
+  })) {
+    const categoria = categoryId ? porCategoria.get(categoryId) : undefined;
     for (const item of lista) {
       const atual = porDia.get(item.date) ?? [];
       atual.push({
         id: item.id,
         description: item.description,
         spendCents: item.spendCents,
+        categoryColor: categoria?.color ?? null,
+        categoryName: categoria?.name ?? null,
       });
       porDia.set(item.date, atual);
     }

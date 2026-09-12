@@ -11,7 +11,14 @@ import type { MonthKey } from "@/domain/types";
 export interface CalendarDay extends DaySpend {
   /** Compromissos da agenda que caem neste dia. */
   events: string[];
-  items: { id: string; description: string; spendCents: number }[];
+  items: {
+    id: string;
+    description: string;
+    spendCents: number;
+    /** Cor da categoria, para o ponto ao lado do lancamento. */
+    categoryColor: string | null;
+    categoryName: string | null;
+  }[];
 }
 
 const SEMANA = ["D", "S", "T", "Q", "Q", "S", "S"] as const;
@@ -28,15 +35,16 @@ const FUNDO = [
 /**
  * A tinta do numero inverte no meio da rampa.
  *
- * Com uma cor so, o numero do dia sumia no topo: `ink` sobre o passo 4 da
- * 2,85:1, abaixo de qualquer minimo. Assim os quatro passos ficam em AA.
+ * Com uma cor so, o numero do dia sumia numa das pontas. Agora que a rampa vai
+ * do claro ao escuro, a tinta acompanha: escura sobre os passos claros, clara
+ * sobre os escuros. Medido: 7,49 / 5,26 / 4,99 / 7,31 : 1, AA nos quatro.
  */
 const TINTA = [
   "text-ink-faint",
-  "text-ink",
-  "text-ink",
   "text-canvas",
   "text-canvas",
+  "text-ink",
+  "text-ink",
 ] as const;
 
 const INTEIRO = new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 0 });
@@ -167,6 +175,18 @@ export function CalendarGrid({
               <ul className="mt-2 space-y-1 border-l border-line pl-3">
                 {selecionado.items.slice(0, 8).map((item) => (
                   <li key={item.id} className="flex items-baseline gap-2 text-[13px]">
+                    {/* A cor vai num PONTO, e nao no texto do lançamento: cor
+                        sobre texto derruba o contraste de uma categoria clara e
+                        some numa escura, e a mesma paleta serve dez categorias.
+                        O ponto carrega a identidade, a tinta segue legível. O
+                        nome vai no `title` porque cor sozinha não é rótulo. */}
+                    <span
+                      className="size-2 shrink-0 translate-y-[-1px] rounded-full"
+                      style={{
+                        backgroundColor: item.categoryColor ?? "var(--color-line-strong)",
+                      }}
+                      title={item.categoryName ?? "Sem categoria"}
+                    />
                     <span className="min-w-0 flex-1 break-words leading-snug text-ink-muted">
                       {item.description}
                     </span>
