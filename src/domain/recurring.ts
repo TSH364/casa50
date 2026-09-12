@@ -1,5 +1,6 @@
 import type { Cents } from "@/lib/money";
 import type { IsoDate, Transaction } from "./types";
+import { merchantKey } from "./merchants";
 
 /**
  * Reconhecer a cobranca que uma MAQUINA emite, e nao uma pessoa escolhe.
@@ -55,7 +56,7 @@ export function fixedChargeMerchants(
   >();
 
   for (const t of transactions) {
-    const key = t.merchantNormalized;
+    const key = merchantKey(t);
     if (!key) continue;
     const atual = porEstabelecimento.get(key) ?? { valores: [], datas: [] };
     // O valor bruto, e nao o com sinal contabil: o que interessa aqui e se a
@@ -112,6 +113,6 @@ export function notEventSpend(
 ): NotEventReason | null {
   if (t.installment !== null) return "installment";
   if (t.recurringId !== null) return "same_amount";
-  const key = t.merchantNormalized;
+  const key = merchantKey(t);
   return (key && fixed.get(key)) || null;
 }

@@ -2,6 +2,7 @@ import type { Cents } from "@/lib/money";
 import type { IsoDate, Transaction } from "./types";
 import { spendingCents } from "./finance";
 import { fixedChargeMerchants } from "./recurring";
+import { isCanonicalMarketplace, merchantKey, merchantLabel } from "./merchants";
 
 /**
  * Sugestao de subcategoria a partir do comportamento (secao 14).
@@ -150,6 +151,16 @@ function baseDiaUtil(transactions: readonly Transaction[]): number {
 
 /** Em que balde o estabelecimento cai. `null` = nao da para dizer. */
 function classify(stat: MerchantStat, base: number): SuggestionKey | null {
+  // Marketplace nao propoe nada, e sai antes de todas as regras.
+  //
+  // Por dois motivos. O primeiro e uma armadilha que so apareceu depois de
+  // juntar as grafias: o nome canonico "Mercado Livre" contem a palavra
+  // "Mercado", e a regra logo abaixo o classificaria como mercearia - juntar as
+  // grafias quebraria a classificacao no mesmo movimento. O segundo e de
+  // sentido: compra em marketplace e pela internet, em qualquer dia, e dia da
+  // semana nao diz nada sobre ela.
+  if (isCanonicalMarketplace(stat.merchant)) return null;
+
   // O nome vence o ticket: hortifruti de R$ 90 e mercado, jantar de R$ 90 nao.
   if (NOME_DE_MERCADO.test(stat.merchant) || NOME_DE_MERCADO.test(stat.label)) {
     return "mercado";
@@ -196,11 +207,14 @@ export function suggestSubcategories(
     if (!countable(t)) continue;
     // Ja tem subcategoria: a casa decidiu, e proposta nao desfaz decisao.
     if (t.subcategoryId !== null) continue;
-    const key = t.merchantNormalized;
+    // As grafias do mesmo marketplace contam como uma loja so - quinze linhas
+    // de "MERCADOLIVRE <vendedor>" sao a mesma loja, e separadas nenhuma delas
+    // chega ao minimo de lancamentos para propor coisa alguma.
+    const key = merchantKey(t);
     if (!key) continue;
 
     const atual = porEstabelecimento.get(key) ?? {
-      label: t.merchantAlias ?? t.description,
+      label: merchantLabel(t),
       valores: [],
       dias: [],
       datas: [],
