@@ -40,17 +40,23 @@ export async function MonthCalendar({
   /** Todas as categorias da casa, para colorir os lançamentos do dia. */
   categories: Category[];
 }) {
-  const ultimo = `${month}-${String(daysInMonth(month)).padStart(2, "0")}`;
-
-  const [transactions, events] = await Promise.all([
-    listTransactions(houseId, { month, excludeCategoryIds }),
-    listCalendarEvents(houseId, { from: `${month}-01`, to: ultimo }),
-  ]);
+  const transactions = await listTransactions(houseId, {
+    month,
+    excludeCategoryIds,
+  });
 
   const diario = dailySpending(transactions, month, { memberId, cardId });
   // O mes DESENHADO e o das compras, que na fatura de cartao e anterior ao mes
   // dela. Tudo daqui para baixo usa este, e nao `month`.
   const gridMonth = diario.month;
+
+  // Os compromissos saem do mes DESENHADO, e por isso esta busca vem depois de
+  // saber qual e. Buscar pelo mes da fatura traria agosto para uma grade de
+  // julho, e a bolinha de compromisso nao apareceria em dia nenhum.
+  const events = await listCalendarEvents(houseId, {
+    from: `${gridMonth}-01`,
+    to: `${gridMonth}-${String(daysInMonth(gridMonth)).padStart(2, "0")}`,
+  });
 
   // Os lancamentos de cada dia, sob o mesmo filtro que somou os totais - uma
   // lista que nao fecha com o numero ao lado dela nao serve.
