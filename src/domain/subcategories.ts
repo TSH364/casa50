@@ -1,6 +1,7 @@
 import type { Cents } from "@/lib/money";
 import type { IsoDate, Transaction } from "./types";
 import { spendingCents } from "./finance";
+import { fixedChargeMerchants } from "./recurring";
 
 /**
  * Sugestao de subcategoria a partir do comportamento (secao 14).
@@ -182,7 +183,13 @@ export function suggestSubcategories(
 ): SubcategorySuggestion[] {
   const porEstabelecimento = new Map<
     string,
-    { label: string; valores: Cents[]; dias: boolean[]; meses: Set<string> }
+    {
+      label: string;
+      valores: Cents[];
+      dias: boolean[];
+      datas: IsoDate[];
+      meses: Set<string>;
+    }
   >();
 
   for (const t of transactions) {
@@ -196,17 +203,27 @@ export function suggestSubcategories(
       label: t.merchantAlias ?? t.description,
       valores: [],
       dias: [],
+      datas: [],
       meses: new Set<string>(),
     };
     atual.valores.push(spendingCents(t));
     atual.dias.push(isWeekday(t.date));
+    atual.datas.push(t.date);
     atual.meses.add(t.invoiceMonth);
     porEstabelecimento.set(key, atual);
   }
 
+  const fixed = fixedChargeMerchants(transactions);
+
   const stats: MerchantStat[] = [];
   for (const [merchant, dados] of porEstabelecimento) {
     if (dados.valores.length < MIN_LANCAMENTOS_ESTABELECIMENTO) continue;
+    // Assinatura fica de fora inteira, e nao so do balde: o dia dela nao e
+    // escolha de ninguem, entao ela nao pode nem propor nem entrar no numero
+    // de uma proposta que outro estabelecimento levantou. O reconhecimento
+    // mora em `recurring.ts`, compartilhado com o vinculo de compromisso -
+    // sao a mesma pergunta, e duas copias dela divergiriam.
+    if (fixed.has(merchant)) continue;
     stats.push({
       merchant,
       label: dados.label,

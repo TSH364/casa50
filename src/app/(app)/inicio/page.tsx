@@ -155,6 +155,7 @@ export default async function InicioPage({
           memberId={memberId}
           cardId={cardId}
           excludeCategoryIds={excludeCategoryIds}
+          categories={view.categories}
         />
       </Suspense>
 

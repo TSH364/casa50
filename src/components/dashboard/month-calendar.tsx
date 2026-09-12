@@ -1,11 +1,11 @@
 import { listCalendarEvents, listTransactions } from "@/data/queries";
 import { dailySpending, itemsByCategory } from "@/domain/finance";
-import { daysInMonth, monthLabel } from "@/domain/month";
+import { addMonths, daysInMonth, monthLabel } from "@/domain/month";
 import { formatCents } from "@/lib/money";
 import { Card, CardHeader } from "@/components/ui/card";
 import { Skeleton } from "@/components/states";
 import { CalendarGrid, type CalendarDay } from "./calendar-grid";
-import type { MonthKey } from "@/domain/types";
+import type { Category, MonthKey } from "@/domain/types";
 
 export function MonthCalendarSkeleton() {
   return (
@@ -29,6 +29,7 @@ export async function MonthCalendar({
   memberId,
   cardId,
   excludeCategoryIds,
+  categories,
 }: {
   houseId: string;
   month: MonthKey;
@@ -36,32 +37,53 @@ export async function MonthCalendar({
   cardId: string | null;
   /** Categorias fora dos totais da casa. Vem de `houseView`. */
   excludeCategoryIds: string[];
+  /** Todas as categorias da casa, para colorir os lançamentos do dia. */
+  categories: Category[];
 }) {
-  const ultimo = `${month}-${String(daysInMonth(month)).padStart(2, "0")}`;
+  const transactions = await listTransactions(houseId, {
+    month,
+    excludeCategoryIds,
+  });
 
-  const [transactions, events] = await Promise.all([
-    listTransactions(houseId, { month, excludeCategoryIds }),
-    listCalendarEvents(houseId, { from: `${month}-01`, to: ultimo }),
-  ]);
+  const diario = dailySpending(transactions, month, { memberId, cardId });
+  // O mes DESENHADO e o das compras, que na fatura de cartao e anterior ao mes
+  // dela. Tudo daqui para baixo usa este, e nao `month`.
+  const gridMonth = diario.month;
 
-  const dias = dailySpending(transactions, month, { memberId, cardId });
+  // Os compromissos saem do mes DESENHADO, e por isso esta busca vem depois de
+  // saber qual e. Buscar pelo mes da fatura traria agosto para uma grade de
+  // julho, e a bolinha de compromisso nao apareceria em dia nenhum.
+  const events = await listCalendarEvents(houseId, {
+    from: `${gridMonth}-01`,
+    to: `${gridMonth}-${String(daysInMonth(gridMonth)).padStart(2, "0")}`,
+  });
 
   // Os lancamentos de cada dia, sob o mesmo filtro que somou os totais - uma
   // lista que nao fecha com o numero ao lado dela nao serve.
+  // A chave do mapa JA e a categoria - a cor sai daí sem consulta extra.
+  // Subcategoria herda a cor da mãe, então o ponto continua dizendo "isto é
+  // Alimentação" mesmo quando o lançamento está numa subcategoria dela.
+  const porCategoria = new Map(categories.map((c) => [c.id, c]));
   const porDia = new Map<string, CalendarDay["items"]>();
-  for (const lista of itemsByCategory(transactions, month, { memberId, cardId }).values()) {
+  for (const [categoryId, lista] of itemsByCategory(transactions, month, {
+    memberId,
+    cardId,
+  })) {
+    const categoria = categoryId ? porCategoria.get(categoryId) : undefined;
     for (const item of lista) {
       const atual = porDia.get(item.date) ?? [];
       atual.push({
         id: item.id,
         description: item.description,
         spendCents: item.spendCents,
+        categoryColor: categoria?.color ?? null,
+        categoryName: categoria?.name ?? null,
       });
       porDia.set(item.date, atual);
     }
   }
 
-  const days: CalendarDay[] = dias.map((d) => ({
+  const days: CalendarDay[] = diario.days.map((d) => ({
     ...d,
     events: events
       .filter((e) => d.date >= e.startsOn && d.date <= e.endsOn)
@@ -70,7 +92,6 @@ export async function MonthCalendar({
   }));
 
   const comGasto = days.filter((d) => d.totalCents > 0);
-  const total = comGasto.reduce((sum, d) => sum + d.totalCents, 0);
   const maior = comGasto.reduce(
     (a, d) => (d.totalCents > (a?.totalCents ?? 0) ? d : a),
     comGasto[0],
@@ -82,11 +103,40 @@ export async function MonthCalendar({
         title="Dia a dia"
         description={
           comGasto.length > 0
-            ? `${comGasto.length} de ${days.length} dias com gasto em ${monthLabel(month)}. O maior foi o dia ${maior?.day}, com ${formatCents(maior?.totalCents ?? 0)}.`
-            : `Nenhum gasto registrado em ${monthLabel(month)}.`
+            ? `${comGasto.length} de ${days.length} dias com gasto. O maior foi o dia ${maior?.day}, com ${formatCents(maior?.totalCents ?? 0)}.`
+            : `Nenhum gasto registrado em ${monthLabel(gridMonth)}.`
         }
       />
-      <CalendarGrid days={days} month={month} />
+
+      {/* Qual mes esta na tela, dito sempre - nao so quando difere.
+          A fatura de um mes cobra compras do mes anterior, e um calendario que
+          nao diz de quando sao os dias faz o casal procurar no dia errado. */}
+      <p className="mb-2.5 text-[12px] text-ink-faint">
+        Compras de <span className="text-ink-muted">{monthLabel(gridMonth)}</span>
+        {gridMonth === month ? null : (
+          <> — é o que a fatura de {monthLabel(month)} cobra.</>
+        )}
+      </p>
+
+      <CalendarGrid days={days} month={gridMonth} />
+
+      {/* O que ficou fora da grade, discriminado.
+          Sao duas coisas diferentes e o texto nao pode juntar: a compra do mes
+          anterior entrou na MESMA fatura porque o cartao fecha no meio do mes;
+          a de um ano atras e parcela, que guarda a data da compra original. */}
+      {diario.outsideCount > 0 ? (
+        <ul className="mt-2.5 space-y-1 border-t border-line pt-2.5 text-[12px] text-ink-faint">
+          {diario.outsideByMonth.map((fora) => (
+            <li key={fora.month}>
+              Mais {formatCents(fora.totalCents)} em {fora.count} compra(s) de{" "}
+              {monthLabel(fora.month)}
+              {fora.month === addMonths(gridMonth, -1)
+                ? " — o cartão fecha no meio do mês, e elas caem nesta mesma fatura."
+                : " — parcela guarda a data da compra original."}
+            </li>
+          ))}
+        </ul>
+      ) : null}
     </Card>
   );
 }

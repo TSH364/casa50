@@ -31,24 +31,34 @@
   --color-danger-soft: #3c1c20;
 
   /*
-   * Escala SEQUENCIAL do calendario de gastos: um matiz so, do escuro ao
-   * claro. No escuro o ancoradouro inverte - mais gasto e mais luminoso.
-   * Os quatro passos foram calculados no matiz da marca e medidos:
+   * Escala SEQUENCIAL do calendario de gastos: um matiz so, do claro ao
+   * escuro. Mais gasto e mais escuro - peso de tinta, como no papel.
    *
-   *   L (OKLab)     0,440 -> 0,530 -> 0,620 -> 0,710  estritamente crescente
-   *   texto do dia  7,31  4,99  5,26  7,49 : 1        AA em todos
+   * A primeira versao ia ao contrario (mais gasto = mais luminoso), que e a
+   * convencao para fundo escuro: o valor alto se afasta do fundo. Foi trocada
+   * a PEDIDO de quem usa, que lia a escala invertida. Os quatro passos sao os
+   * mesmos, so trocaram de lugar, e continuam medidos:
    *
-   * A tinta do numero inverte no meio da rampa (clara nos dois primeiros,
-   * escura nos dois ultimos): com uma tinta so, o numero sumia no topo.
+   *   L (OKLab)     0,710 -> 0,620 -> 0,530 -> 0,440  estritamente decrescente
+   *   texto do dia  7,49  5,26  4,99  7,31 : 1        AA em todos
+   *
+   * O CUSTO da inversao, medido e aceito: o dia de maior gasto passou a ser o
+   * mais proximo do fundo - 2,33:1 contra a superficie, ante 7,04:1 de antes.
+   * Fica acima do piso de 2:1 para preenchimento, e nao esta sozinho: o dia
+   * cheio mostra o valor e o numero em tinta clara, o dia vazio mostra so o
+   * numero e carrega borda. A distincao nao depende da cor.
+   *
+   * A tinta do numero inverte no meio da rampa (escura nos dois primeiros,
+   * clara nos dois ultimos): com uma tinta so, o numero sumia numa das pontas.
    *
    * Dia sem gasto nao recebe passo nenhum - fica sem preenchimento. A
    * diferenca entre "gastou pouco" e "nao gastou" nao pode depender de dois
    * tons vizinhos de azul; ela e ter ou nao ter cor.
    */
-  --color-day-1: #434897;
-  --color-day-2: #5960bd;
-  --color-day-3: #7079e4;
-  --color-day-4: #8b96ff;
+  --color-day-1: #8b96ff;
+  --color-day-2: #7079e4;
+  --color-day-3: #5960bd;
+  --color-day-4: #434897;
 
   /*
    * Escala divergente da matriz mes x categoria: dois matizes e um meio
