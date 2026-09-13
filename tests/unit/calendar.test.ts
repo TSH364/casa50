@@ -535,6 +535,31 @@ describe("o que o app SABE que não é do compromisso", () => {
     expect(resultado?.totalCents).toBe(0);
   });
 
+  it("juntar a grafia é o que faz a assinatura renomeada continuar reconhecida", () => {
+    // MEDIDO: o Home Assistant Cloud cobra todo dia 20 desde 12/2025, e no
+    // meio da série a fatura trocou o nome para "NABU CASA HA CLOUD SA". O
+    // valor varia (conversão de dólar), então quem reconhece esta cobrança é o
+    // dia do mês — que exige três meses distintos. Separada, a metade nova tem
+    // dois meses e sai do reconhecimento; junta, a série inteira conta.
+    const serie = [
+      ["2026-05-20", "HOME ASSISTANT CLOUD SA"],
+      ["2026-06-20", "NABU CASA HA CLOUD SA"],
+      ["2026-07-20", "NABU CASA HA CLOUD SA"],
+      ["2026-08-20", "NABU CASA HA CLOUD SA"],
+    ].map(([d, m], i) => tx({ date: d, amount: 18 + i, merchantNormalized: m }));
+
+    const noDia = tx({
+      date: "2026-08-10",
+      amount: 120,
+      merchantNormalized: "CONFEITARIA",
+    });
+
+    const [resultado] = spendDuringEvents([festa], [...serie, noDia]);
+    // Só o bolo: a assinatura de 20/08 não é despesa da festa do dia 10, e a
+    // de nenhum outro dia também não.
+    expect(resultado?.totalCents).toBe(12_000);
+  });
+
   it("a lista mostra a parcela com o motivo, em vez de escondê-la", () => {
     // Esconder impediria o gesto que importa: uma passagem parcelada PODE ser
     // da viagem, e só a pessoa sabe.
