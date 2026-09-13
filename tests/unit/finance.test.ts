@@ -596,3 +596,130 @@ describe("dailySpending", () => {
     expect(r.outsideCents).toBe(0);
   });
 });
+
+describe("dailySpending — a assinatura fora da conta do dia", () => {
+  /**
+   * MEDIDO nas oito faturas reais: a cobrança fixa é R$ 710 a R$ 950 por mês,
+   * 4% a 14% da grade, e toca 9 a 13 dos ~23 dias com gasto. O pico do mês
+   * quase não se move — muda centavos — então o que ela distorcia não era o
+   * topo da escala: era o PISO. De 1 a 4 dias por mês eram feitos SÓ de
+   * assinatura e apareciam pintados como dia de gasto sem ninguém ter
+   * comprado nada.
+   */
+  function dia(d: number, valor: number, merchant = "PADARIA") {
+    return tx({
+      date: `2026-07-${String(d).padStart(2, "0")}`,
+      invoiceMonth: "2026-08",
+      amount: valor,
+      merchantNormalized: merchant,
+    });
+  }
+
+  const assinaturas = new Map([["STREAMING", "same_amount" as const]]);
+
+  it("o dia feito só de assinatura deixa de ser dia de gasto", () => {
+    const lancamentos = [dia(3, 100), dia(20, 79.9, "STREAMING")];
+    const r = dailySpending(lancamentos, "2026-08", { fixedCharges: assinaturas });
+
+    const vinte = r.days.find((d) => d.day === 20);
+    expect(vinte?.totalCents).toBe(0);
+    expect(vinte?.step).toBe(0);
+    // Mas o dinheiro não sumiu: fica no dia, marcado.
+    expect(vinte?.fixedCents).toBe(7_990);
+    expect(vinte?.fixedCount).toBe(1);
+  });
+
+  it("o dia que teve compra E assinatura mostra só a compra", () => {
+    const r = dailySpending([dia(9, 250), dia(9, 79.9, "STREAMING")], "2026-08", {
+      fixedCharges: assinaturas,
+    });
+    const nove = r.days.find((d) => d.day === 9);
+    expect(nove?.totalCents).toBe(25_000);
+    expect(nove?.count).toBe(1);
+    expect(nove?.fixedCents).toBe(7_990);
+  });
+
+  it("a conta continua fechando: células + assinatura + fora = total", () => {
+    // A regra que impede a mudança de virar sumiço silencioso. Uma tela de
+    // dinheiro que subtrai sem dizer é pior que uma que soma demais, porque
+    // o erro dela não tem como ser percebido.
+    const lancamentos = [
+      dia(3, 100),
+      dia(20, 79.9, "STREAMING"),
+      tx({ date: "2025-10-14", invoiceMonth: "2026-08", amount: 2000 }),
+    ];
+    const r = dailySpending(lancamentos, "2026-08", { fixedCharges: assinaturas });
+
+    const celulas = r.days.reduce((s, d) => s + d.totalCents, 0);
+    expect(celulas + r.fixedCents + r.outsideCents).toBe(217_990);
+    expect(r.fixedCents).toBe(7_990);
+    expect(r.fixedCount).toBe(1);
+  });
+
+  it("assinatura de outro mês conta como fora, e não duas vezes", () => {
+    // As duas exclusões se sobrepõem, e a ordem entre elas decide se a soma
+    // fecha. "Fora da grade" vence: o lançamento de outro mês já está fora do
+    // desenho por um motivo anterior — ele não tem célula onde caber.
+    const lancamentos = [
+      ...Array.from({ length: 4 }, (_, i) => dia(i + 1, 40)),
+      tx({
+        date: "2026-06-20",
+        invoiceMonth: "2026-08",
+        amount: 79.9,
+        merchantNormalized: "STREAMING",
+      }),
+    ];
+    const r = dailySpending(lancamentos, "2026-08", { fixedCharges: assinaturas });
+
+    expect(r.outsideCents).toBe(7_990);
+    expect(r.outsideCount).toBe(1);
+    expect(r.fixedCents).toBe(0);
+    const celulas = r.days.reduce((s, d) => s + d.totalCents, 0);
+    expect(celulas + r.fixedCents + r.outsideCents).toBe(23_990);
+  });
+
+  it("sem a lista de assinaturas, nada muda", () => {
+    // O reconhecimento exige histórico de vários meses. Quem não o tem deve
+    // continuar somando tudo, em vez de reconhecer errado e esconder compra.
+    const lancamentos = [dia(3, 100), dia(20, 79.9, "STREAMING")];
+    const r = dailySpending(lancamentos, "2026-08");
+
+    expect(r.days.find((d) => d.day === 20)?.totalCents).toBe(7_990);
+    expect(r.fixedCents).toBe(0);
+    expect(r.fixedCount).toBe(0);
+  });
+
+  it("a assinatura não mexe na cor dos dias que não são dela", () => {
+    // A afirmação inteira, e não um passo escolhido a dedo: tirar a
+    // assinatura da conta tem que dar o MESMO desenho que ela nunca ter
+    // existido. Se os dias só de assinatura entrassem na amostra dos quartis,
+    // os cortes subiriam e dias de compra pequena desceriam de faixa — a
+    // assinatura mudaria a cor de dias que não são dela.
+    const compras = [10, 25, 40, 80, 150, 300, 500, 900].map((valor, i) =>
+      dia(i + 1, valor),
+    );
+    const comAssinatura = [
+      ...compras,
+      // Quatro dias só de assinatura, bem no meio da escala de valores.
+      ...Array.from({ length: 4 }, (_, i) => dia(i + 20, 79.9, "STREAMING")),
+    ];
+
+    const r = dailySpending(comAssinatura, "2026-08", { fixedCharges: assinaturas });
+    const semAssinatura = dailySpending(compras, "2026-08");
+
+    expect(r.days.map((d) => d.step)).toEqual(semAssinatura.days.map((d) => d.step));
+    // E há relevo de verdade no que está sendo comparado.
+    expect(new Set(r.days.map((d) => d.step))).toEqual(new Set([0, 1, 2, 3, 4]));
+  });
+
+  it("o mês da grade sai de tudo que foi cobrado, assinatura inclusive", () => {
+    // Deduzir o mês só do que sobra deixaria a grade à mercê de uma separação
+    // que existe por outro motivo.
+    const r = dailySpending(
+      [dia(3, 100), ...Array.from({ length: 5 }, (_, i) => dia(i + 10, 79.9, "STREAMING"))],
+      "2026-08",
+      { fixedCharges: assinaturas },
+    );
+    expect(r.month).toBe("2026-07");
+  });
+});

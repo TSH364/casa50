@@ -504,6 +504,37 @@ describe("o que o app SABE que não é do compromisso", () => {
     expect(resultado?.totalCents).toBe(12_000);
   });
 
+  it("quatro compras de uma tarde só não viram assinatura", () => {
+    // MEDIDO na base real, e foi um erro que o app cometia: "IGUAZU ARG
+    // LOCALES" tem quatro cobranças, as quatro em 07/06/2026 — quatro compras
+    // da mesma viagem, na mesma tarde. Como as quatro dividem o dia "07", a
+    // regra do mesmo-dia-do-mês dava 4 de 4 e declarava assinatura justamente
+    // uma despesa de passeio. Calendário de faturamento é "todo mês no dia 7",
+    // não "quatro vezes no dia 7".
+    const passeio = ["2026-08-10", "2026-08-10", "2026-08-10", "2026-08-10"].map(
+      (d, i) => tx({ date: d, amount: 10 + i, merchantNormalized: "IGUAZU ARG LOCALES" }),
+    );
+
+    const [resultado] = spendDuringEvents([festa], passeio);
+    // As quatro contam: R$ 10 + 11 + 12 + 13.
+    expect(resultado?.totalCents).toBe(4_600);
+  });
+
+  it("mas o mesmo dia repetido MÊS a mês continua sendo cobrança de máquina", () => {
+    // O contraponto do teste acima, para a correção não virar um buraco: o
+    // valor varia (conversão de dólar), e só o dia do mês sustenta a regra.
+    const assinatura = ["2026-06-10", "2026-07-10", "2026-08-10"].map((d, i) =>
+      tx({ date: d, amount: 100 + i, merchantNormalized: "OPENAI CHATGPT" }),
+    );
+    // Quatro ocorrências é o mínimo da regra; a quarta repete o dia 10.
+    assinatura.push(
+      tx({ date: "2026-05-10", amount: 97, merchantNormalized: "OPENAI CHATGPT" }),
+    );
+
+    const [resultado] = spendDuringEvents([festa], assinatura);
+    expect(resultado?.totalCents).toBe(0);
+  });
+
   it("a lista mostra a parcela com o motivo, em vez de escondê-la", () => {
     // Esconder impediria o gesto que importa: uma passagem parcelada PODE ser
     // da viagem, e só a pessoa sabe.

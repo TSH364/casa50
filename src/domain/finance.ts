@@ -1,4 +1,6 @@
 import { toCents, type Cents } from "@/lib/money";
+import { merchantKey } from "./merchants";
+import type { FixedChargeReason } from "./recurring";
 import { addMonths, daysInMonth, daysRemaining } from "./month";
 import type {
   ForecastStatus,
@@ -511,10 +513,18 @@ export interface DaySpend {
   date: IsoDate;
   /** Dia do mes, 1..31. */
   day: number;
+  /**
+   * O que a celula DESENHA: o gasto que foi escolhido naquele dia, ja sem a
+   * cobranca fixa. Nao e o total do dia - `fixedCents` e a outra metade, e a
+   * soma dos dois e que fecha com a fatura.
+   */
   totalCents: Cents;
   count: number;
   /** 0 = sem gasto; 1..4 = intensidade. */
   step: 0 | 1 | 2 | 3 | 4;
+  /** A parte do dia que uma maquina cobrou. Zero sem `fixedCharges`. */
+  fixedCents: Cents;
+  fixedCount: number;
 }
 
 export interface DailySpending {
@@ -538,6 +548,43 @@ export interface DailySpending {
    * guarda a data original. Quem le precisa poder distinguir.
    */
   outsideByMonth: { month: MonthKey; totalCents: Cents; count: number }[];
+  /**
+   * Cobranca fixa que caiu DENTRO da grade e saiu das celulas.
+   *
+   * Declarado, e nao descartado, porque a grade precisa continuar fechando:
+   * celulas + assinatura + fora = total do mes. Uma tela que esconde dinheiro
+   * sem dizer quanto e pior do que uma que infla.
+   */
+  fixedCents: Cents;
+  fixedCount: number;
+}
+
+export interface DailyOptions extends SummaryOptions {
+  /**
+   * Estabelecimentos cuja cobranca e emitida por uma maquina, de
+   * `fixedChargeMerchants`. Quando vem preenchido, essas cobrancas saem do
+   * numero e da cor do dia.
+   *
+   * POR QUE O CALENDARIO TRATA ASSINATURA DIFERENTE, e o resto do app nao: os
+   * outros paineis respondem "quanto saiu", e ai a assinatura e gasto igual a
+   * qualquer outro. O calendario responde outra coisa - "como o gasto se
+   * distribuiu pelos dias" - e essa pergunta pressupoe ESCOLHA no dia. A
+   * assinatura cai num dia por acaso do calendario de faturamento; a casa ja
+   * teria pago de todo jeito, e o dia 20 nao foi um dia de gastar.
+   *
+   * MEDIDO nas oito faturas reais: a cobranca fixa e R$ 710 a R$ 950 por mes,
+   * 4% a 14% da grade, e toca 9 a 13 dos ~23 dias com gasto. O pico do mes
+   * quase nao se move (muda centavos), entao o que ela distorcia nao era o
+   * topo da escala: era o PISO - de 1 a 4 dias por mes eram feitos so de
+   * assinatura e apareciam pintados como dia de gasto sem ninguem ter
+   * comprado nada.
+   *
+   * Fica opcional para que a regra nao se imponha sozinha: quem chama precisa
+   * ter buscado historico suficiente para reconhecer a cobranca (tres meses
+   * nao bastam), e um calendario montado so com o mes corrente deve continuar
+   * somando tudo em vez de reconhecer errado.
+   */
+  fixedCharges?: ReadonlyMap<string, FixedChargeReason>;
 }
 
 /**
@@ -588,40 +635,79 @@ function mesDasCompras(datas: readonly IsoDate[], fallback: MonthKey): MonthKey 
  * deduzido dos dados. O que sobra fora dele - tipicamente parcelas de compras
  * antigas, que carregam a data original - volta em `outsideCents` para a tela
  * dizer, em vez de sumir e quebrar a soma.
+ *
+ * DUAS COISAS SAEM DAS CELULAS, por motivos diferentes, e as duas voltam
+ * declaradas para a soma continuar fechando:
+ *
+ *   celulas + fixedCents + outsideCents = total da selecao
+ *
+ * `outsideCents` sai porque nao TEM celula - e de outro mes. `fixedCents` sai
+ * porque nao foi ESCOLHA do dia - ver `DailyOptions.fixedCharges`. Nenhuma das
+ * duas some: uma tela de dinheiro que subtrai em silencio e pior do que uma
+ * que soma demais, porque o erro dela nao tem como ser percebido.
  */
 export function dailySpending(
   transactions: readonly Transaction[],
   month: MonthKey,
-  options: SummaryOptions = {},
+  options: DailyOptions = {},
 ): DailySpending {
-  const porDia = new Map<IsoDate, { totalCents: Cents; count: number }>();
+  const fixas = options.fixedCharges;
+  const porDia = new Map<
+    IsoDate,
+    { totalCents: Cents; count: number; fixedCents: Cents; fixedCount: number }
+  >();
 
   for (const t of transactions) {
     if (!matches(t, month, options)) continue;
     if (!REALIZED.includes(t.status)) continue;
     const spend = spendingCents(t);
     if (spend <= 0) continue;
-    const atual = porDia.get(t.date) ?? { totalCents: 0, count: 0 };
-    atual.totalCents += spend;
-    atual.count += 1;
+    const atual = porDia.get(t.date) ?? {
+      totalCents: 0,
+      count: 0,
+      fixedCents: 0,
+      fixedCount: 0,
+    };
+    const chave = fixas ? merchantKey(t) : null;
+    if (chave !== null && fixas!.has(chave)) {
+      atual.fixedCents += spend;
+      atual.fixedCount += 1;
+    } else {
+      atual.totalCents += spend;
+      atual.count += 1;
+    }
     porDia.set(t.date, atual);
   }
 
+  // O mes da grade sai de TUDO que foi cobrado, assinatura inclusive: a
+  // pergunta aqui e "de quando sao estas compras", e a cobranca fixa tambem
+  // tem data. Deduzir o mes so do que sobra deixaria a grade a merce de uma
+  // separacao que existe por outro motivo.
   const gridMonth = mesDasCompras(
-    [...porDia.entries()].flatMap(([data, v]) => Array<IsoDate>(v.count).fill(data)),
+    [...porDia.entries()].flatMap(([data, v]) =>
+      Array<IsoDate>(v.count + v.fixedCount).fill(data),
+    ),
     month,
   );
 
   // Os quartis olham so os dias desenhados: incluir uma parcela de um ano
-  // atras deslocaria os cortes de um mes que ela nem aparece.
+  // atras deslocaria os cortes de um mes que ela nem aparece. E olham o valor
+  // DESENHADO, sem a cobranca fixa - senao o dia feito so de assinatura
+  // entraria na amostra e empurraria os cortes para cima, fazendo os dias de
+  // compra pequena descerem de faixa.
   const noMes = [...porDia.entries()].filter(([data]) => data.startsWith(gridMonth));
-  const valores = noMes.map(([, v]) => v.totalCents).sort((a, b) => a - b);
+  const valores = noMes
+    .map(([, v]) => v.totalCents)
+    .filter((c) => c > 0)
+    .sort((a, b) => a - b);
   const quartil = (p: number) =>
     valores.length === 0 ? 0 : valores[Math.min(valores.length - 1, Math.floor(valores.length * p))]!;
   const cortes = [quartil(0.25), quartil(0.5), quartil(0.75)];
 
   const total = daysInMonth(gridMonth);
   const days: DaySpend[] = [];
+  let fixedCents = 0;
+  let fixedCount = 0;
   for (let day = 1; day <= total; day += 1) {
     const date = `${gridMonth}-${String(day).padStart(2, "0")}`;
     const encontrado = porDia.get(date);
@@ -630,20 +716,33 @@ export function dailySpending(
     if (cents > 0) {
       step = cents <= cortes[0]! ? 1 : cents <= cortes[1]! ? 2 : cents <= cortes[2]! ? 3 : 4;
     }
-    days.push({ date, day, totalCents: cents, count: encontrado?.count ?? 0, step });
+    fixedCents += encontrado?.fixedCents ?? 0;
+    fixedCount += encontrado?.fixedCount ?? 0;
+    days.push({
+      date,
+      day,
+      totalCents: cents,
+      count: encontrado?.count ?? 0,
+      step,
+      fixedCents: encontrado?.fixedCents ?? 0,
+      fixedCount: encontrado?.fixedCount ?? 0,
+    });
   }
 
+  // Fora da grade vence assinatura, e a ordem importa para a soma nao contar
+  // duas vezes: o lancamento de outro mes ja esta fora do desenho por um
+  // motivo anterior e mais forte - ele nao tem celula nenhuma onde caber.
   let outsideCents = 0;
   let outsideCount = 0;
   const porMesDeFora = new Map<MonthKey, { totalCents: Cents; count: number }>();
   for (const [data, v] of porDia) {
     if (data.startsWith(gridMonth)) continue;
-    outsideCents += v.totalCents;
-    outsideCount += v.count;
+    outsideCents += v.totalCents + v.fixedCents;
+    outsideCount += v.count + v.fixedCount;
     const mes = data.slice(0, 7);
     const atual = porMesDeFora.get(mes) ?? { totalCents: 0, count: 0 };
-    atual.totalCents += v.totalCents;
-    atual.count += v.count;
+    atual.totalCents += v.totalCents + v.fixedCents;
+    atual.count += v.count + v.fixedCount;
     porMesDeFora.set(mes, atual);
   }
 
@@ -651,5 +750,13 @@ export function dailySpending(
     .map(([mes, v]) => ({ month: mes, ...v }))
     .sort((a, b) => (a.month < b.month ? 1 : -1));
 
-  return { month: gridMonth, days, outsideCents, outsideCount, outsideByMonth };
+  return {
+    month: gridMonth,
+    days,
+    outsideCents,
+    outsideCount,
+    outsideByMonth,
+    fixedCents,
+    fixedCount,
+  };
 }
