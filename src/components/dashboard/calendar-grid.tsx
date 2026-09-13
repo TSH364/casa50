@@ -18,6 +18,8 @@ export interface CalendarDay extends DaySpend {
     /** Cor da categoria, para o ponto ao lado do lancamento. */
     categoryColor: string | null;
     categoryName: string | null;
+    /** Cobranca de maquina: aparece na lista, mas nao no numero do dia. */
+    isFixed: boolean;
   }[];
 }
 
@@ -112,10 +114,16 @@ export function CalendarGrid({
 
         {days.map((d) => {
           const isOpen = d.date === aberto;
+          // O leitor de tela ouve a assinatura também: ela não entra no
+          // número, mas omiti-la faria o dia soar vazio quando não está.
+          const assinatura =
+            d.fixedCount > 0
+              ? `, mais ${formatCents(d.fixedCents)} de assinatura`
+              : "";
           const rotulo =
             d.totalCents > 0
-              ? `Dia ${d.day}: ${formatCents(d.totalCents)} em ${d.count} ${d.count === 1 ? "lançamento" : "lançamentos"}`
-              : `Dia ${d.day}: sem gasto`;
+              ? `Dia ${d.day}: ${formatCents(d.totalCents)} em ${d.count} ${d.count === 1 ? "lançamento" : "lançamentos"}${assinatura}`
+              : `Dia ${d.day}: sem gasto${assinatura}`;
           return (
             <button
               key={d.date}
@@ -163,6 +171,17 @@ export function CalendarGrid({
             </span>
           </p>
 
+          {/* O dia que só teve assinatura precisa dizer isso por extenso.
+              Sem esta linha ele mostraria "sem gasto" com lançamentos logo
+              abaixo, e a tela se contradiria diante de quem a lê. */}
+          {selecionado.fixedCount > 0 ? (
+            <p className="mt-0.5 text-[12px] text-ink-faint">
+              {selecionado.totalCents > 0 ? "Mais " : ""}
+              {formatCents(selecionado.fixedCents)} de assinatura, fora da conta
+              do dia
+            </p>
+          ) : null}
+
           {selecionado.events.length > 0 ? (
             <p className="mt-1 flex flex-wrap items-center gap-1.5 text-[12px] text-attention">
               <CalendarDays className="size-3 shrink-0" aria-hidden />
@@ -187,10 +206,27 @@ export function CalendarGrid({
                       }}
                       title={item.categoryName ?? "Sem categoria"}
                     />
-                    <span className="min-w-0 flex-1 break-words leading-snug text-ink-muted">
+                    <span
+                      className={cn(
+                        "min-w-0 flex-1 break-words leading-snug",
+                        item.isFixed ? "text-ink-faint" : "text-ink-muted",
+                      )}
+                    >
                       {item.description}
+                      {/* Escrito, e não só apagado: "está mais claro" não é um
+                          motivo que alguém consiga ler. `whitespace-nowrap`
+                          porque sem ele a linha quebrava ENTRE o ponto e a
+                          palavra, deixando um "·" órfão no fim da linha. */}
+                      {item.isFixed ? (
+                        <span className="whitespace-nowrap"> · assinatura</span>
+                      ) : null}
                     </span>
-                    <span className="tabular shrink-0 text-ink">
+                    <span
+                      className={cn(
+                        "tabular shrink-0",
+                        item.isFixed ? "text-ink-faint" : "text-ink",
+                      )}
+                    >
                       {formatCents(item.spendCents)}
                     </span>
                   </li>
@@ -200,8 +236,10 @@ export function CalendarGrid({
                 href={`/extratos?mes=${month}`}
                 className="mt-2 inline-flex items-center gap-1 pl-3 text-[12px] text-brand hover:underline"
               >
+                {/* `items.length`, e não `count`: a lista mostra também as
+                    assinaturas, que `count` deixou de somar. */}
                 {selecionado.items.length > 8
-                  ? `Ver os ${selecionado.count} lançamentos`
+                  ? `Ver os ${selecionado.items.length} lançamentos`
                   : "Abrir em Extratos"}
                 <ArrowRight className="size-3" aria-hidden />
               </Link>

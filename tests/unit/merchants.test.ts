@@ -147,6 +147,32 @@ describe("a armadilha que só aparece DEPOIS de juntar", () => {
   });
 });
 
+describe("a empresa que trocou de nome no meio da série", () => {
+  /**
+   * MEDIDO: "HOME ASSISTANT CLOUD SA" cobra 12 vezes de 20/12/2025 a
+   * 20/05/2026 e "NABU CASA HA CLOUD SA" continua de 20/06 a 20/07 — mesmo dia
+   * do mês, série sem buraco, só o nome mudou. Nabu Casa é a empresa por trás
+   * do Home Assistant Cloud.
+   */
+  it("as duas grafias viram uma assinatura só", () => {
+    expect(canonicalMerchant("HOME ASSISTANT CLOUD SA")).toBe("Home Assistant Cloud");
+    expect(canonicalMerchant("NABU CASA HA CLOUD SA")).toBe("Home Assistant Cloud");
+  });
+
+  it("não é marketplace nem mercearia — é serviço", () => {
+    // O nome não pode cair em nenhuma das outras duas regras: não propõe
+    // subcategoria de compra nem vira "mercado".
+    expect(isCanonicalMarketplace("Home Assistant Cloud")).toBe(false);
+    expect(isCanonicalGrocery("Home Assistant Cloud")).toBe(false);
+  });
+
+  it("a âncora protege o café que tem 'casa' no nome", () => {
+    // "CASA PRETOLA CAFE" existe na base real e casaria com um `casa` solto.
+    expect(canonicalMerchant("CASA PRETOLA CAFE")).toBeNull();
+    expect(canonicalMerchant("CASA DO PAO DE QUEIJO")).toBeNull();
+  });
+});
+
 describe("redes de supermercado — o sufixo é a unidade, não o vendedor", () => {
   /**
    * MEDIDO na base real: o OBA aparece sob três grafias e o Pão de Açúcar sob

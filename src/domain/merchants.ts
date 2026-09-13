@@ -32,12 +32,15 @@ import type { Transaction } from "./types";
  *     Nao propoe subcategoria nenhuma.
  *   `grocery` - o sufixo e a UNIDADE da rede ("GRANJA", "JUNDIAI", "1885").
  *     A loja diz exatamente o que e o gasto: compra de mercado.
+ *   `service` - nao ha sufixo: a EMPRESA trocou de nome no meio da serie, e a
+ *     fatura passou a escrever outro. Nao e loja nem rede - e uma assinatura
+ *     so, partida em duas pela troca de nome.
  *
- * A distincao existe porque tratar os dois igual erraria dos dois lados - ou
- * o marketplace propoe padrao que nao tem, ou o supermercado deixa de ser
- * reconhecido como mercado.
+ * A distincao existe porque tratar os tres igual erraria de todos os lados -
+ * o marketplace proporia padrao que nao tem, o supermercado deixaria de ser
+ * reconhecido como mercado, e o servico seria julgado pelo dia da semana.
  */
-type MerchantKind = "marketplace" | "grocery";
+type MerchantKind = "marketplace" | "grocery" | "service";
 
 /**
  * Lojas cujo sufixo e ruido para efeito de agrupamento.
@@ -81,6 +84,26 @@ const CANONICOS: {
     canonical: "Pão de Açúcar",
     kind: "grocery",
     pattern: /^p[aã]o\s+de\s+a[cç]u[cç]ar\b/i,
+  },
+  {
+    /**
+     * A MESMA assinatura sob dois nomes, porque a empresa trocou o nome na
+     * fatura. Nabu Casa e a empresa por tras do Home Assistant Cloud.
+     *
+     * MEDIDO: "HOME ASSISTANT CLOUD SA" cobra 12 vezes de 20/12/2025 a
+     * 20/05/2026, e "NABU CASA HA CLOUD SA" continua de 20/06 a 20/07 - mesmo
+     * dia do mes, serie sem buraco, so o nome mudou.
+     *
+     * Juntar nao e cosmetica aqui, e o que faz a regra funcionar: o valor
+     * varia (conversao de dolar), entao quem reconhece esta cobranca e o dia
+     * do mes, que exige tres meses distintos. Separadas, a metade nova tem
+     * dois meses e some do reconhecimento; juntas, sao oito.
+     */
+    canonical: "Home Assistant Cloud",
+    kind: "service",
+    // Ancorado como os outros, e aqui a ancora tem alvo conhecido: "CASA
+    // PRETOLA CAFE" existe na base e casaria com um `casa` solto.
+    pattern: /^(home\s+assistant|nabu\s+casa)\b/i,
   },
 ];
 

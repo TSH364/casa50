@@ -1,5 +1,5 @@
 import type { Cents } from "@/lib/money";
-import type { IsoDate, Transaction } from "./types";
+import type { IsoDate, MonthKey, Transaction } from "./types";
 import { merchantKey } from "./merchants";
 
 /**
@@ -29,6 +29,20 @@ const MIN_COBRANCAS = 3;
 const MIN_PARA_DIA_DO_MES = 4;
 /** Acima disto, cair sempre no mesmo dia do mes e faturamento, nao escolha. */
 const MESMO_DIA_DO_MES = 0.75;
+/**
+ * Em quantos MESES DIFERENTES o mesmo dia precisa se repetir.
+ *
+ * Sem esta exigencia a regra do dia do mes se satisfaz sozinha numa tarde. O
+ * caso que a revelou, MEDIDO na base real: "IGUAZU ARG LOCALES" tem quatro
+ * cobrancas, todas em 07/06/2026 - quatro compras da mesma viagem, no mesmo
+ * dia. Como as quatro dividem o dia "07", a conta dava 4 de 4 e o app
+ * declarava assinatura uma despesa de passeio, que e exatamente o oposto do
+ * que a regra existe para separar.
+ *
+ * Calendario de faturamento significa "todo mes no dia 4", e nao "quatro
+ * vezes no dia 4". Tres meses porque com dois a coincidencia ainda cabe.
+ */
+const MIN_MESES_NO_MESMO_DIA = 3;
 
 export type FixedChargeReason = "same_amount" | "same_day";
 
@@ -45,7 +59,9 @@ export type FixedChargeReason = "same_amount" | "same_day";
  *
  * O segundo sinal pega o que o primeiro deixa passar: cobranca que muda de
  * valor mas cai sempre no MESMO DIA DO MES (internet, servico por uso). Exige
- * quatro ocorrencias porque com tres o mesmo dia ainda sai por acaso.
+ * quatro ocorrencias porque com tres o mesmo dia ainda sai por acaso, e exige
+ * que elas se espalhem por MESES DIFERENTES - ver `MIN_MESES_NO_MESMO_DIA`,
+ * que existe por causa de um erro real que so aparece com dado de verdade.
  */
 export function fixedChargeMerchants(
   transactions: readonly Transaction[],
@@ -70,19 +86,36 @@ export function fixedChargeMerchants(
   for (const [merchant, { valores, datas }] of porEstabelecimento) {
     if (valores.length < MIN_COBRANCAS) continue;
 
+    // O valor identico repetido nao precisa da exigencia de meses distintos
+    // que o dia do mes precisa. Quando ele se repete dentro de UMA data so, o
+    // que ha e uma compra parcelada - mesma data de compra, mesmo valor, uma
+    // fatura atras da outra - e parcela tambem e cobranca de maquina, entao os
+    // dois consumidores desta funcao a querem de fora do mesmo jeito.
     if (new Set(valores).size === 1) {
       out.set(merchant, "same_amount");
       continue;
     }
 
     if (datas.length < MIN_PARA_DIA_DO_MES) continue;
-    const porDiaDoMes = new Map<string, number>();
+    const mesesPorDiaDoMes = new Map<string, Set<MonthKey>>();
     for (const data of datas) {
       const dia = data.slice(8, 10);
-      porDiaDoMes.set(dia, (porDiaDoMes.get(dia) ?? 0) + 1);
+      const meses = mesesPorDiaDoMes.get(dia) ?? new Set<MonthKey>();
+      meses.add(data.slice(0, 7));
+      mesesPorDiaDoMes.set(dia, meses);
     }
-    if (Math.max(...porDiaDoMes.values()) / datas.length > MESMO_DIA_DO_MES) {
+
+    const contagemPorDia = new Map<string, number>();
+    for (const data of datas) {
+      const dia = data.slice(8, 10);
+      contagemPorDia.set(dia, (contagemPorDia.get(dia) ?? 0) + 1);
+    }
+
+    for (const [dia, n] of contagemPorDia) {
+      if (n / datas.length <= MESMO_DIA_DO_MES) continue;
+      if ((mesesPorDiaDoMes.get(dia)?.size ?? 0) < MIN_MESES_NO_MESMO_DIA) continue;
       out.set(merchant, "same_day");
+      break;
     }
   }
 
