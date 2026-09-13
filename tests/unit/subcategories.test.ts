@@ -115,9 +115,11 @@ describe("suggestSubcategories — o caso real do Vinicius", () => {
 
     const mercado = sugestoes.find((s) => s.key === "mercado");
     expect(mercado).toBeDefined();
+    // O OBA aparece pelo nome canônico da rede: as três grafias da base real
+    // contam como uma loja. O Assaí é loja solta e fica com o nome cru.
     expect(mercado!.merchants.map((m) => m.merchant).sort()).toEqual([
       "ASSAI ATACADISTA",
-      "OBA HORTIFRUTI GRANJA",
+      "OBA Hortifruti",
     ]);
     expect(sugestoes.find((s) => s.key === "fim_de_semana")).toBeUndefined();
   });

@@ -2,7 +2,12 @@ import type { Cents } from "@/lib/money";
 import type { IsoDate, Transaction } from "./types";
 import { spendingCents } from "./finance";
 import { fixedChargeMerchants } from "./recurring";
-import { isCanonicalMarketplace, merchantKey, merchantLabel } from "./merchants";
+import {
+  isCanonicalGrocery,
+  isCanonicalMarketplace,
+  merchantKey,
+  merchantLabel,
+} from "./merchants";
 
 /**
  * Sugestao de subcategoria a partir do comportamento (secao 14).
@@ -160,6 +165,12 @@ function classify(stat: MerchantStat, base: number): SuggestionKey | null {
   // sentido: compra em marketplace e pela internet, em qualquer dia, e dia da
   // semana nao diz nada sobre ela.
   if (isCanonicalMarketplace(stat.merchant)) return null;
+
+  // Rede de supermercado reconhecida pelo nome proprio, antes da regra por
+  // palavra generica: "Pão de Açúcar" nao contem "supermercado", "hortifruti"
+  // nem "atacadista", entao a regra abaixo nao o pegaria e ele seria julgado
+  // pelo dia da semana - virando refeicao de fim de semana.
+  if (isCanonicalGrocery(stat.merchant)) return "mercado";
 
   // O nome vence o ticket: hortifruti de R$ 90 e mercado, jantar de R$ 90 nao.
   if (NOME_DE_MERCADO.test(stat.merchant) || NOME_DE_MERCADO.test(stat.label)) {
