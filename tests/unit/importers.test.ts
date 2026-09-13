@@ -298,6 +298,7 @@ describe("duplicateKey", () => {
     date: "2026-08-12",
     merchantNormalized: "NETFLIX",
     amountCents: 5590,
+    type: "expense" as const,
   };
 
   it("é igual para o mesmo lançamento", () => {
@@ -341,6 +342,41 @@ describe("duplicateKey", () => {
     const a = duplicateKey({ ...base, invoiceMonth: "2026-08" });
     const b = duplicateKey({ ...base, invoiceMonth: "2026-08" });
     expect(a).toBe(b);
+  });
+
+  it("a cobrança e o estorno dela no mesmo dia NÃO são a mesma linha", () => {
+    /**
+     * Este teste existe por causa de uma linha engolida de verdade.
+     *
+     * MEDIDO na base real: "MERCADOLIVRE*CIAPNEUS" cobra R$ 473,73 em
+     * 10/05/2026 e estorna os mesmos R$ 473,73 no mesmo dia. A fatura traz as
+     * duas linhas. Como o valor vai para o banco em módulo — o sinal vira
+     * TIPO — as duas chegavam à chave com `amountCents` idêntico, e a segunda
+     * era descartada como repetida. O banco ficou só com o estorno, e junho
+     * passou a subtrair R$ 473,73 que nunca foram gastos.
+     */
+    const cobranca = duplicateKey({
+      invoiceMonth: "2026-06",
+      date: "2026-05-10",
+      merchantNormalized: "MERCADOLIVRE CIAPNEUS",
+      amountCents: 47_373,
+      type: "expense",
+    });
+    const estorno = duplicateKey({
+      invoiceMonth: "2026-06",
+      date: "2026-05-10",
+      merchantNormalized: "MERCADOLIVRE CIAPNEUS",
+      amountCents: 47_373,
+      type: "refund",
+    });
+    expect(cobranca).not.toBe(estorno);
+  });
+
+  it("o pagamento da fatura não colide com uma compra do mesmo valor", () => {
+    // Mesma família de erro, outro tipo: o pagamento também chega em módulo.
+    expect(duplicateKey({ ...base, invoiceMonth: "2026-08" })).not.toBe(
+      duplicateKey({ ...base, invoiceMonth: "2026-08", type: "payment" }),
+    );
   });
 });
 
@@ -511,6 +547,10 @@ describe("parseCsv - formato Itaú (fatura que vinha zerada)", () => {
     "23/12/2025;VINICIUS ROSELLI;6869;-;Anuidade Diferenciada;12/12;0;0;98.00",
     "23/12/2025;VINICIUS ROSELLI;6869;-;Estorno Tarifa;Única;0;0;-98.00",
     "04/06/2025;VINICIUS ROSELLI;0162;Transporte;AIRBNB * HMKHDBT8PZ;7/7;0;0;2163.58",
+    // O par que o importador engolia: mesma loja, mesmo dia, mesmo valor, uma
+    // cobrança e o estorno dela. Recorte fiel da fatura de junho/2026.
+    "10/05/2026;VINICIUS ROSELLI;0162;Empresa para empresa;MERCADOLIVRE*CIAPNEUS;Única;0;0;-473.73",
+    "10/05/2026;VINICIUS ROSELLI;0162;Empresa para empresa;MERCADOLIVRE*CIAPNEUS;Única;0;0;473.73",
   ].join("\n");
 
   const result = parseCsv(CSV, { fileName: "Fatura_20260105.csv" });
@@ -525,7 +565,23 @@ describe("parseCsv - formato Itaú (fatura que vinha zerada)", () => {
   });
 
   it("lê todas as linhas do arquivo separado por ponto e vírgula", () => {
-    expect(result.drafts).toHaveLength(7);
+    expect(result.drafts).toHaveLength(9);
+  });
+
+  it("a cobrança estornada no mesmo dia sobrevive às duas linhas", () => {
+    // O defeito que motivou isto perdia uma das duas: a chave de duplicidade
+    // não olhava o tipo, e o valor já chega em módulo. Resultado na base real:
+    // junho ficou só com o estorno e passou a subtrair R$ 473,73 que nunca
+    // foram gastos.
+    const par = result.drafts.filter(
+      (d) => d.merchantNormalized === "MERCADOLIVRE CIAPNEUS",
+    );
+    expect(par).toHaveLength(2);
+    expect(par.map((d) => d.type).sort()).toEqual(["expense", "refund"]);
+    // As duas guardam o mesmo valor em módulo — é justamente por isso que a
+    // chave precisava de outra coisa para distingui-las.
+    expect(new Set(par.map((d) => d.amountCents))).toEqual(new Set([47_373]));
+    expect(par[0]?.duplicateKey).not.toBe(par[1]?.duplicateKey);
   });
 
   it("tira o mês do vencimento no nome do arquivo", () => {
