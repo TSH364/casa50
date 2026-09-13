@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   canonicalMerchant,
+  isCanonicalGrocery,
   isCanonicalMarketplace,
   merchantKey,
   merchantLabel,
@@ -78,16 +79,29 @@ describe("as armadilhas — o que NÃO pode ser juntado", () => {
    * âncora no início do nome é o que os protege, e é a mesma lição que já
    * tinha aparecido nas regras de subcategoria.
    */
-  it("mercearia de verdade não vira marketplace", () => {
+  it("mercearia avulsa não vira rede nem marketplace", () => {
+    // Nenhuma destas é rede conhecida: são lojas soltas, e juntar grafia só
+    // faz sentido onde existe uma rede para juntar.
     for (const nome of [
       "SUPERMERCADO PERIM",
       "LF MINIMERCADOS",
       "ADCMICROMERCADOS",
-      "OBA HORTIFRUTI GRANJA",
       "MERCADO DO ZE",
     ]) {
       expect(canonicalMerchant(nome), nome).toBeNull();
     }
+  });
+
+  it("rede de supermercado é juntada, mas NUNCA como marketplace", () => {
+    // A distinção que decide o tratamento: no marketplace o sufixo é o
+    // VENDEDOR e a loja não diz nada sobre o gasto; na rede o sufixo é a
+    // UNIDADE e a loja diz exatamente o que é.
+    expect(canonicalMerchant("OBA HORTIFRUTI GRANJA")).toBe("OBA Hortifruti");
+    expect(isCanonicalMarketplace("OBA Hortifruti")).toBe(false);
+    expect(isCanonicalGrocery("OBA Hortifruti")).toBe(true);
+
+    expect(isCanonicalGrocery("Mercado Livre")).toBe(false);
+    expect(isCanonicalMarketplace("Mercado Livre")).toBe(true);
   });
 
   it("a assinatura do marketplace não entra na cesta das compras", () => {
@@ -130,5 +144,37 @@ describe("a armadilha que só aparece DEPOIS de juntar", () => {
     expect(isCanonicalMarketplace("Mercado Livre")).toBe(true);
     expect(isCanonicalMarketplace("OBA HORTIFRUTI GRANJA")).toBe(false);
     expect(isCanonicalMarketplace(null)).toBe(false);
+  });
+});
+
+describe("redes de supermercado — o sufixo é a unidade, não o vendedor", () => {
+  /**
+   * MEDIDO na base real: o OBA aparece sob três grafias e o Pão de Açúcar sob
+   * duas, separadas só pelo número ou bairro da loja. Isso tem consequência,
+   * não é estética: o motor exige TRÊS lançamentos por estabelecimento, e
+   * sozinhas duas das três linhas do OBA ficavam invisíveis para ele.
+   */
+  it("as três grafias do OBA viram uma", () => {
+    const grafias = ["OBA HORTIFRUTI GRANJA", "OBA HORTIFRUTI", "OBA HORTIFRUTI JUNDIAI"];
+    expect(new Set(grafias.map((g) => canonicalMerchant(g)))).toEqual(
+      new Set(["OBA Hortifruti"]),
+    );
+  });
+
+  it("as duas grafias do Pão de Açúcar viram uma, com acento de volta", () => {
+    // O padrão casa a forma NORMALIZADA (sem acento), que é como o banco
+    // grava; o nome canônico devolve os acentos para a tela.
+    expect(canonicalMerchant("PAO DE ACUCAR 1885")).toBe("Pão de Açúcar");
+    expect(canonicalMerchant("PAO DE ACUCAR 2050")).toBe("Pão de Açúcar");
+  });
+
+  it("o Pão de Açúcar não carrega nenhuma palavra genérica de mercearia", () => {
+    // Esta é a razão de `isCanonicalGrocery` existir. A regra por palavra
+    // procura "supermercado", "hortifruti", "atacadista" — e o nome não tem
+    // nenhuma. Sem o reconhecimento por nome próprio, a rede seria julgada
+    // pelo dia da semana e viraria refeição de fim de semana.
+    const generica = /\b(mercado|feira|supermerc\w*|atacad\w*|hortifruti\w*)\b/i;
+    expect(generica.test("Pão de Açúcar")).toBe(false);
+    expect(isCanonicalGrocery("Pão de Açúcar")).toBe(true);
   });
 });

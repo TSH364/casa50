@@ -25,21 +25,63 @@ import type { Transaction } from "./types";
  */
 
 /**
- * Marketplaces cujo sufixo e o vendedor.
+ * O que o sufixo da grafia significa, que e o que decide o tratamento.
+ *
+ *   `marketplace` - o sufixo e o VENDEDOR. A loja nao diz nada sobre o gasto:
+ *     "MERCADOLIVRE CIAPNEUS" e pneu e "MERCADOLIVRE ARTBOX3D" e decoracao.
+ *     Nao propoe subcategoria nenhuma.
+ *   `grocery` - o sufixo e a UNIDADE da rede ("GRANJA", "JUNDIAI", "1885").
+ *     A loja diz exatamente o que e o gasto: compra de mercado.
+ *
+ * A distincao existe porque tratar os dois igual erraria dos dois lados - ou
+ * o marketplace propoe padrao que nao tem, ou o supermercado deixa de ser
+ * reconhecido como mercado.
+ */
+type MerchantKind = "marketplace" | "grocery";
+
+/**
+ * Lojas cujo sufixo e ruido para efeito de agrupamento.
  *
  * Ancorados no INICIO do nome (`^`), e essa ancora e a regra inteira de
  * seguranca: sem ela, `mercado` casaria com "SUPERMERCADO PERIM",
  * "LF MINIMERCADOS" e "ADCMICROMERCADOS", que sao mercearias de verdade e nao
  * tem nada a ver com o marketplace. E o mesmo tropeco que `mercad\w*` ja teria
  * causado nas regras de subcategoria.
+ *
+ * Os padroes casam a forma NORMALIZADA (sem acento, maiuscula), que e como o
+ * banco grava - dai `acucar` e nao `açúcar`. O nome canonico, que e o que
+ * aparece na tela, leva os acentos de volta.
  */
-const MARKETPLACES: { canonical: string; pattern: RegExp }[] = [
+const CANONICOS: {
+  canonical: string;
+  kind: MerchantKind;
+  pattern: RegExp;
+}[] = [
   {
     canonical: "Mercado Livre",
+    kind: "marketplace",
     // "MERCADO MERCADOLIVRE" existe na base: a maquininha repete o prefixo.
     pattern: /^(mercadolivre|mercado\s*livre|mercado\s+mercadolivre|mercadopago)\b/i,
   },
-  { canonical: "Amazon", pattern: /^(amazon|amazonmktplc|amzn)\b/i },
+  {
+    canonical: "Amazon",
+    kind: "marketplace",
+    pattern: /^(amazon|amazonmktplc|amzn)\b/i,
+  },
+  {
+    // MEDIDO: tres grafias na base - GRANJA (7x), sem sufixo (1x) e JUNDIAI
+    // (1x). So a primeira passava do minimo de tres lancamentos, entao as
+    // outras duas eram invisiveis para a proposta de subcategoria.
+    canonical: "OBA Hortifruti",
+    kind: "grocery",
+    pattern: /^oba\s+hortifrut/i,
+  },
+  {
+    // Duas grafias, separadas pelo numero da loja: 1885 e 2050.
+    canonical: "Pão de Açúcar",
+    kind: "grocery",
+    pattern: /^p[aã]o\s+de\s+a[cç]u[cç]ar\b/i,
+  },
 ];
 
 /**
@@ -66,10 +108,16 @@ export function canonicalMerchant(
   if (!nome) return null;
   if (NAO_E_A_LOJA.test(nome)) return null;
 
-  for (const { canonical, pattern } of MARKETPLACES) {
+  for (const { canonical, pattern } of CANONICOS) {
     if (pattern.test(nome)) return canonical;
   }
   return null;
+}
+
+/** De que tipo e a loja por tras deste nome canonico. */
+function kindOf(name: string | null | undefined): MerchantKind | null {
+  if (!name) return null;
+  return CANONICOS.find((m) => m.canonical === name)?.kind ?? null;
 }
 
 /**
@@ -82,8 +130,22 @@ export function canonicalMerchant(
  * junta as grafias e quebra a classificacao no mesmo movimento.
  */
 export function isCanonicalMarketplace(name: string | null | undefined): boolean {
-  if (!name) return false;
-  return MARKETPLACES.some((m) => m.canonical === name);
+  return kindOf(name) === "marketplace";
+}
+
+/**
+ * Este nome canonico e de uma rede de supermercado?
+ *
+ * Existe pelo motivo inverso do de cima. A regra que reconhece mercearia em
+ * `subcategories.ts` procura palavras genericas - "supermercado", "hortifruti",
+ * "atacadista" - e "Pão de Açúcar" nao tem nenhuma delas. Sem esta funcao, uma
+ * rede conhecida cujo nome nao carrega a palavra deixaria de ser classificada
+ * como mercado e seria julgada pelo dia da semana, virando "refeicao de fim de
+ * semana". Juntar a grafia sem ensinar o que a loja E deixaria o trabalho pela
+ * metade.
+ */
+export function isCanonicalGrocery(name: string | null | undefined): boolean {
+  return kindOf(name) === "grocery";
 }
 
 /**
