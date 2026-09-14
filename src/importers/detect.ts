@@ -54,12 +54,29 @@ export function normalizeMerchant(raw: string): string {
  * Inclui mês da fatura, data, cartão e parcela justamente para NÃO colapsar
  * compras legítimas repetidas: a mesma assinatura em meses diferentes, ou a
  * parcela 3/10 e a 4/10, têm chaves distintas.
+ *
+ * O TIPO entra pelo mesmo motivo, e entrou depois de engolir uma linha de
+ * verdade. A fatura guarda o valor COM sinal, mas o lançamento guarda o valor
+ * absoluto mais o tipo — então uma cobrança e o estorno dela, no mesmo dia e
+ * na mesma loja, chegavam aqui com `amountCents` idêntico e produziam a mesma
+ * chave. A segunda linha era descartada como repetida.
+ *
+ * MEDIDO na base real: "MERCADOLIVRE*CIAPNEUS" cobra R$ 473,73 em 10/05/2026
+ * e estorna os mesmos R$ 473,73 no mesmo dia. A fatura traz as duas linhas; o
+ * banco ficou só com o estorno, e junho passou a subtrair R$ 473,73 que nunca
+ * foram gastos. Cobrança e estorno são fatos diferentes, e a chave precisa
+ * dizer isso.
+ *
+ * O que NÃO muda: duas despesas iguais no mesmo dia e na mesma loja continuam
+ * batendo na mesma chave, porque aí a dúvida é real — pode ser importação
+ * repetida ou duas compras iguais — e quem decide é a tela de revisão.
  */
 export function duplicateKey(input: {
   invoiceMonth: MonthKey;
   date: string;
   merchantNormalized: string;
   amountCents: Cents;
+  type: TransactionType;
   cardId?: string | null;
   installmentCurrent?: number | null;
   installmentTotal?: number | null;
@@ -69,6 +86,7 @@ export function duplicateKey(input: {
     input.date,
     input.merchantNormalized,
     String(input.amountCents),
+    input.type,
     input.cardId ?? "",
     input.installmentCurrent ?? "",
     input.installmentTotal ?? "",

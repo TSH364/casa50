@@ -20,6 +20,7 @@ import type {
   ImportSummary,
   ReviewedDraft,
 } from "@/importers/types";
+import type { TransactionType } from "@/domain/types";
 
 /**
  * Gravação da importação (secao 6).
@@ -257,7 +258,7 @@ export async function reviewImport(
   const { data: existing, error: existingError } = await supabase
     .from("transactions")
     .select(
-      "id, date, merchant_normalized, amount, card_id, installment_current, installment_total",
+      "id, date, merchant_normalized, amount, type, card_id, installment_current, installment_total",
     )
     .eq("house_id", houseId)
     .eq("invoice_month", fromMonthKey(invoiceMonth));
@@ -276,6 +277,7 @@ export async function reviewImport(
       date: String(row.date).slice(0, 10),
       merchantNormalized: String(row.merchant_normalized ?? ""),
       amountCents: Math.round(Number(row.amount) * 100),
+      type: row.type as TransactionType,
       cardId: row.card_id as string | null,
       installmentCurrent: row.installment_current as number | null,
       installmentTotal: row.installment_total as number | null,
@@ -298,6 +300,7 @@ export async function reviewImport(
       date: draft.date,
       merchantNormalized: draft.merchantNormalized,
       amountCents: draft.amountCents,
+      type: draft.type,
       cardId: rowCardId,
       installmentCurrent: draft.installmentCurrent,
       installmentTotal: draft.installmentTotal,

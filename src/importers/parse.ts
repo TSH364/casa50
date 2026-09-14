@@ -219,7 +219,11 @@ export function buildDrafts(
           (s.installmentCell ? parseInstallmentCell(s.installmentCell) : null) ??
           extractInstallment(s.description);
         const merchantNormalized = normalizeMerchant(s.description);
+        // O sinal sai do valor e passa a viver no TIPO. Por isso o tipo entra
+        // na chave de duplicidade logo abaixo: sem ele, a cobranca e o
+        // estorno dela viram a mesma linha.
         const amountCents = Math.abs(s.signedCents);
+        const type = classifyType(s.description, s.signedCents, convention);
         return {
           row: s.row,
           date: s.date,
@@ -228,7 +232,7 @@ export function buildDrafts(
           merchantOriginal: s.description,
           merchantNormalized,
           amountCents,
-          type: classifyType(s.description, s.signedCents, convention),
+          type,
           categoryHint: s.categoryHint,
           categoryId: null,
           cardLastFour: s.cardLastFour,
@@ -240,6 +244,7 @@ export function buildDrafts(
             date: s.date,
             merchantNormalized,
             amountCents,
+            type,
             installmentCurrent: installment?.current ?? null,
             installmentTotal: installment?.total ?? null,
           }),
