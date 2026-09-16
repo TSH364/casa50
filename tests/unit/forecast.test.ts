@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   detectRecurrences,
+  matchRecurrence,
   forecastMonths,
   goalProgress,
   installmentSeries,
@@ -232,6 +233,63 @@ describe("detectRecurrences — duas grafias, uma assinatura", () => {
   });
 });
 
+describe("matchRecurrence — o vínculo que a importação grava", () => {
+  /**
+   * MEDIDO na base real: `recurring_id` está preenchido em ZERO dos 658
+   * lançamentos, com cinco recorrências cadastradas. A importação nunca ligou
+   * as duas coisas — é por isso que `recurring.ts` adivinha assinatura por
+   * "mesmo valor" e "mesmo dia do mês" em vez de simplesmente perguntar.
+   */
+  const netflix = rec({ description: "Netflix", merchant: "NETFLIX", amount: 55.9 });
+
+  function linha(over: Partial<{ merchantNormalized: string; amountCents: number }> = {}) {
+    return {
+      merchantNormalized: over.merchantNormalized ?? "NETFLIX COM",
+      merchantOriginal: null,
+      description: "NETFLIX.COM",
+      amountCents: over.amountCents ?? 5590,
+    };
+  }
+
+  it("liga o lançamento à recorrência que ele paga", () => {
+    expect(matchRecurrence([netflix], linha())?.id).toBe(netflix.id);
+  });
+
+  it("valor fora da tolerância não é a mesma conta", () => {
+    // A mesma tolerância da conciliação: o que ela chamaria de divergente não
+    // pode ser ligado aqui como se fosse o mesmo fato.
+    expect(matchRecurrence([netflix], linha({ amountCents: 9900 }))).toBeNull();
+  });
+
+  it("outra loja não liga", () => {
+    expect(matchRecurrence([netflix], linha({ merchantNormalized: "SPOTIFY" }))).toBeNull();
+  });
+
+  it("recorrência desativada não liga", () => {
+    const off = rec({ ...netflix, isActive: false });
+    expect(matchRecurrence([off], linha())).toBeNull();
+  });
+
+  it("no empate devolve null, em vez de escolher no escuro", () => {
+    // Um vínculo errado é pior que vínculo nenhum: faria a conciliação dar por
+    // paga uma conta que não foi, que é justamente o alarme que ela existe
+    // para dar. Duas candidatas viram nenhuma.
+    const gemea = rec({ description: "Netflix família", merchant: "NETFLIX", amount: 55.9 });
+    expect(matchRecurrence([netflix, gemea], linha())).toBeNull();
+  });
+
+  it("a grafia sem espaço também liga", () => {
+    const apple = rec({ description: "APPLE.COM/BILL", merchant: "APPLE COM BILL", amount: 19.9 });
+    const r = matchRecurrence([apple], {
+      merchantNormalized: "APPLECOMBILL",
+      merchantOriginal: null,
+      description: "APPLECOMBILL",
+      amountCents: 1990,
+    });
+    expect(r?.id).toBe(apple.id);
+  });
+});
+
 describe("reconcileRecurrences", () => {
   const agora = new Date("2026-08-20T12:00:00");
 
@@ -243,6 +301,19 @@ describe("reconcileRecurrences", () => {
    * aparecia como ausente em todo mês que usasse a outra grafia, mesmo tendo
    * sido paga. Um alarme falso por mês, sempre.
    */
+  it("o vínculo gravado vence o nome parecido", () => {
+    // O ganho de ligar na importação: com `recurring_id` preenchido não há o
+    // que casar por texto. Aqui o nome aponta para a linha errada de
+    // propósito, e o vínculo desempata.
+    const conta = rec({ description: "Plano A", merchant: "OPERADORA", amount: 50 });
+    const certa = tx({ merchantNormalized: "OUTRA COISA", amount: 50, recurringId: conta.id });
+    const parecida = tx({ merchantNormalized: "OPERADORA MOVEL", amount: 50 });
+
+    const r = reconcileRecurrences([conta], [parecida, certa], "2026-08", agora);
+    expect(r[0]?.status).toBe("confirmed");
+    expect(r[0]?.transaction?.id).toBe(certa.id);
+  });
+
   it("a grafia sem espaço casa com a grafia com espaço, nos dois sentidos", () => {
     const semEspaco = rec({ description: "APPLECOMBILL", merchant: "APPLECOMBILL", amount: 19.9 });
     const comEspaco = rec({ description: "APPLE.COM/BILL", merchant: "APPLE COM BILL", amount: 19.9 });

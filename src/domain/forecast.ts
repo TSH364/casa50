@@ -175,6 +175,54 @@ function tolerance(expectedCents: Cents): Cents {
   return Math.max(100, Math.round(expectedCents * 0.01));
 }
 
+/** O bastante de um lançamento para procurar a recorrência dele. */
+export interface RecurrenceLinkInput {
+  merchantNormalized: string | null;
+  merchantOriginal?: string | null;
+  description: string;
+  amountCents: Cents;
+}
+
+/**
+ * Qual recorrência este lançamento É, se der para afirmar (secao 10).
+ *
+ * POR QUE ISTO EXISTE: o schema tem `recurring_id` para ligar um lançamento à
+ * recorrência que ele paga, e MEDIDO na base real ele está preenchido em ZERO
+ * dos 658 lançamentos, com cinco recorrências cadastradas. A importação nunca
+ * ligou as duas coisas. É por isso que `recurring.ts` reconhece assinatura por
+ * heurística — "mesmo valor", "mesmo dia do mês" — em vez de simplesmente
+ * perguntar. Preenchido, o app passa a SABER onde hoje ele adivinha.
+ *
+ * DEVOLVE `null` NA DÚVIDA, e a dúvida inclui o empate. Um vínculo errado é
+ * pior que vínculo nenhum: ele faria a conciliação dar por paga uma conta que
+ * não foi, que é exatamente o alarme que ela existe para dar. Por isso duas
+ * recorrências candidatas não viram escolha por desempate — viram `null`, e a
+ * heurística segue cuidando do caso como sempre cuidou.
+ *
+ * O valor entra na conta com a MESMA tolerância da conciliação: o que ela
+ * chamaria de divergente não pode ser ligado aqui como se fosse o mesmo fato.
+ */
+export function matchRecurrence(
+  recurrences: readonly Recurrence[],
+  row: RecurrenceLinkInput,
+): Recurrence | null {
+  const candidate = merchantCompareKey(
+    row.merchantNormalized ?? row.merchantOriginal ?? row.description,
+  );
+  if (candidate === null) return null;
+
+  const achados = recurrences.filter((r) => {
+    if (!r.isActive) return false;
+    const target = merchantCompareKey(r.merchant ?? r.description);
+    if (target === null) return false;
+    if (!candidate.includes(target) && !target.includes(candidate)) return false;
+    const expected = toCents(r.amount);
+    return Math.abs(row.amountCents - expected) <= tolerance(expected);
+  });
+
+  return achados.length === 1 ? achados[0]! : null;
+}
+
 /**
  * Confere, mês a mês, o que era esperado contra o que apareceu (secao 10).
  *
@@ -197,10 +245,17 @@ export function reconcileRecurrences(
     .filter((r) => r.isActive)
     .map((recurrence) => {
       const expectedCents = toCents(recurrence.amount);
+      // O VÍNCULO GRAVADO VENCE O NOME, e é o motivo de ele existir: quando a
+      // importação já ligou o lançamento à recorrência, não há o que casar por
+      // texto - o app sabe. O nome fica de reserva para o histórico antigo,
+      // importado antes de `recurring_id` ser preenchido.
+      //
       // Cada lançamento serve a uma recorrência só: sem isso, duas assinaturas
       // de nome parecido apontariam para a mesma linha e uma sumiria.
       const found =
-        inMonth.find((t) => !taken.has(t.id) && matches(recurrence, t)) ?? null;
+        inMonth.find((t) => !taken.has(t.id) && t.recurringId === recurrence.id) ??
+        inMonth.find((t) => !taken.has(t.id) && matches(recurrence, t)) ??
+        null;
 
       if (found) {
         taken.add(found.id);
