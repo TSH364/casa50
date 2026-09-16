@@ -3,6 +3,7 @@ import type { IsoDate, Transaction } from "./types";
 import { spendingCents } from "./finance";
 import { fixedChargeMerchants } from "./recurring";
 import {
+  canonicalMerchant,
   isCanonicalGrocery,
   isCanonicalMarketplace,
   merchantKey,
@@ -86,7 +87,22 @@ const NOME_DE_MERCADO =
 export type SuggestionKey = "rotina" | "mercado" | "fim_de_semana";
 
 export interface MerchantStat {
+  /**
+   * Identidade do estabelecimento, usada para AGRUPAR. Vem de `merchantKey`,
+   * que tira o espaco do nome cru para "APPLECOMBILL" e "APPLE COM BILL" nao
+   * virarem duas lojas. Nao serve para casar palavra: sem espaco, um `\b` nao
+   * encontra fronteira nenhuma - ver `name`.
+   */
   merchant: string;
+  /**
+   * O mesmo estabelecimento em forma LEGIVEL, com os espacos no lugar.
+   *
+   * Existe porque as regras por palavra ("atacadista", "hortifruti") casam
+   * TEXTO, e texto precisa de fronteira de palavra. Rodadas contra a chave de
+   * identidade elas silenciam: "ASSAI ATACADISTA" vira "ASSAIATACADISTA" e
+   * `\batacad\w*\b` deixa de casar. Chave e identidade; nome e texto.
+   */
+  name: string;
   label: string;
   count: number;
   totalCents: Cents;
@@ -164,16 +180,16 @@ function classify(stat: MerchantStat, base: number): SuggestionKey | null {
   // grafias quebraria a classificacao no mesmo movimento. O segundo e de
   // sentido: compra em marketplace e pela internet, em qualquer dia, e dia da
   // semana nao diz nada sobre ela.
-  if (isCanonicalMarketplace(stat.merchant)) return null;
+  if (isCanonicalMarketplace(stat.name)) return null;
 
   // Rede de supermercado reconhecida pelo nome proprio, antes da regra por
   // palavra generica: "Pão de Açúcar" nao contem "supermercado", "hortifruti"
   // nem "atacadista", entao a regra abaixo nao o pegaria e ele seria julgado
   // pelo dia da semana - virando refeicao de fim de semana.
-  if (isCanonicalGrocery(stat.merchant)) return "mercado";
+  if (isCanonicalGrocery(stat.name)) return "mercado";
 
   // O nome vence o ticket: hortifruti de R$ 90 e mercado, jantar de R$ 90 nao.
-  if (NOME_DE_MERCADO.test(stat.merchant) || NOME_DE_MERCADO.test(stat.label)) {
+  if (NOME_DE_MERCADO.test(stat.name) || NOME_DE_MERCADO.test(stat.label)) {
     return "mercado";
   }
   // Ticket alto NAO e sinal de mercado. A primeira versao tinha essa regra e
@@ -206,6 +222,7 @@ export function suggestSubcategories(
   const porEstabelecimento = new Map<
     string,
     {
+      nome: string;
       label: string;
       valores: Cents[];
       dias: boolean[];
@@ -225,6 +242,9 @@ export function suggestSubcategories(
     if (!key) continue;
 
     const atual = porEstabelecimento.get(key) ?? {
+      // O nome legivel do PRIMEIRO lancamento do grupo: as grafias variam, e
+      // qualquer uma delas serve para as regras por palavra.
+      nome: canonicalMerchant(t.merchantNormalized) ?? t.merchantNormalized ?? t.description,
       label: merchantLabel(t),
       valores: [],
       dias: [],
@@ -251,6 +271,7 @@ export function suggestSubcategories(
     if (fixed.has(merchant)) continue;
     stats.push({
       merchant,
+      name: dados.nome,
       label: dados.label,
       count: dados.valores.length,
       totalCents: dados.valores.reduce((a, b) => a + b, 0),

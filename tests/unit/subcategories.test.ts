@@ -91,7 +91,7 @@ describe("suggestSubcategories — o caso real do Vinicius", () => {
 
     const rotina = sugestoes.find((s) => s.key === "rotina");
     expect(rotina).toBeDefined();
-    expect(rotina!.merchants.map((m) => m.merchant).sort()).toEqual([
+    expect(rotina!.merchants.map((m) => m.name).sort()).toEqual([
       "ISABELA AKKARI DOCES",
       "SHOKITI",
       "SUBITO RICE",
@@ -117,7 +117,7 @@ describe("suggestSubcategories — o caso real do Vinicius", () => {
     expect(mercado).toBeDefined();
     // O OBA aparece pelo nome canônico da rede: as três grafias da base real
     // contam como uma loja. O Assaí é loja solta e fica com o nome cru.
-    expect(mercado!.merchants.map((m) => m.merchant).sort()).toEqual([
+    expect(mercado!.merchants.map((m) => m.name).sort()).toEqual([
       "ASSAI ATACADISTA",
       "OBA Hortifruti",
     ]);
@@ -147,7 +147,7 @@ describe("suggestSubcategories — silêncio sem evidência", () => {
       ...loja("RARO", ["2026-06-02", "2026-07-02"], 30),
     ]);
     const rotina = sugestoes.find((s) => s.key === "rotina");
-    expect(rotina!.merchants.map((m) => m.merchant)).not.toContain("RARO");
+    expect(rotina!.merchants.map((m) => m.name)).not.toContain("RARO");
   });
 
   it("não mexe no que já tem subcategoria", () => {
@@ -216,7 +216,7 @@ describe("a regua e o proprio habito da casa", () => {
     const fds = suggestSubcategories(transactions).find(
       (s) => s.key === "fim_de_semana",
     );
-    const lojas = fds?.merchants.map((m) => m.merchant) ?? [];
+    const lojas = fds?.merchants.map((m) => m.name) ?? [];
     expect(lojas).not.toContain("PADARIA");
   });
 
@@ -233,7 +233,7 @@ describe("a regua e o proprio habito da casa", () => {
     const fds = suggestSubcategories(transactions).find(
       (s) => s.key === "fim_de_semana",
     );
-    expect(fds?.merchants.map((m) => m.merchant)).toContain("PADARIA");
+    expect(fds?.merchants.map((m) => m.name)).toContain("PADARIA");
   });
 });
 

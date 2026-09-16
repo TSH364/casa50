@@ -198,8 +198,71 @@ describe("installmentsDueIn", () => {
   });
 });
 
+describe("detectRecurrences — duas grafias, uma assinatura", () => {
+  /**
+   * A origem do problema, e não só o sintoma: foi o PRÓPRIO app que cadastrou
+   * duas recorrências para a Apple, no mesmo dia, uma em Lazer e outra em
+   * Assinaturas. A detecção agrupa por estabelecimento, e sem juntar as
+   * grafias cada uma virou um grupo — R$ 19,90 contados duas vezes no
+   * esperado do mês.
+   */
+  it("as grafias alternadas viram um candidato só", () => {
+    const meses: [string, string][] = [
+      ["2026-06", "APPLECOMBILL"],
+      ["2026-07", "APPLE COM BILL"],
+      ["2026-08", "APPLECOMBILL"],
+    ];
+    const candidatos = detectRecurrences(
+      meses.map(([mes, grafia]) =>
+        tx({
+          invoiceMonth: mes,
+          date: `${mes}-12`,
+          merchantNormalized: grafia,
+          description: grafia,
+          amount: 19.9,
+        }),
+      ),
+    );
+
+    // Separadas, nenhuma das duas alcança os três meses e não sairia
+    // candidato nenhum; juntas, sai exatamente um.
+    expect(candidatos).toHaveLength(1);
+    expect(candidatos[0]?.amountCents).toBe(1990);
+    expect(candidatos[0]?.months).toHaveLength(3);
+  });
+});
+
 describe("reconcileRecurrences", () => {
   const agora = new Date("2026-08-20T12:00:00");
+
+  /**
+   * MEDIDO na base real: a fatura escreve a MESMA assinatura da Apple de duas
+   * formas — "APPLECOMBILL" em três dos nove meses e "APPLE COM BILL" nos
+   * outros seis. A comparação antiga colapsava pontuação em ESPAÇO em vez de
+   * tirar o espaço, então as duas grafias não se continham: a recorrência
+   * aparecia como ausente em todo mês que usasse a outra grafia, mesmo tendo
+   * sido paga. Um alarme falso por mês, sempre.
+   */
+  it("a grafia sem espaço casa com a grafia com espaço, nos dois sentidos", () => {
+    const semEspaco = rec({ description: "APPLECOMBILL", merchant: "APPLECOMBILL", amount: 19.9 });
+    const comEspaco = rec({ description: "APPLE.COM/BILL", merchant: "APPLE COM BILL", amount: 19.9 });
+
+    const a = reconcileRecurrences(
+      [semEspaco],
+      [tx({ merchantNormalized: "APPLE COM BILL", amount: 19.9 })],
+      "2026-08",
+      agora,
+    );
+    expect(a[0]?.status).toBe("confirmed");
+
+    const b = reconcileRecurrences(
+      [comEspaco],
+      [tx({ merchantNormalized: "APPLECOMBILL", amount: 19.9 })],
+      "2026-08",
+      agora,
+    );
+    expect(b[0]?.status).toBe("confirmed");
+  });
 
   it("confirma quando o lançamento aparece com o valor esperado", () => {
     const result = reconcileRecurrences(

@@ -3,7 +3,7 @@ import type { Cents } from "@/lib/money";
 import { toCents } from "@/lib/money";
 import { addMonths, daysInMonth, monthDiff } from "./month";
 import { spendingCents } from "./finance";
-import { merchantKey, merchantLabel } from "./merchants";
+import { merchantCompareKey, merchantKey, merchantLabel } from "./merchants";
 
 /**
  * Parcelas, recorrências, conciliação e previsão (secoes 9, 10 e 11).
@@ -146,29 +146,27 @@ export interface RecurrenceMatch {
   differenceCents: Cents;
 }
 
-/** Normalização leve, só para comparar recorrência com lançamento. */
-function compareKey(value: string): string {
-  return value
-    .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "")
-    .toUpperCase()
-    .replace(/[^A-Z0-9]+/g, " ")
-    .trim();
-}
-
 /**
  * Uma recorrência casa com um lançamento quando os nomes se contêm.
  *
  * Comparar por igualdade exata falharia sempre: a recorrência é "Netflix" e o
  * lançamento chega como "NETFLIX.COM". Comparar por valor seria pior ainda -
  * duas assinaturas de R$ 55,90 no mesmo mês trocariam de lugar.
+ *
+ * A régua é `merchantCompareKey`, a MESMA que agrupa por estabelecimento no
+ * resto do app. Antes havia uma cópia local dela aqui, e a cópia divergia num
+ * detalhe com consequência: ela colapsava pontuação em ESPAÇO em vez de tirar
+ * o espaço. Com isso "APPLECOMBILL" e "APPLE COM BILL" não se continham, e a
+ * recorrência da Apple aparecia como ausente em todo mês cuja fatura usasse a
+ * outra grafia - seis dos nove meses reais.
  */
 function matches(recurrence: Recurrence, t: Transaction): boolean {
-  const target = compareKey(recurrence.merchant ?? recurrence.description);
-  if (target === "") return false;
-  const candidate = compareKey(
+  const target = merchantCompareKey(recurrence.merchant ?? recurrence.description);
+  if (target === null) return false;
+  const candidate = merchantCompareKey(
     t.merchantNormalized ?? t.merchantOriginal ?? t.description,
   );
+  if (candidate === null) return false;
   return candidate.includes(target) || target.includes(candidate);
 }
 
@@ -399,7 +397,9 @@ export function forecastMonths({
   // Gasto variável do passado: tudo que não é parcela nem recorrência
   // reconhecida. É o que sobra depois de tirar o que já sabemos prever.
   const recurringKeys = new Set(
-    activeRecurring.map((r) => compareKey(r.merchant ?? r.description)),
+    activeRecurring
+      .map((r) => merchantCompareKey(r.merchant ?? r.description))
+      .filter((k): k is string => k !== null),
   );
   const variableByMonth = new Map<MonthKey, Cents>();
 
@@ -414,12 +414,12 @@ export function forecastMonths({
     const spend = spendingCents(t);
     if (spend === 0) continue;
 
-    const key = compareKey(
+    const key = merchantCompareKey(
       t.merchantNormalized ?? t.merchantOriginal ?? t.description,
     );
-    const isRecurring = [...recurringKeys].some(
-      (r) => r !== "" && (key.includes(r) || r.includes(key)),
-    );
+    const isRecurring =
+      key !== null &&
+      [...recurringKeys].some((r) => key.includes(r) || r.includes(key));
     if (isRecurring) continue;
 
     const ahead = monthDiff(t.invoiceMonth, fromMonth);

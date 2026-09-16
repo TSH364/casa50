@@ -173,6 +173,35 @@ describe("a empresa que trocou de nome no meio da série", () => {
   });
 });
 
+describe("o espaço que a fatura põe e tira", () => {
+  /**
+   * MEDIDO nos 658 lançamentos reais: tirar o espaço junta EXATAMENTE um par
+   * de nomes distintos, o da Apple. Nenhum outro colide. O risco de juntar
+   * lojas diferentes existe no papel — a medição na base de verdade é o que
+   * autoriza, não a intuição.
+   */
+  it("as duas grafias da Apple viram uma chave só", () => {
+    const a = merchantKey(tx({ merchantNormalized: "APPLECOMBILL" }));
+    const b = merchantKey(tx({ merchantNormalized: "APPLE COM BILL" }));
+    expect(a).toBe(b);
+  });
+
+  it("a chave é identidade, e o nome canônico continua legível", () => {
+    // O nome próprio sai inteiro, com espaço e acento: `isCanonicalGrocery`
+    // compara contra ele por igualdade, e uma chave amassada o perderia.
+    expect(merchantKey(tx({ merchantNormalized: "PAO DE ACUCAR 1885" }))).toBe(
+      "Pão de Açúcar",
+    );
+    expect(isCanonicalGrocery("Pão de Açúcar")).toBe(true);
+  });
+
+  it("lojas diferentes continuam diferentes", () => {
+    const nomes = ["SUBITO RICE", "SUPERMERCADO PERIM", "PARK SAUDE", "REPITA"];
+    const chaves = nomes.map((n) => merchantKey(tx({ merchantNormalized: n })));
+    expect(new Set(chaves).size).toBe(nomes.length);
+  });
+});
+
 describe("redes de supermercado — o sufixo é a unidade, não o vendedor", () => {
   /**
    * MEDIDO na base real: o OBA aparece sob três grafias e o Pão de Açúcar sob
