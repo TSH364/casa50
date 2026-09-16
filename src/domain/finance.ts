@@ -414,6 +414,13 @@ export function budgetProgress(
 /**
  * Limite sugerido a partir da media historica (secao 7).
  * Devolve `null` quando nao ha meses suficientes para uma media honesta.
+ *
+ * E devolve `null` tambem quando a media nao e POSITIVA, que nao e caso de
+ * borda inventado: MEDIDO na base real, a categoria Tarifas fecha -R$ 98,00
+ * por mes, porque a anuidade e o estorno dela se anulam e o estorno entra com
+ * sinal negativo. Sem esta guarda a tela oferecia "usar" num limite de
+ * -R$ 98,00 - e teto negativo nao quer dizer nada: qualquer gasto ja o
+ * estouraria no primeiro centavo.
  */
 export function suggestBudget(
   monthlyTotals: readonly Cents[],
@@ -421,7 +428,8 @@ export function suggestBudget(
 ): Cents | null {
   if (monthlyTotals.length < minMonths) return null;
   const sum = monthlyTotals.reduce((a, b) => a + b, 0);
-  return Math.round(sum / monthlyTotals.length);
+  const media = Math.round(sum / monthlyTotals.length);
+  return media > 0 ? media : null;
 }
 
 /** Media de um mes "cheio" projetada a partir do ritmo ate agora. */

@@ -248,6 +248,20 @@ describe("suggestBudget", () => {
   it("nao sugere com historico curto demais", () => {
     expect(suggestBudget([100000, 120000])).toBeNull();
   });
+
+  it("média negativa não vira teto de gasto", () => {
+    /**
+     * MEDIDO na base real: a categoria Tarifas fecha -R$ 98,00 por mês,
+     * porque a anuidade e o estorno dela se anulam e o estorno entra com
+     * sinal negativo. A tela oferecia "usar" nesse número — e teto negativo
+     * não quer dizer nada: qualquer gasto o estouraria no primeiro centavo.
+     */
+    expect(suggestBudget([-9800, -9800, -9800])).toBeNull();
+    // Zero também não: um limite de R$ 0 não é orçamento, é remoção.
+    expect(suggestBudget([0, 0, 0])).toBeNull();
+    // E o caso em que os meses se cancelam entre si.
+    expect(suggestBudget([10000, -10000, 0])).toBeNull();
+  });
 });
 
 describe("meses", () => {

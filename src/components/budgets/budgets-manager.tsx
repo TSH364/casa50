@@ -3,7 +3,11 @@
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
 import { Copy, Lightbulb } from "lucide-react";
-import { copyBudgetsFromPreviousMonth, setBudget } from "@/actions/budgets";
+import {
+  applySuggestedBudgets,
+  copyBudgetsFromPreviousMonth,
+  setBudget,
+} from "@/actions/budgets";
 import { Button } from "@/components/ui/button";
 import { Card as Panel, CardHeader } from "@/components/ui/card";
 import { Input } from "@/components/ui/field";
@@ -89,8 +93,25 @@ export function BudgetsManager({
     });
   }
 
+  function applyAll() {
+    startTransition(async () => {
+      const result = await applySuggestedBudgets(month);
+      if (result.error) toast.error(result.error);
+      else if (result.created === 0) toast.info("Nada novo para sugerir.");
+      else toast.success(`${result.created} limite(s) criados a partir da média.`);
+    });
+  }
+
   const withBudget = rows.filter((r) => r.limitCents > 0);
   const without = rows.filter((r) => r.limitCents === 0);
+  // O "usar" de cada linha já existia; o que faltava era fazer isso de uma
+  // vez. Na casa real são doze categorias com sugestão, e doze idas e voltas
+  // de digitação são a razão de o mês ficar sem orçamento nenhum.
+  const comSugestao = without.filter((r) => r.suggestionCents !== null);
+  const totalSugerido = comSugestao.reduce(
+    (s, r) => s + (r.suggestionCents ?? 0),
+    0,
+  );
 
   const totalLimit = withBudget.reduce((s, r) => s + r.limitCents, 0);
   const totalSpent = withBudget.reduce((s, r) => s + r.spentCents, 0);
@@ -243,10 +264,35 @@ export function BudgetsManager({
             <ul className="space-y-2">{withBudget.map(renderRow)}</ul>
           </>
         ) : (
-          <p className="py-4 text-center text-[13px] text-ink-faint">
-            Nenhum limite definido para este mês. Toque numa categoria abaixo
-            para começar.
-          </p>
+          <div className="py-4 text-center">
+            <p className="text-[13px] text-ink-faint">
+              Nenhum limite definido para este mês. Toque numa categoria abaixo
+              para começar
+              {comSugestao.length > 0 ? " — ou aceite a média de uma vez." : "."}
+            </p>
+            {/* O número e o total vão no próprio botão: um atalho que não diz
+                o que vai fazer com o dinheiro da casa não merece ser tocado. */}
+            {comSugestao.length > 0 ? (
+              <>
+                <Button
+                  className="mt-3"
+                  size="sm"
+                  disabled={pending}
+                  onClick={applyAll}
+                >
+                  <Lightbulb aria-hidden /> Usar a média em {comSugestao.length}{" "}
+                  categorias
+                </Button>
+                {/* O total fica FORA do botão: dentro dele o rótulo não quebra
+                    (`whitespace-nowrap`), e medido a 360px o botão inteiro
+                    passava 19px da tela. Aqui a linha quebra à vontade. */}
+                <p className="mt-1.5 text-[12px] text-ink-faint">
+                  {formatCents(totalSugerido)} no total, a partir dos três meses
+                  anteriores
+                </p>
+              </>
+            ) : null}
+          </div>
         )}
       </Panel>
 

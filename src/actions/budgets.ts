@@ -7,7 +7,10 @@ import { requireHouseId } from "./shared";
 import type { FormState } from "./shared";
 import { fromMonthKey } from "@/data/mappers";
 import { isMonthKey } from "@/domain/month";
-import { addMonths } from "@/domain/month";
+import { addMonths, monthRange } from "@/domain/month";
+import { suggestBudget, totalsByCategory } from "@/domain/finance";
+import { listTransactions } from "@/data/queries";
+import { houseView } from "@/lib/house-view";
 
 /**
  * Orçamentos por categoria e mês (secao 12).
@@ -210,4 +213,96 @@ export async function applyBudgetChanges(input: unknown): Promise<FormState & { 
   revalidatePath("/inicio");
   revalidatePath("/previsao");
   return { ok: true, applied: changes.length };
+}
+
+/**
+ * Cria de uma vez os limites que o app ja sabia sugerir (secao 12).
+ *
+ * POR QUE EXISTE: a sugestao por categoria ja estava na tela, com um "usar"
+ * ao lado de cada linha. O que faltava era fazer isso de uma vez - MEDIDO na
+ * casa real, doze categorias tem sugestao, e o caminho era clicar, digitar e
+ * salvar doze vezes. O resultado dessa friccao estava no banco: ZERO
+ * orcamentos, com nove faturas de historico disponiveis.
+ *
+ * A MEDIA E RECALCULADA AQUI, e nao recebida pronta do navegador. E a mesma
+ * disciplina da importacao com a subcategoria: um numero que o cliente manda
+ * e um numero que o cliente pode forjar, e este vira teto de gasto da casa.
+ *
+ * NUNCA sobrescreve limite existente. Quem ja definiu um teto decidiu, e uma
+ * media do historico passando por cima apagaria a decisao - mesma regra que
+ * `copyBudgetsFromPreviousMonth` segue.
+ */
+export async function applySuggestedBudgets(
+  month: string,
+): Promise<FormState & { created?: number }> {
+  if (!isMonthKey(month)) return { error: "Mês inválido." };
+
+  const houseId = await requireHouseId();
+  const [user, view] = await Promise.all([getCurrentUser(), houseView(houseId)]);
+  const supabase = await createClient();
+
+  // A mesma janela que a tela usa para propor: os tres meses ANTERIORES.
+  const historyFrom = addMonths(month, -3);
+  const [history, { data: existing }] = await Promise.all([
+    listTransactions(houseId, {
+      fromMonth: historyFrom,
+      toMonth: addMonths(month, -1),
+      excludeCategoryIds: view.excludeCategoryIds,
+      limit: 2000,
+    }),
+    supabase
+      .from("budgets")
+      .select("category_id")
+      .eq("house_id", houseId)
+      .eq("month", fromMonthKey(month)),
+  ]);
+
+  // Total de cada categoria em cada mes, separadamente: a media precisa dos
+  // meses um a um, e nao da soma da janela inteira.
+  const porCategoria = new Map<string, number[]>();
+  for (const past of monthRange(historyFrom, addMonths(month, -1))) {
+    for (const total of totalsByCategory(history, past)) {
+      if (total.categoryId === null) continue;
+      const lista = porCategoria.get(total.categoryId) ?? [];
+      lista.push(total.totalCents);
+      porCategoria.set(total.categoryId, lista);
+    }
+  }
+
+  const jaTem = new Set((existing ?? []).map((b) => b.category_id as string));
+  // So categoria-mae recebe orcamento: limitar mae e filha ao mesmo tempo
+  // criaria dois numeros concorrentes para o mesmo gasto.
+  const rows = view.categories
+    .filter((c) => c.parentId === null && !jaTem.has(c.id))
+    .map((c) => ({ c, limite: suggestBudget(porCategoria.get(c.id) ?? []) }))
+    .filter((r): r is { c: (typeof view.categories)[number]; limite: number } =>
+      r.limite !== null,
+    )
+    .map((r) => ({
+      house_id: houseId,
+      category_id: r.c.id,
+      month: fromMonthKey(month),
+      limit_amount: r.limite / 100,
+      created_by: user?.id ?? null,
+    }));
+
+  if (rows.length === 0) {
+    return {
+      ok: true,
+      created: 0,
+      error: jaTem.size > 0
+        ? undefined
+        : "Ainda não há três meses de histórico para sugerir limites.",
+    };
+  }
+
+  const { error } = await supabase.from("budgets").insert(rows);
+  if (error) {
+    console.error("[orcamentos] falha ao aplicar sugestoes", { code: error.code });
+    return { error: "Não foi possível criar os orçamentos." };
+  }
+
+  revalidatePath("/orcamentos");
+  revalidatePath("/inicio");
+  return { ok: true, created: rows.length };
 }
