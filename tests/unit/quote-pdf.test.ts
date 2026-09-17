@@ -150,6 +150,71 @@ Entrada                      5.900,00
   });
 });
 
+describe("o que os orçamentos REAIS ensinaram", () => {
+  /**
+   * Esta seção substitui o palpite pela medição. Os três formatos abaixo vêm
+   * de orçamentos que chegaram de verdade — uma marmoraria, um depósito de
+   * material e uma loja de pisos — e cada caso aqui é um erro que o parser
+   * cometeu antes de ser corrigido.
+   */
+
+  it("o total vem da linha certa mesmo com o R$ DEPOIS do número", () => {
+    // Marmoraria: "TOTAL GERAL - Material e instalação 10.798,00 R$".
+    const r = readQuote("TOTAL GERAL - Material e instalação 10.798,00 R$");
+    expect(r.total?.cents).toBe(1_079_800);
+    expect(r.total?.confidence).toBe("alta");
+  });
+
+  it("telefone não é dinheiro — e era o falso positivo mais perigoso", () => {
+    // "(11) 99023-2728" gerava R$ 99.023,00 e R$ 2.728,00. O primeiro era
+    // MAIOR que o total verdadeiro do documento (R$ 10.798,00): número errado
+    // e maior que o certo numa lista de valores parece o fechamento.
+    expect(moneyCandidates("Prazo de 15 dias após aprovação. (11) 99023-2728")).toHaveLength(0);
+    expect(moneyCandidates("Fone: (11) 4612-6439")).toHaveLength(0);
+    expect(moneyCandidates("94745-9011")).toHaveLength(0);
+  });
+
+  it("o ano numa data por extenso não é dinheiro", () => {
+    // "Santana do Parnaiba, 16 de setembro de 2026" dava R$ 2.026,00.
+    expect(moneyCandidates("Santana do Parnaiba, 16 de setembro de 2026")).toHaveLength(0);
+  });
+
+  it("o número do orçamento não é dinheiro", () => {
+    /**
+     * "N° 938" virava R$ 938,00. O guarda existia e estava MORTO: escrito
+     * como `n[ºo°]\s*\d\b`, o `\b` final exigia fronteira logo após o
+     * primeiro dígito — e em "938" o próximo caractere é outro dígito.
+     *
+     * É a mesma armadilha que este projeto já registrou em `subcategories.ts`,
+     * onde `atacad\b` não casava com "ATACADISTA". Duas vezes o mesmo `\b` no
+     * fim de um radical, em arquivos diferentes.
+     */
+    expect(moneyCandidates("N° 938")).toHaveLength(0);
+    expect(moneyCandidates("Orçamento Nº 126641")).toHaveLength(0);
+    expect(moneyCandidates("16/09/2026 1/1 Orçamento(RV0) - IF - n° 938")).toHaveLength(0);
+  });
+
+  it("'Total Geral' com dois pontos também é o fechamento", () => {
+    // Depósito de material: "Total Geral: 2.226,90".
+    expect(readQuote("Total Geral: 2.226,90").total?.cents).toBe(222_690);
+  });
+
+  it("entre o parcelado e o à vista, vence o à vista", () => {
+    /**
+     * Loja de pisos, o mesmo serviço anunciado de duas formas:
+     *
+     *   R$ 2.999,00 EM ATÉ 10X SEM JUROS NO CARTÃO
+     *   R$ 2.789,00 A VISTA
+     *
+     * Nenhuma das duas linhas tem a palavra "total". Sem tratar isto, o maior
+     * venceria e o app registraria a proposta mais cara — o preço parcelado
+     * já carrega o custo do parcelamento.
+     */
+    const r = readQuote("R$ 2.999,00 EM ATÉ 10X\nSEM JUROS NO CARTÃO\nR$ 2.789,00 A VISTA");
+    expect(r.total?.cents).toBe(278_900);
+  });
+});
+
 describe("de quem é a proposta", () => {
   it("pega a razão social a partir do CNPJ", () => {
     expect(supplierFrom(MARCENARIA)).toBe("MARCENARIA SANTA CRUZ LTDA");
@@ -173,6 +238,24 @@ Total 3.000,00
 
   it("não confunde rótulo com nome de empresa", () => {
     expect(supplierFrom("ORÇAMENTO\nData: 14/09/2026\n1.200,00")).toBeNull();
+  });
+
+  it("cidade e data não são fornecedor — e vazio é melhor que errado", () => {
+    /**
+     * Orçamento real cujo cabeçalho é um LOGO: o texto extraído não tem nome
+     * de empresa nenhum. A busca larga pegava "Santana do Parnaiba, 16 de
+     * setembro de 2026" e preenchia o campo fornecedor com uma data.
+     *
+     * Nome errado num campo que a pessoa confere por cima é pior que campo
+     * vazio: o vazio pede atenção, o errado não.
+     */
+    const real = [
+      "N° 938",
+      "Santana do Parnaiba, 16 de setembro de 2026",
+      "Quant.",
+      "ITEM AMBIENTE MATERIAL SERVIÇO Un. Total",
+    ].join("\n");
+    expect(supplierFrom(real)).toBeNull();
   });
 });
 

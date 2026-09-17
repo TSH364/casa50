@@ -121,9 +121,16 @@ function paraCentavos(bruto: string): Cents | null {
  * numa proposta com tres blocos ha tres subtotais maiores que qualquer item
  * e menores que o total.
  */
-const FORTE = /\b(total\s+geral|valor\s+total|total\s+do\s+or[cç]amento|total\s+a\s+pagar|pre[cç]o\s+total)\b/i;
+const FORTE = /\b(total\s+geral|valor\s+total|total\s+do\s+or[cç]amento|total\s+a\s+pagar|pre[cç]o\s+total|[aà]\s*vista)\b/i;
 const MEDIO = /\b(total|valor\s+final|investimento)\b/i;
-const DERRUBA = /\b(subtotal|parcial|desconto|acr[eé]scimo|frete|entrada|sinal|parcela|por\s+m[eê]s|mensal|unit[aá]rio|por\s+unidade)\b/i;
+/**
+ * O "x" do parcelamento entra aqui por causa de um orcamento real: a mesma
+ * loja anuncia "R$ 2.999,00 EM ATE 10X" e "R$ 2.789,00 A VISTA". Sao o mesmo
+ * servico com duas formas de pagar, e o preco da proposta e o de a vista -
+ * o outro ja carrega o custo do parcelamento. Sem isto o maior venceria, e o
+ * app registraria a proposta mais cara das duas.
+ */
+const DERRUBA = /\b(subtotal|parcial|desconto|acr[eé]scimo|frete|entrada|sinal|parcela|por\s+m[eê]s|mensal|unit[aá]rio|por\s+unidade|\d+\s*x\b|sem\s+juros)/i;
 
 /**
  * Datas saem da linha ANTES de procurar dinheiro.
@@ -138,8 +145,56 @@ const DERRUBA = /\b(subtotal|parcial|desconto|acr[eé]scimo|frete|entrada|sinal|
  */
 const DATA_NA_LINHA = /\b\d{1,2}\/\d{1,2}\/\d{2,4}\b/g;
 
-/** Linhas que nao sao dinheiro apesar de terem numero com dois decimais. */
-const NAO_E_DINHEIRO = /\b(cnpj|cpf|cep|telefone|fone|whats|ie\b|inscri[cç][aã]o|n[ºo°]\s*\d|or[cç]amento\s*n)\b/i;
+/**
+ * Data por extenso, e o ANO dentro dela.
+ *
+ * MEDIDO num orcamento real: "Santana do Parnaiba, 16 de setembro de 2026"
+ * produzia um candidato de R$ 2.026,00. O `DATA_NA_LINHA` acima nao alcanca
+ * porque a data nao esta em dd/mm/aaaa.
+ */
+const MES_POR_EXTENSO =
+  "janeiro|fevereiro|mar[cç]o|abril|maio|junho|julho|agosto|setembro|outubro|novembro|dezembro";
+const DATA_POR_EXTENSO = new RegExp(
+  `\\b\\d{1,2}\\s+de\\s+(?:${MES_POR_EXTENSO})\\s+de\\s+\\d{4}\\b|\\bde\\s+(?:${MES_POR_EXTENSO})\\s+de\\s+\\d{4}\\b`,
+  "gi",
+);
+
+/**
+ * Telefone, que e o falso positivo mais perigoso que apareceu.
+ *
+ * MEDIDO no mesmo orcamento real: "(11) 99023-2728" gerava DOIS fantasmas -
+ * R$ 99.023,00 e R$ 2.728,00 - e o primeiro era MAIOR que o total verdadeiro
+ * do documento (R$ 10.798,00). Um numero errado e maior que o certo numa
+ * lista de valores e a pior combinacao possivel: parece o fechamento.
+ *
+ * A guarda por palavra ("fone", "telefone") nao bastava porque o numero
+ * aparece solto no rodape, sem rotulo nenhum.
+ */
+const TELEFONE = /(?:\(\d{2}\)\s*)?\d{4,5}[-\s]\d{4}\b/g;
+
+/**
+ * Linhas que nao sao dinheiro apesar de terem numero com cara de valor.
+ *
+ * DUAS EXPRESSOES, e nao uma: a primeira termina em palavra e leva `\b`; a
+ * segunda termina em DIGITO e nao pode levar.
+ *
+ * Esta separacao existe porque a versao junta estava quebrada e so o dado
+ * real mostrou. Com `n[ºo°]\s*\d\b`, o `\b` final exige fronteira logo apos o
+ * primeiro digito - e em "N° 938" o proximo caractere e outro digito, entao o
+ * guarda nunca casava e o NUMERO DO ORCAMENTO virava R$ 938,00 na lista de
+ * valores oferecida a pessoa.
+ *
+ * E a mesma armadilha que este projeto ja registrou em `subcategories.ts`:
+ * `atacad\b` nao casa com "ATACADISTA". Duas vezes o mesmo `\b` no fim de um
+ * radical, em arquivos diferentes.
+ */
+const NAO_E_DINHEIRO_PALAVRA =
+  /\b(?:cnpj|cpf|cep|telefone|fone|whats|ie|inscri[cç][aã]o)\b/i;
+const NAO_E_DINHEIRO_NUMERO = /\bn[ºo°]\s*\d|\bor[cç]amento\s*n/i;
+
+function naoEDinheiro(linha: string): boolean {
+  return NAO_E_DINHEIRO_PALAVRA.test(linha) || NAO_E_DINHEIRO_NUMERO.test(linha);
+}
 
 /**
  * Todos os valores do texto, cada um com o quanto a linha dele convence.
@@ -153,14 +208,17 @@ export function moneyCandidates(text: string): MoneyCandidate[] {
 
   for (const linhaBruta of text.split(/\r?\n/)) {
     const linha = linhaBruta.trim();
-    if (linha === "" || NAO_E_DINHEIRO.test(linha)) continue;
-    const semData = linha.replace(DATA_NA_LINHA, " ");
+    if (linha === "" || naoEDinheiro(linha)) continue;
+    const semRuido = linha
+      .replace(TELEFONE, " ")
+      .replace(DATA_NA_LINHA, " ")
+      .replace(DATA_POR_EXTENSO, " ");
 
     const forte = FORTE.test(linha);
     const medio = !forte && MEDIO.test(linha);
     const derruba = DERRUBA.test(linha);
 
-    for (const m of semData.matchAll(DINHEIRO)) {
+    for (const m of semRuido.matchAll(DINHEIRO)) {
       const cents = paraCentavos(m[1] ?? "");
       if (cents === null) continue;
       // Abaixo de um real quase sempre e numero de item, percentual ou
@@ -223,7 +281,14 @@ export function supplierFrom(text: string): string | null {
     }
   }
 
-  for (const l of linhas.slice(0, 8)) {
+  // SEM CNPJ, so o alto da pagina conta - e so as tres primeiras linhas.
+  //
+  // MEDIDO num orcamento real cujo cabecalho e um LOGO (imagem): o texto nao
+  // tem nome de empresa nenhum, e a busca larga pegava a quarta linha,
+  // "Santana do Parnaiba, 16 de setembro de 2026", preenchendo o campo
+  // fornecedor com uma data. Nome errado num campo que a pessoa vai conferir
+  // por cima e pior que campo vazio: o vazio pede atencao, o errado nao.
+  for (const l of linhas.slice(0, 3)) {
     if (pareceNome(l)) return limpar(l);
   }
   return null;
@@ -233,10 +298,14 @@ function pareceNome(linha: string): boolean {
   if (linha.length < 3 || linha.length > 80) return false;
   // Linha que e so numero, data, dinheiro ou rotulo nao e nome de empresa.
   if (/^[\d\s.,\-/:]+$/.test(linha)) return false;
+  // "Cidade, 16 de setembro de 2026" e onde e quando, nao quem.
+  if (new RegExp(`\\b(?:${MES_POR_EXTENSO})\\b`, "i").test(linha)) return false;
+  // Uma palavra so ("Quant.") e rotulo de coluna, nao razao social.
+  if (linha.trim().split(/\s+/).length < 2) return false;
   if (/^(or[cç]amento|proposta|data|validade|cliente|obra|endere[cç]o)\b/i.test(linha)) {
     return false;
   }
-  if (NAO_E_DINHEIRO.test(linha)) return false;
+  if (naoEDinheiro(linha)) return false;
   return /[A-Za-zÀ-ÿ]{3}/.test(linha);
 }
 
