@@ -1,5 +1,6 @@
 import { toCents, type Cents } from "@/lib/money";
-import type { IsoDate } from "./types";
+import { priorityRank, type PaymentMethod } from "./purchase";
+import type { IsoDate, MonthKey } from "./types";
 
 /**
  * Obra: o que foi comprado, o que nao foi, o que foi comprado pela metade.
@@ -41,11 +42,17 @@ export interface ProjectQuote {
 export interface ProjectPurchase {
   id: string;
   quantity: number | null;
+  /** A compra INTEIRA, e nao a parcela do mes - ver `domain/purchase.ts`. */
   amountCents: Cents;
   date: IsoDate;
   supplier: string | null;
   /** Lancamento correspondente, quando a compra passou pelo cartao. */
   transactionId: string | null;
+  paymentMethod: PaymentMethod | null;
+  /** Mes em que a despesa cai. Nulo = o mes da data da compra. */
+  invoiceMonth: MonthKey | null;
+  /** Em quantas vezes. Nulo = a vista. */
+  installmentTotal: number | null;
 }
 
 export interface ProjectItem {
@@ -56,6 +63,8 @@ export interface ProjectItem {
   plannedQuantity: number | null;
   note: string | null;
   sortOrder: number;
+  /** 1 alta, 2 media, 3 baixa. Nulo = a casa ainda nao decidiu. */
+  priority: number | null;
   /** Quando a casa deu o item por encerrado, mesmo sem fechar a quantidade. */
   closedAt: string | null;
   quotes: ProjectQuote[];
@@ -195,9 +204,14 @@ export function projectSummary(items: readonly ProjectItem[]): ProjectSummary {
   const spentCents = soma(progress.map((p) => p.spentCents));
 
   return {
+    // A PRIORIDADE VEM ANTES DA ORDEM DA PLANILHA, e depois da etapa: dentro
+    // de "Revestimentos", o que a casa marcou como urgente aparece primeiro.
+    // Ordenar por prioridade acima da etapa desmontaria os blocos da obra, que
+    // e como se compra - tudo do piso na mesma ida a loja.
     items: progress.sort(
       (a, b) =>
         (a.item.stage ?? "").localeCompare(b.item.stage ?? "") ||
+        priorityRank(a.item.priority) - priorityRank(b.item.priority) ||
         a.item.sortOrder - b.item.sortOrder ||
         a.item.name.localeCompare(b.item.name),
     ),

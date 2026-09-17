@@ -3,6 +3,14 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { createClient, getCurrentUser } from "@/lib/supabase/server";
+import { listCards, listTransactions } from "@/data/queries";
+import { addMonths, currentMonth } from "@/domain/month";
+import {
+  needsLedgerEntry,
+  rankCandidates,
+  type LinkableTransaction,
+} from "@/domain/purchase";
+import { toCents } from "@/lib/money";
 import { requireHouseId } from "./shared";
 import type { FormState } from "./shared";
 
@@ -339,9 +347,45 @@ const compraSchema = z.object({
   note: z.string().trim().max(500).nullable().optional(),
   /** Lançamento do cartão, quando a compra passou por ele. */
   transactionId: z.string().uuid().nullable().optional(),
+  paymentMethod: z.enum(["card", "boleto", "pix", "cash"]).nullable().optional(),
+  /** Mês em que a despesa cai; sem ele, o mês da data da compra. */
+  invoiceMonth: z.string().regex(/^\d{4}-\d{2}$/).nullable().optional(),
+  installmentTotal: z.number().int().min(2).max(120).nullable().optional(),
+  /** Nome do item, para a descrição do lançamento que nascer daqui. */
+  itemName: z.string().trim().max(160).optional(),
+  /**
+   * Lançar a despesa nos totais do mês.
+   *
+   * Vem da tela, e não é deduzido da forma de pagamento: a casa confirma antes
+   * de o app escrever dinheiro no extrato. Cartão ignora este campo — a fatura
+   * já trouxe a despesa, e lançar de novo contaria duas vezes.
+   */
+  postToLedger: z.boolean().optional(),
 });
 
-export async function addPurchase(input: unknown): Promise<FormState> {
+export interface PurchaseResult extends FormState {
+  /** O lançamento criado, quando a compra não passou no cartão. */
+  postedTransactionId?: string;
+}
+
+/**
+ * Registra a compra e, quando ela não passa no cartão, lança a despesa.
+ *
+ * POR QUE O LANÇAMENTO NASCE AQUI, e não numa segunda tela: uma obra se paga
+ * muito por boleto e pix, e nada disso chega por fatura. Sem este lançamento,
+ * os totais do mês contariam a parte da obra que caiu no cartão e ignorariam a
+ * outra — metade da obra visível e metade invisível é pior que nenhuma das
+ * duas, porque parece completo.
+ *
+ * O CARTÃO NÃO GERA LANÇAMENTO NENHUM. A fatura já traz, e a compra apenas
+ * aponta para o lançamento que a casa escolheu. Criar um aqui contaria a mesma
+ * despesa duas vezes.
+ *
+ * Se a compra grava e o lançamento falha, a compra FICA: ela é o registro da
+ * obra, e desfazê-la por causa do extrato perderia o dado que mais custou a
+ * digitar. O retorno diz o que de fato aconteceu.
+ */
+export async function addPurchase(input: unknown): Promise<PurchaseResult> {
   const parsed = compraSchema.safeParse(input);
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? "Dados inválidos." };
@@ -349,21 +393,182 @@ export async function addPurchase(input: unknown): Promise<FormState> {
   const [houseId, user] = await Promise.all([requireHouseId(), getCurrentUser()]);
   const supabase = await createClient();
 
-  const { error } = await supabase.from("project_purchases").insert({
-    house_id: houseId,
-    item_id: parsed.data.itemId,
-    transaction_id: parsed.data.transactionId ?? null,
-    amount: parsed.data.amountCents / 100,
-    quantity: parsed.data.quantity ?? null,
-    date: parsed.data.date,
-    supplier: parsed.data.supplier || null,
-    note: parsed.data.note || null,
-    created_by: user?.id ?? null,
+  const method = parsed.data.paymentMethod ?? null;
+  const mes = parsed.data.invoiceMonth ?? parsed.data.date.slice(0, 7);
+
+  const { data: compra, error } = await supabase
+    .from("project_purchases")
+    .insert({
+      house_id: houseId,
+      item_id: parsed.data.itemId,
+      transaction_id: parsed.data.transactionId ?? null,
+      amount: parsed.data.amountCents / 100,
+      quantity: parsed.data.quantity ?? null,
+      date: parsed.data.date,
+      supplier: parsed.data.supplier || null,
+      note: parsed.data.note || null,
+      payment_method: method,
+      invoice_month: `${mes}-01`,
+      installment_total: parsed.data.installmentTotal ?? null,
+      created_by: user?.id ?? null,
+    })
+    .select("id")
+    .single();
+
+  if (error || !compra) {
+    console.error("[projetos] falha ao gravar compra", { code: error?.code });
+    return { error: "Não foi possível registrar a compra." };
+  }
+
+  const lancar =
+    parsed.data.postToLedger === true &&
+    method !== null &&
+    needsLedgerEntry(method) &&
+    parsed.data.amountCents > 0;
+
+  if (!lancar) {
+    revalidatePath("/projetos");
+    return { ok: true };
+  }
+
+  const { data: lancamento, error: erroLancamento } = await supabase
+    .from("transactions")
+    .insert({
+      house_id: houseId,
+      project_purchase_id: compra.id,
+      card_id: null,
+      date: parsed.data.date,
+      invoice_month: `${mes}-01`,
+      description: parsed.data.itemName
+        ? `Obra · ${parsed.data.itemName}`
+        : "Obra · compra de projeto",
+      merchant_original: parsed.data.supplier || null,
+      amount: parsed.data.amountCents / 100,
+      type: "expense",
+      origin: "manual",
+      status: "confirmed",
+      member_id: user?.id ?? null,
+      created_by: user?.id ?? null,
+    })
+    .select("id")
+    .single();
+
+  if (erroLancamento) {
+    // 23505 é a trava de "um lançamento por compra": dois toques no botão, ou
+    // duas abas. Não é erro para mostrar — o lançamento já existe.
+    if (erroLancamento.code !== "23505") {
+      console.error("[projetos] falha ao lançar a compra", {
+        code: erroLancamento.code,
+      });
+      revalidatePath("/projetos");
+      return {
+        ok: true,
+        error:
+          "Compra registrada, mas não consegui lançar a despesa no mês. Lance à mão em Extratos.",
+      };
+    }
+  }
+
+  revalidatePath("/projetos");
+  revalidatePath("/extratos");
+  revalidatePath("/inicio");
+  return { ok: true, postedTransactionId: lancamento?.id as string | undefined };
+}
+
+/**
+ * Os lançamentos que podem ser esta compra, os mais parecidos primeiro.
+ *
+ * A BASE TEM CENTENAS DE LANÇAMENTOS. Pedir que alguém ache "o do porcelanato"
+ * rolando a lista é pedir que desista, e um vínculo que dá trabalho não é
+ * feito — e aí o item fica eternamente "a comprar" mesmo já pago. Por isso a
+ * ordem vem pronta: fornecedor da proposta escolhida e valor previsto, que são
+ * os dois sinais que a pessoa usaria de qualquer jeito (ver `domain/purchase`).
+ *
+ * Só despesa, e só o último ano: receita e estorno não compram material, e uma
+ * obra não se paga com fatura de dois anos atrás.
+ */
+export async function findTransactionsForItem(input: {
+  supplier?: string | null;
+  expectedCents?: number | null;
+  search?: string;
+}): Promise<{ error?: string; candidates?: LinkableTransaction[] }> {
+  const schema = z.object({
+    supplier: z.string().trim().max(120).nullable().optional(),
+    expectedCents: z.number().int().min(0).nullable().optional(),
+    search: z.string().trim().max(80).optional(),
+  });
+  const parsed = schema.safeParse(input);
+  if (!parsed.success) return { error: "Busca inválida." };
+
+  const houseId = await requireHouseId();
+
+  const transactions = await listTransactions(houseId, {
+    fromMonth: addMonths(currentMonth(), -12),
+    search: parsed.data.search || undefined,
   });
 
+  const cards = await listCards(houseId);
+  const rotuloPorCartao = new Map(
+    cards.map((c) => [c.id, c.lastFour ? `${c.name} ·${c.lastFour}` : c.name]),
+  );
+
+  const linkable: LinkableTransaction[] = transactions
+    .filter((t) => t.type === "expense" && !t.isHidden)
+    .map((t) => ({
+      id: t.id,
+      date: t.date,
+      invoiceMonth: t.invoiceMonth,
+      description: t.description,
+      merchant: t.merchantAlias ?? t.merchantNormalized ?? t.merchantOriginal,
+      amountCents: toCents(t.amount),
+      installmentCurrent: t.installment?.current ?? null,
+      installmentTotal: t.installment?.total ?? null,
+      installmentValueCents:
+        t.installment?.value === null || t.installment?.value === undefined
+          ? null
+          : toCents(t.installment.value),
+      cardLabel: t.cardId ? (rotuloPorCartao.get(t.cardId) ?? null) : null,
+    }));
+
+  const ranked = rankCandidates(linkable, {
+    supplier: parsed.data.supplier,
+    expectedCents: parsed.data.expectedCents,
+  });
+
+  // Vinte é o que cabe numa tela de celular sem virar outra lista para rolar.
+  // Quando o certo não está entre eles, a busca por nome é o caminho.
+  return { candidates: ranked.slice(0, 20).map((c) => c.transaction) };
+}
+
+/**
+ * O que comprar primeiro.
+ *
+ * Três níveis e não cinco: com cinco, quem usa marca tudo como 2 ou 4 e o
+ * campo deixa de separar o que importa. `null` desmarca.
+ */
+export async function setItemPriority(input: {
+  itemId: string;
+  priority: 1 | 2 | 3 | null;
+}): Promise<FormState> {
+  const schema = z.object({
+    itemId: z.string().uuid(),
+    priority: z.union([z.literal(1), z.literal(2), z.literal(3), z.null()]),
+  });
+  const parsed = schema.safeParse(input);
+  if (!parsed.success) return { error: "Dados inválidos." };
+
+  const houseId = await requireHouseId();
+  const supabase = await createClient();
+
+  const { error } = await supabase
+    .from("project_items")
+    .update({ priority: parsed.data.priority })
+    .eq("house_id", houseId)
+    .eq("id", parsed.data.itemId);
+
   if (error) {
-    console.error("[projetos] falha ao gravar compra", { code: error.code });
-    return { error: "Não foi possível registrar a compra." };
+    console.error("[projetos] falha ao marcar prioridade", { code: error.code });
+    return { error: "Não foi possível mudar a prioridade." };
   }
   revalidatePath("/projetos");
   return { ok: true };

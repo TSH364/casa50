@@ -21,6 +21,7 @@ function item(partial: Partial<ProjectItem> = {}): ProjectItem {
     plannedQuantity: null,
     note: null,
     sortOrder: 0,
+    priority: null,
     closedAt: null,
     quotes: [],
     purchases: [],
@@ -51,6 +52,9 @@ function purchase(partial: Partial<ProjectPurchase> = {}): ProjectPurchase {
     date: "2026-09-10",
     supplier: null,
     transactionId: null,
+    paymentMethod: null,
+    invoiceMonth: null,
+    installmentTotal: null,
     ...partial,
   };
 }
@@ -310,5 +314,40 @@ describe("o que a escolha economizou", () => {
         item({ quotes: [quote({ amountCents: 900_000 }), quote({ amountCents: 1_200_000 })] }),
       ]),
     ).toBe(0);
+  });
+});
+
+describe("prioridade na ordem da lista", () => {
+  it("dentro da etapa, o urgente vem primeiro", () => {
+    // A ETAPA VENCE A PRIORIDADE de propósito: obra se compra por bloco - tudo
+    // do piso na mesma ida à loja - e ordenar por urgência acima da etapa
+    // desmontaria os blocos.
+    const itens = [
+      item({ stage: "Pisos", name: "Rodapé", priority: 3 }),
+      item({ stage: "Pisos", name: "Porcelanato", priority: 1 }),
+      item({ stage: "Pintura", name: "Tinta", priority: 2 }),
+      item({ stage: "Pisos", name: "Argamassa", priority: null }),
+      item({ stage: "Pisos", name: "Soleira", priority: 1 }),
+    ];
+    expect(projectSummary(itens).items.map((p) => p.item.name)).toEqual([
+      "Tinta",
+      "Porcelanato",
+      "Soleira",
+      "Rodapé",
+      "Argamassa",
+    ]);
+  });
+
+  it("item sem prioridade vai depois do de prioridade baixa", () => {
+    // Pôr na frente o que ninguém pensou empurraria para baixo justamente o
+    // que foi pensado.
+    const itens = [
+      item({ name: "Não decidido", priority: null }),
+      item({ name: "Baixa", priority: 3 }),
+    ];
+    expect(projectSummary(itens).items.map((p) => p.item.name)).toEqual([
+      "Baixa",
+      "Não decidido",
+    ]);
   });
 });
