@@ -3,7 +3,7 @@ import type { Cents } from "@/lib/money";
 import { toCents } from "@/lib/money";
 import { addMonths, daysInMonth, monthDiff } from "./month";
 import { spendingCents } from "./finance";
-import { merchantKey, merchantLabel } from "./merchants";
+import { merchantCompareKey, merchantKey, merchantLabel } from "./merchants";
 
 /**
  * Parcelas, recorrências, conciliação e previsão (secoes 9, 10 e 11).
@@ -134,7 +134,16 @@ export type ReconcileStatus =
   /** Não apareceu, e o dia esperado já passou. */
   | "missing"
   /** Não apareceu ainda, mas o dia esperado não chegou. */
-  | "pending";
+  | "pending"
+  /**
+   * Lançada como previsão, esperando a casa confirmar o valor pago.
+   *
+   * Só acontece com conta que não passa no cartão (`off_card`): o app compõe
+   * a linha — data, valor, categoria, mês — e a pessoa confirma. É o estado
+   * que faz a parcela do financiamento existir no app sem que ninguém precise
+   * digitá-la, e sem que o app declare pago o que talvez não tenha sido.
+   */
+  | "to_confirm";
 
 export interface RecurrenceMatch {
   recurrence: Recurrence;
@@ -146,35 +155,81 @@ export interface RecurrenceMatch {
   differenceCents: Cents;
 }
 
-/** Normalização leve, só para comparar recorrência com lançamento. */
-function compareKey(value: string): string {
-  return value
-    .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "")
-    .toUpperCase()
-    .replace(/[^A-Z0-9]+/g, " ")
-    .trim();
-}
-
 /**
  * Uma recorrência casa com um lançamento quando os nomes se contêm.
  *
  * Comparar por igualdade exata falharia sempre: a recorrência é "Netflix" e o
  * lançamento chega como "NETFLIX.COM". Comparar por valor seria pior ainda -
  * duas assinaturas de R$ 55,90 no mesmo mês trocariam de lugar.
+ *
+ * A régua é `merchantCompareKey`, a MESMA que agrupa por estabelecimento no
+ * resto do app. Antes havia uma cópia local dela aqui, e a cópia divergia num
+ * detalhe com consequência: ela colapsava pontuação em ESPAÇO em vez de tirar
+ * o espaço. Com isso "APPLECOMBILL" e "APPLE COM BILL" não se continham, e a
+ * recorrência da Apple aparecia como ausente em todo mês cuja fatura usasse a
+ * outra grafia - seis dos nove meses reais.
  */
 function matches(recurrence: Recurrence, t: Transaction): boolean {
-  const target = compareKey(recurrence.merchant ?? recurrence.description);
-  if (target === "") return false;
-  const candidate = compareKey(
+  const target = merchantCompareKey(recurrence.merchant ?? recurrence.description);
+  if (target === null) return false;
+  const candidate = merchantCompareKey(
     t.merchantNormalized ?? t.merchantOriginal ?? t.description,
   );
+  if (candidate === null) return false;
   return candidate.includes(target) || target.includes(candidate);
 }
 
 /** Diferença aceitável antes de chamar de divergente: 1% ou R$ 1, o que for maior. */
 function tolerance(expectedCents: Cents): Cents {
   return Math.max(100, Math.round(expectedCents * 0.01));
+}
+
+/** O bastante de um lançamento para procurar a recorrência dele. */
+export interface RecurrenceLinkInput {
+  merchantNormalized: string | null;
+  merchantOriginal?: string | null;
+  description: string;
+  amountCents: Cents;
+}
+
+/**
+ * Qual recorrência este lançamento É, se der para afirmar (secao 10).
+ *
+ * POR QUE ISTO EXISTE: o schema tem `recurring_id` para ligar um lançamento à
+ * recorrência que ele paga, e MEDIDO na base real ele está preenchido em ZERO
+ * dos 658 lançamentos, com cinco recorrências cadastradas. A importação nunca
+ * ligou as duas coisas. É por isso que `recurring.ts` reconhece assinatura por
+ * heurística — "mesmo valor", "mesmo dia do mês" — em vez de simplesmente
+ * perguntar. Preenchido, o app passa a SABER onde hoje ele adivinha.
+ *
+ * DEVOLVE `null` NA DÚVIDA, e a dúvida inclui o empate. Um vínculo errado é
+ * pior que vínculo nenhum: ele faria a conciliação dar por paga uma conta que
+ * não foi, que é exatamente o alarme que ela existe para dar. Por isso duas
+ * recorrências candidatas não viram escolha por desempate — viram `null`, e a
+ * heurística segue cuidando do caso como sempre cuidou.
+ *
+ * O valor entra na conta com a MESMA tolerância da conciliação: o que ela
+ * chamaria de divergente não pode ser ligado aqui como se fosse o mesmo fato.
+ */
+export function matchRecurrence(
+  recurrences: readonly Recurrence[],
+  row: RecurrenceLinkInput,
+): Recurrence | null {
+  const candidate = merchantCompareKey(
+    row.merchantNormalized ?? row.merchantOriginal ?? row.description,
+  );
+  if (candidate === null) return null;
+
+  const achados = recurrences.filter((r) => {
+    if (!r.isActive) return false;
+    const target = merchantCompareKey(r.merchant ?? r.description);
+    if (target === null) return false;
+    if (!candidate.includes(target) && !target.includes(candidate)) return false;
+    const expected = toCents(r.amount);
+    return Math.abs(row.amountCents - expected) <= tolerance(expected);
+  });
+
+  return achados.length === 1 ? achados[0]! : null;
 }
 
 /**
@@ -199,10 +254,17 @@ export function reconcileRecurrences(
     .filter((r) => r.isActive)
     .map((recurrence) => {
       const expectedCents = toCents(recurrence.amount);
+      // O VÍNCULO GRAVADO VENCE O NOME, e é o motivo de ele existir: quando a
+      // importação já ligou o lançamento à recorrência, não há o que casar por
+      // texto - o app sabe. O nome fica de reserva para o histórico antigo,
+      // importado antes de `recurring_id` ser preenchido.
+      //
       // Cada lançamento serve a uma recorrência só: sem isso, duas assinaturas
       // de nome parecido apontariam para a mesma linha e uma sumiria.
       const found =
-        inMonth.find((t) => !taken.has(t.id) && matches(recurrence, t)) ?? null;
+        inMonth.find((t) => !taken.has(t.id) && t.recurringId === recurrence.id) ??
+        inMonth.find((t) => !taken.has(t.id) && matches(recurrence, t)) ??
+        null;
 
       if (found) {
         taken.add(found.id);
@@ -224,7 +286,16 @@ export function reconcileRecurrences(
       // Mês passado sem o lançamento é ausência. Mês corrente só vira ausência
       // depois do dia esperado - antes disso a conta simplesmente não venceu,
       // e alarmar seria mentira.
-      let status: ReconcileStatus = "missing";
+      // "AUSENTE" SÓ FAZ SENTIDO PARA QUEM DEVERIA TER APARECIDO.
+      //
+      // A conta que não passa no cartão nunca vai chegar por fatura: marcá-la
+      // de ausente é acusar a ausência de algo que jamais viria. MEDIDO no
+      // caso real: a parcela do financiamento ficaria "não apareceu" todo mês,
+      // para sempre — e um aviso que nunca sai ensina a ignorar os outros.
+      //
+      // Ela fica pendente até o dia esperado, e depois passa a pedir o
+      // lançamento em vez de acusar falta.
+      let status: ReconcileStatus = recurrence.offCard ? "to_confirm" : "missing";
       if (month > currentMonthKey) {
         status = "pending";
       } else if (month === currentMonthKey) {
@@ -232,7 +303,12 @@ export function reconcileRecurrences(
           recurrence.expectedDay ?? daysInMonth(month),
           daysInMonth(month),
         );
-        status = now.getDate() < dueDay ? "pending" : "missing";
+        status =
+          now.getDate() < dueDay
+            ? "pending"
+            : recurrence.offCard
+              ? "to_confirm"
+              : "missing";
       }
 
       return {
@@ -399,7 +475,9 @@ export function forecastMonths({
   // Gasto variável do passado: tudo que não é parcela nem recorrência
   // reconhecida. É o que sobra depois de tirar o que já sabemos prever.
   const recurringKeys = new Set(
-    activeRecurring.map((r) => compareKey(r.merchant ?? r.description)),
+    activeRecurring
+      .map((r) => merchantCompareKey(r.merchant ?? r.description))
+      .filter((k): k is string => k !== null),
   );
   const variableByMonth = new Map<MonthKey, Cents>();
 
@@ -414,12 +492,12 @@ export function forecastMonths({
     const spend = spendingCents(t);
     if (spend === 0) continue;
 
-    const key = compareKey(
+    const key = merchantCompareKey(
       t.merchantNormalized ?? t.merchantOriginal ?? t.description,
     );
-    const isRecurring = [...recurringKeys].some(
-      (r) => r !== "" && (key.includes(r) || r.includes(key)),
-    );
+    const isRecurring =
+      key !== null &&
+      [...recurringKeys].some((r) => key.includes(r) || r.includes(key));
     if (isRecurring) continue;
 
     const ahead = monthDiff(t.invoiceMonth, fromMonth);

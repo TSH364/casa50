@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { createClient, getCurrentUser } from "@/lib/supabase/server";
 import { requireHouseId } from "./shared";
-import { fromMonthKey } from "@/data/mappers";
+import { RECURRENCE_COLUMNS, fromMonthKey, mapRecurrence } from "@/data/mappers";
 import {
   categoryFromHint,
   categoryFromMerchant,
@@ -15,6 +15,7 @@ import {
 import { isMonthKey } from "@/domain/month";
 import { fromCents } from "@/lib/money";
 import { spendingOfCents } from "@/domain/finance";
+import { matchRecurrence } from "@/domain/forecast";
 import type {
   DraftTransaction,
   ImportSummary,
@@ -538,6 +539,41 @@ export async function commitImport(input: unknown): Promise<CommitResult> {
   // uma linha a mais que o cliente poderia forjar.
   const maps = await loadCategoryMaps(supabase, houseId);
 
+  // As recorrências ativas da casa, para o lançamento já nascer ligado à conta
+  // que ele paga. Sem isto o `recurring_id` fica nulo para sempre e o app
+  // precisa adivinhar depois o que o cadastro já sabia - ver `matchRecurrence`.
+  //
+  // A leitura falhar não pode derrubar a importação: o vínculo é um extra, e
+  // lançamento gravado sem ele continua correto em tudo o mais.
+  const { data: recorrenciasRow, error: recorrenciasError } = await supabase
+    .from("recurrences")
+    .select(RECURRENCE_COLUMNS)
+    .eq("house_id", houseId)
+    .eq("is_active", true);
+
+  if (recorrenciasError) {
+    console.error("[importacao] falha ao ler recorrencias", {
+      code: recorrenciasError.code,
+    });
+  }
+  const recorrencias = (recorrenciasRow ?? []).map(mapRecurrence);
+
+  // Uma recorrência mensal é cobrada UMA vez no mês: se duas linhas do arquivo
+  // casarem com a mesma, nenhuma das duas é obviamente a certa, e ligar a
+  // primeira seria escolher no escuro. As duas ficam sem vínculo.
+  const porRecorrencia = new Map<string, string[]>();
+  for (const d of toImport) {
+    const r = matchRecurrence(recorrencias, d);
+    if (!r) continue;
+    const lista = porRecorrencia.get(r.id) ?? [];
+    lista.push(d.duplicateKey);
+    porRecorrencia.set(r.id, lista);
+  }
+  const vinculoPorLinha = new Map<string, string>();
+  for (const [recurrenceId, chaves] of porRecorrencia) {
+    if (chaves.length === 1) vinculoPorLinha.set(chaves[0]!, recurrenceId);
+  }
+
   const rows = toImport.map((d) => ({
     house_id: houseId,
     invoice_id: invoice.id,
@@ -566,6 +602,7 @@ export async function commitImport(input: unknown): Promise<CommitResult> {
     installment_total: d.installmentTotal,
     installment_value:
       d.installmentTotal === null ? null : fromCents(d.amountCents),
+    recurring_id: vinculoPorLinha.get(d.duplicateKey) ?? null,
     created_by: user?.id ?? null,
   }));
 

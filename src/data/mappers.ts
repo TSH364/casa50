@@ -1,3 +1,5 @@
+import { toCents } from "@/lib/money";
+import type { ProjectPurchase, ProjectQuote } from "@/domain/project";
 import type {
   Budget,
   CalendarEvent,
@@ -14,6 +16,7 @@ import type {
   TransactionType,
   Visibility,
   SplitType,
+  Project,
 } from "@/domain/types";
 
 /**
@@ -157,7 +160,7 @@ export function mapTransaction(row: Record<string, unknown>): Transaction {
 }
 
 export const RECURRENCE_COLUMNS =
-  "id, house_id, description, merchant, amount, category_id, card_id, owner_id, interval, next_date, expected_day, is_active, source";
+  "id, house_id, description, merchant, amount, category_id, card_id, owner_id, interval, next_date, expected_day, is_active, off_card, source";
 
 export function mapRecurrence(row: Record<string, unknown>): Recurrence {
   return {
@@ -173,6 +176,7 @@ export function mapRecurrence(row: Record<string, unknown>): Recurrence {
     nextDate: String(row.next_date).slice(0, 10),
     expectedDay: (row.expected_day as number | null) ?? null,
     isActive: Boolean(row.is_active),
+    offCard: Boolean(row.off_card),
     source: row.source as "manual" | "detected",
   };
 }
@@ -257,5 +261,83 @@ export function mapCalendarEvent(row: Record<string, unknown>): CalendarEvent {
     endsOn: (row.ends_on as string).slice(0, 10),
     allDay: row.all_day as boolean,
     kind: row.kind as EventKind,
+  };
+}
+
+// --------------------------------------------------------------------------
+// Obra (secao 15)
+// --------------------------------------------------------------------------
+
+export const PROJECT_COLUMNS =
+  "id, house_id, name, note, is_active, started_on";
+
+export function mapProject(row: Record<string, unknown>): Project {
+  return {
+    id: row.id as string,
+    houseId: row.house_id as string,
+    name: row.name as string,
+    note: (row.note as string | null) ?? null,
+    isActive: Boolean(row.is_active),
+    startedOn: row.started_on ? String(row.started_on).slice(0, 10) : null,
+  };
+}
+
+export const PROJECT_ITEM_COLUMNS =
+  "id, house_id, project_id, stage, name, unit, planned_quantity, note, sort_order, closed_at";
+
+/**
+ * O item vem SEM cotacao e SEM compra: as duas sao listas proprias, e o
+ * dominio (`itemProgress`) as recebe montadas. Trazer tudo aninhado numa
+ * consulta so economizaria uma ida ao banco e custaria a possibilidade de
+ * atualizar uma lista sem reler a outra.
+ */
+export function mapProjectItemRow(row: Record<string, unknown>) {
+  return {
+    id: row.id as string,
+    houseId: row.house_id as string,
+    projectId: row.project_id as string,
+    stage: (row.stage as string | null) ?? null,
+    name: row.name as string,
+    unit: (row.unit as string | null) ?? null,
+    plannedQuantity:
+      row.planned_quantity === null ? null : Number(row.planned_quantity),
+    note: (row.note as string | null) ?? null,
+    sortOrder: Number(row.sort_order ?? 0),
+    closedAt: (row.closed_at as string | null) ?? null,
+  };
+}
+
+export const PROJECT_QUOTE_COLUMNS =
+  "id, house_id, item_id, supplier, amount, quantity, note, is_chosen, quoted_on";
+
+export function mapProjectQuote(row: Record<string, unknown>): ProjectQuote & {
+  itemId: string;
+} {
+  return {
+    id: row.id as string,
+    itemId: row.item_id as string,
+    supplier: row.supplier as string,
+    amountCents: toCents(Number(row.amount)),
+    quantity: row.quantity === null ? null : Number(row.quantity),
+    note: (row.note as string | null) ?? null,
+    isChosen: Boolean(row.is_chosen),
+    quotedOn: row.quoted_on ? String(row.quoted_on).slice(0, 10) : null,
+  };
+}
+
+export const PROJECT_PURCHASE_COLUMNS =
+  "id, house_id, item_id, transaction_id, quantity, amount, date, supplier, note";
+
+export function mapProjectPurchase(
+  row: Record<string, unknown>,
+): ProjectPurchase & { itemId: string } {
+  return {
+    id: row.id as string,
+    itemId: row.item_id as string,
+    transactionId: (row.transaction_id as string | null) ?? null,
+    quantity: row.quantity === null ? null : Number(row.quantity),
+    amountCents: toCents(Number(row.amount)),
+    date: String(row.date).slice(0, 10),
+    supplier: (row.supplier as string | null) ?? null,
   };
 }

@@ -6,6 +6,8 @@ import { createClient, getCurrentUser } from "@/lib/supabase/server";
 import { fieldErrorsFrom, formToObject, requireHouseId } from "./shared";
 import type { FormState } from "./shared";
 import { parseAmount } from "@/lib/money";
+import { isMonthKey } from "@/domain/month";
+import { fromMonthKey } from "@/data/mappers";
 
 /**
  * Recorrências (secao 10).
@@ -239,5 +241,113 @@ export async function deleteRecurrence(id: string): Promise<FormState> {
 
   revalidatePath("/previsao");
   revalidatePath("/inicio");
+  return { ok: true };
+}
+
+const confirmarSchema = z.object({
+  recurrenceId: z.string().uuid(),
+  month: z.string().refine(isMonthKey, "Mês inválido."),
+  /** O valor REALMENTE pago, que pode diferir do combinado. */
+  amountCents: z.number().int().min(0).max(9_999_999_999),
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
+});
+
+/**
+ * Lança a conta que não passa no cartão, já confirmada (secao 10).
+ *
+ * POR QUE ISTO EXISTE: a base tinha ZERO lançamentos manuais — tudo que o app
+ * conhecia vinha de fatura. A parcela do financiamento, R$ 2.200 por mês e a
+ * maior despesa fixa da casa, não entrava em total nenhum, e ainda ia marcar
+ * "ausente" todo mês porque nenhuma fatura jamais traria um boleto.
+ *
+ * O APP COMPÕE, A CASA CONFIRMA. Tudo que dá para saber sozinho — data,
+ * categoria, mês, estabelecimento, o vínculo com a recorrência — sai daqui
+ * pronto. O que só a casa sabe é QUANTO foi pago, e por isso o valor chega
+ * como parâmetro em vez de ser copiado do cadastro: parcela de financiamento
+ * muda com juros, seguro e TR, e gravar o valor combinado como se fosse o
+ * pago registraria errado em silêncio.
+ *
+ * Gravada como `confirmed`, e não `forecast`: quem toca no botão está dizendo
+ * que pagou. Previsão é o que o app acha que vai acontecer; isto é fato.
+ *
+ * SEGURO DE REPETIR: o índice único (house_id, recurring_id, invoice_month)
+ * para `origin = 'recurrence'` impede a segunda linha do mesmo mês. Dois
+ * toques, ou duas abas, não viram duas parcelas — e dinheiro duplicado num
+ * histórico é pior que dinheiro faltando: o que falta se percebe, o que sobra
+ * parece gasto.
+ */
+export async function confirmRecurrencePayment(
+  input: unknown,
+): Promise<FormState> {
+  const parsed = confirmarSchema.safeParse(input);
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Dados inválidos." };
+  }
+  const { recurrenceId, month, amountCents } = parsed.data;
+
+  const [houseId, user] = await Promise.all([requireHouseId(), getCurrentUser()]);
+  const supabase = await createClient();
+
+  const { data: recorrencia, error: leitura } = await supabase
+    .from("recurrences")
+    .select("id, description, merchant, category_id, owner_id, expected_day, off_card")
+    .eq("house_id", houseId)
+    .eq("id", recurrenceId)
+    .maybeSingle();
+
+  if (leitura) {
+    console.error("[recorrencias] falha ao ler para confirmar", { code: leitura.code });
+    return { error: "Não foi possível ler a recorrência." };
+  }
+  if (!recorrencia) return { error: "Recorrência não encontrada." };
+  if (!recorrencia.off_card) {
+    // A que passa no cartão chega pela fatura; lançá-la à mão criaria a mesma
+    // despesa duas vezes quando a fatura for importada.
+    return { error: "Esta conta chega pela fatura do cartão — não precisa ser lançada aqui." };
+  }
+
+  // A data do pagamento: a informada, ou o dia esperado dentro do mês. O
+  // `Math.min` existe porque dia 31 não cabe em fevereiro.
+  const diasNoMes = new Date(
+    Number(month.slice(0, 4)),
+    Number(month.slice(5, 7)),
+    0,
+  ).getDate();
+  const dia = Math.min(
+    (recorrencia.expected_day as number | null) ?? diasNoMes,
+    diasNoMes,
+  );
+  const data =
+    parsed.data.date ?? `${month}-${String(dia).padStart(2, "0")}`;
+
+  const { error } = await supabase.from("transactions").insert({
+    house_id: houseId,
+    recurring_id: recurrenceId,
+    card_id: null,
+    member_id: (recorrencia.owner_id as string | null) ?? null,
+    date: data,
+    invoice_month: fromMonthKey(month),
+    description: recorrencia.description as string,
+    merchant_original: (recorrencia.merchant as string | null) ?? null,
+    amount: amountCents / 100,
+    type: "expense" as const,
+    origin: "recurrence" as const,
+    status: "confirmed" as const,
+    category_id: (recorrencia.category_id as string | null) ?? null,
+    visibility: "shared" as const,
+    created_by: user?.id ?? null,
+  });
+
+  if (error) {
+    if (error.code === "23505") {
+      return { error: "Esta conta já foi lançada neste mês." };
+    }
+    console.error("[recorrencias] falha ao lancar pagamento", { code: error.code });
+    return { error: "Não foi possível lançar o pagamento." };
+  }
+
+  revalidatePath("/previsao");
+  revalidatePath("/inicio");
+  revalidatePath("/extratos");
   return { ok: true };
 }

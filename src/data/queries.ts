@@ -1,8 +1,10 @@
 import "server-only";
 import { withoutExcludedCategories } from "@/domain/finance";
 import { createClient } from "@/lib/supabase/server";
+import type { ProjectItem } from "@/domain/project";
 import type {
   Budget,
+  Project,
   CalendarEvent,
   CalendarSource,
   Card,
@@ -20,6 +22,10 @@ import {
   CARD_COLUMNS,
   CATEGORY_COLUMNS,
   GOAL_COLUMNS,
+  PROJECT_COLUMNS,
+  PROJECT_ITEM_COLUMNS,
+  PROJECT_PURCHASE_COLUMNS,
+  PROJECT_QUOTE_COLUMNS,
   RECURRENCE_COLUMNS,
   TRANSACTION_COLUMNS,
   fromMonthKey,
@@ -29,6 +35,10 @@ import {
   mapCard,
   mapCategory,
   mapGoal,
+  mapProject,
+  mapProjectItemRow,
+  mapProjectPurchase,
+  mapProjectQuote,
   mapRecurrence,
   mapTransaction,
   toMonthKey,
@@ -526,4 +536,79 @@ export async function listSubcategoryDismissals(
   return new Set(
     (data ?? []).map((r) => `${r.category_id}|${r.suggestion_key}`),
   );
+}
+
+// --------------------------------------------------------------------------
+// Projetos (secao 15)
+// --------------------------------------------------------------------------
+
+/**
+ * Os projetos ativos da casa, do mais novo para o mais antigo.
+ *
+ * Lista, e nao "o projeto ativo": a forma serve a qualquer coisa que se
+ * compre por partes depois de juntar propostas, e mais de uma dessas pode
+ * estar em curso ao mesmo tempo.
+ */
+export async function listProjects(houseId: string): Promise<Project[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("projects")
+    .select(PROJECT_COLUMNS)
+    .eq("house_id", houseId)
+    .eq("is_active", true)
+    .order("created_at", { ascending: false });
+
+  if (error) fail("os projetos", error);
+  return (data ?? []).map(mapProject);
+}
+
+/**
+ * Os itens da obra ja com cotacoes e compras dentro.
+ *
+ * Tres consultas em paralelo e a juncao em memoria, e nao um `select`
+ * aninhado: as listas crescem por caminhos diferentes - uma cotacao a mais
+ * nao mexe nas compras - e separadas cada tela pode reler so o que mudou.
+ */
+export async function listProjectItems(
+  houseId: string,
+  projectId: string,
+): Promise<ProjectItem[]> {
+  const supabase = await createClient();
+  const [itens, cotacoes, compras] = await Promise.all([
+    supabase
+      .from("project_items")
+      .select(PROJECT_ITEM_COLUMNS)
+      .eq("house_id", houseId)
+      .eq("project_id", projectId)
+      .order("sort_order", { ascending: true }),
+    supabase
+      .from("project_quotes")
+      .select(PROJECT_QUOTE_COLUMNS)
+      .eq("house_id", houseId)
+      .order("amount", { ascending: true }),
+    supabase
+      .from("project_purchases")
+      .select(PROJECT_PURCHASE_COLUMNS)
+      .eq("house_id", houseId)
+      .order("date", { ascending: true }),
+  ]);
+
+  if (itens.error) fail("os itens do projeto", itens.error);
+  if (cotacoes.error) fail("as cotações", cotacoes.error);
+  if (compras.error) fail("as compras do projeto", compras.error);
+
+  const porItem = new Map<string, ProjectItem>();
+  for (const row of itens.data ?? []) {
+    const base = mapProjectItemRow(row);
+    porItem.set(base.id, { ...base, quotes: [], purchases: [] });
+  }
+  for (const row of cotacoes.data ?? []) {
+    const q = mapProjectQuote(row);
+    porItem.get(q.itemId)?.quotes.push(q);
+  }
+  for (const row of compras.data ?? []) {
+    const p = mapProjectPurchase(row);
+    porItem.get(p.itemId)?.purchases.push(p);
+  }
+  return [...porItem.values()];
 }

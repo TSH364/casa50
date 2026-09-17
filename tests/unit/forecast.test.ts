@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   detectRecurrences,
+  matchRecurrence,
   forecastMonths,
   goalProgress,
   installmentSeries,
@@ -65,6 +66,7 @@ function rec(overrides: Partial<Recurrence> = {}): Recurrence {
     nextDate: "2026-09-10",
     expectedDay: 10,
     isActive: true,
+    offCard: false,
     source: "manual",
     ...overrides,
   };
@@ -198,8 +200,209 @@ describe("installmentsDueIn", () => {
   });
 });
 
+describe("detectRecurrences — duas grafias, uma assinatura", () => {
+  /**
+   * A origem do problema, e não só o sintoma: foi o PRÓPRIO app que cadastrou
+   * duas recorrências para a Apple, no mesmo dia, uma em Lazer e outra em
+   * Assinaturas. A detecção agrupa por estabelecimento, e sem juntar as
+   * grafias cada uma virou um grupo — R$ 19,90 contados duas vezes no
+   * esperado do mês.
+   */
+  it("as grafias alternadas viram um candidato só", () => {
+    const meses: [string, string][] = [
+      ["2026-06", "APPLECOMBILL"],
+      ["2026-07", "APPLE COM BILL"],
+      ["2026-08", "APPLECOMBILL"],
+    ];
+    const candidatos = detectRecurrences(
+      meses.map(([mes, grafia]) =>
+        tx({
+          invoiceMonth: mes,
+          date: `${mes}-12`,
+          merchantNormalized: grafia,
+          description: grafia,
+          amount: 19.9,
+        }),
+      ),
+    );
+
+    // Separadas, nenhuma das duas alcança os três meses e não sairia
+    // candidato nenhum; juntas, sai exatamente um.
+    expect(candidatos).toHaveLength(1);
+    expect(candidatos[0]?.amountCents).toBe(1990);
+    expect(candidatos[0]?.months).toHaveLength(3);
+  });
+});
+
+describe("matchRecurrence — o vínculo que a importação grava", () => {
+  /**
+   * MEDIDO na base real: `recurring_id` está preenchido em ZERO dos 658
+   * lançamentos, com cinco recorrências cadastradas. A importação nunca ligou
+   * as duas coisas — é por isso que `recurring.ts` adivinha assinatura por
+   * "mesmo valor" e "mesmo dia do mês" em vez de simplesmente perguntar.
+   */
+  const netflix = rec({ description: "Netflix", merchant: "NETFLIX", amount: 55.9 });
+
+  function linha(over: Partial<{ merchantNormalized: string; amountCents: number }> = {}) {
+    return {
+      merchantNormalized: over.merchantNormalized ?? "NETFLIX COM",
+      merchantOriginal: null,
+      description: "NETFLIX.COM",
+      amountCents: over.amountCents ?? 5590,
+    };
+  }
+
+  it("liga o lançamento à recorrência que ele paga", () => {
+    expect(matchRecurrence([netflix], linha())?.id).toBe(netflix.id);
+  });
+
+  it("valor fora da tolerância não é a mesma conta", () => {
+    // A mesma tolerância da conciliação: o que ela chamaria de divergente não
+    // pode ser ligado aqui como se fosse o mesmo fato.
+    expect(matchRecurrence([netflix], linha({ amountCents: 9900 }))).toBeNull();
+  });
+
+  it("outra loja não liga", () => {
+    expect(matchRecurrence([netflix], linha({ merchantNormalized: "SPOTIFY" }))).toBeNull();
+  });
+
+  it("recorrência desativada não liga", () => {
+    const off = rec({ ...netflix, isActive: false });
+    expect(matchRecurrence([off], linha())).toBeNull();
+  });
+
+  it("no empate devolve null, em vez de escolher no escuro", () => {
+    // Um vínculo errado é pior que vínculo nenhum: faria a conciliação dar por
+    // paga uma conta que não foi, que é justamente o alarme que ela existe
+    // para dar. Duas candidatas viram nenhuma.
+    const gemea = rec({ description: "Netflix família", merchant: "NETFLIX", amount: 55.9 });
+    expect(matchRecurrence([netflix, gemea], linha())).toBeNull();
+  });
+
+  it("a grafia sem espaço também liga", () => {
+    const apple = rec({ description: "APPLE.COM/BILL", merchant: "APPLE COM BILL", amount: 19.9 });
+    const r = matchRecurrence([apple], {
+      merchantNormalized: "APPLECOMBILL",
+      merchantOriginal: null,
+      description: "APPLECOMBILL",
+      amountCents: 1990,
+    });
+    expect(r?.id).toBe(apple.id);
+  });
+});
+
 describe("reconcileRecurrences", () => {
   const agora = new Date("2026-08-20T12:00:00");
+
+  /**
+   * MEDIDO na base real: a fatura escreve a MESMA assinatura da Apple de duas
+   * formas — "APPLECOMBILL" em três dos nove meses e "APPLE COM BILL" nos
+   * outros seis. A comparação antiga colapsava pontuação em ESPAÇO em vez de
+   * tirar o espaço, então as duas grafias não se continham: a recorrência
+   * aparecia como ausente em todo mês que usasse a outra grafia, mesmo tendo
+   * sido paga. Um alarme falso por mês, sempre.
+   */
+  it("a conta que não passa no cartão nunca é 'ausente'", () => {
+    /**
+     * O caso real: a parcela do financiamento da casa, R$ 2.200, dia 20,
+     * começou em setembro/2026. Ela se paga por boleto e NENHUMA fatura de
+     * cartão jamais vai trazê-la.
+     *
+     * Marcá-la de ausente é acusar a falta de algo que nunca viria — todo mês,
+     * para sempre. E um aviso que nunca sai ensina a ignorar todos os outros.
+     */
+    const parcela = rec({
+      description: "Parcela casa",
+      merchant: null,
+      amount: 2200,
+      expectedDay: 20,
+      offCard: true,
+    });
+
+    // Dia 25: já passou do vencimento e não há lançamento nenhum.
+    const depois = new Date("2026-08-25T12:00:00");
+    const r = reconcileRecurrences([parcela], [], "2026-08", depois);
+    expect(r[0]?.status).toBe("to_confirm");
+    expect(r[0]?.status).not.toBe("missing");
+  });
+
+  it("no mês já encerrado, idem — e este ramo do código é outro", () => {
+    /**
+     * Olhar agosto em outubro passa por um caminho diferente do de olhar o mês
+     * corrente, e eu tinha reescrito os dois mas só testado um. Descobri ao
+     * remover a correção para conferir se o teste pegava: ele não pegou,
+     * porque reverti o ramo que o teste não exercitava.
+     */
+    const parcela = rec({ amount: 2200, expectedDay: 20, offCard: true, merchant: null });
+    const outubro = new Date("2026-10-05T12:00:00");
+    expect(reconcileRecurrences([parcela], [], "2026-08", outubro)[0]?.status).toBe(
+      "to_confirm",
+    );
+  });
+
+  it("antes do vencimento ela continua só pendente", () => {
+    // Pedir confirmação de um pagamento que ainda não venceu seria inventar
+    // tarefa: no dia 15 não há nada a confirmar.
+    const parcela = rec({ amount: 2200, expectedDay: 20, offCard: true, merchant: null });
+    const antes = new Date("2026-08-15T12:00:00");
+    expect(reconcileRecurrences([parcela], [], "2026-08", antes)[0]?.status).toBe("pending");
+  });
+
+  it("a que passa no cartão continua sendo cobrada como antes", () => {
+    // A mudança não pode afrouxar o alarme de quem DEVERIA ter aparecido.
+    const netflix = rec({ merchant: "NETFLIX", amount: 55.9, expectedDay: 10 });
+    const depois = new Date("2026-08-25T12:00:00");
+    expect(reconcileRecurrences([netflix], [], "2026-08", depois)[0]?.status).toBe("missing");
+  });
+
+  it("confirmada, some do pedido — mesmo sendo fora do cartão", () => {
+    // Uma vez lançada e confirmada, a conta virou fato e não pede mais nada.
+    const parcela = rec({
+      description: "Parcela casa", merchant: "PARCELA CASA",
+      amount: 2200, expectedDay: 20, offCard: true,
+    });
+    const lancamento = tx({
+      merchantNormalized: "PARCELA CASA", amount: 2200,
+      origin: "recurrence", recurringId: parcela.id,
+    });
+    const depois = new Date("2026-08-25T12:00:00");
+    const r = reconcileRecurrences([parcela], [lancamento], "2026-08", depois);
+    expect(r[0]?.status).toBe("confirmed");
+  });
+
+  it("o vínculo gravado vence o nome parecido", () => {
+    // O ganho de ligar na importação: com `recurring_id` preenchido não há o
+    // que casar por texto. Aqui o nome aponta para a linha errada de
+    // propósito, e o vínculo desempata.
+    const conta = rec({ description: "Plano A", merchant: "OPERADORA", amount: 50 });
+    const certa = tx({ merchantNormalized: "OUTRA COISA", amount: 50, recurringId: conta.id });
+    const parecida = tx({ merchantNormalized: "OPERADORA MOVEL", amount: 50 });
+
+    const r = reconcileRecurrences([conta], [parecida, certa], "2026-08", agora);
+    expect(r[0]?.status).toBe("confirmed");
+    expect(r[0]?.transaction?.id).toBe(certa.id);
+  });
+
+  it("a grafia sem espaço casa com a grafia com espaço, nos dois sentidos", () => {
+    const semEspaco = rec({ description: "APPLECOMBILL", merchant: "APPLECOMBILL", amount: 19.9 });
+    const comEspaco = rec({ description: "APPLE.COM/BILL", merchant: "APPLE COM BILL", amount: 19.9 });
+
+    const a = reconcileRecurrences(
+      [semEspaco],
+      [tx({ merchantNormalized: "APPLE COM BILL", amount: 19.9 })],
+      "2026-08",
+      agora,
+    );
+    expect(a[0]?.status).toBe("confirmed");
+
+    const b = reconcileRecurrences(
+      [comEspaco],
+      [tx({ merchantNormalized: "APPLECOMBILL", amount: 19.9 })],
+      "2026-08",
+      agora,
+    );
+    expect(b[0]?.status).toBe("confirmed");
+  });
 
   it("confirma quando o lançamento aparece com o valor esperado", () => {
     const result = reconcileRecurrences(

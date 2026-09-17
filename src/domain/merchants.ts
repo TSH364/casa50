@@ -172,16 +172,48 @@ export function isCanonicalGrocery(name: string | null | undefined): boolean {
 }
 
 /**
+ * Chave de COMPARACAO entre nomes de estabelecimento.
+ *
+ * Tira acento, caixa, pontuacao e - o ponto desta funcao - ESPACO. A fatura
+ * escreve a mesma loja com e sem ele: "APPLECOMBILL" em tres meses,
+ * "APPLE COM BILL" nos outros seis. Qualquer comparacao que preserve o espaco
+ * trata as duas como lojas diferentes, e foi exatamente isso que fez o app
+ * cadastrar DUAS recorrencias para a mesma assinatura da Apple - uma em Lazer
+ * e outra em Assinaturas, R$ 19,90 contados duas vezes no esperado do mes, e
+ * uma delas marcada "ausente" todo mes mesmo tendo sido paga.
+ *
+ * MEDIDO nos 658 lancamentos reais: tirar o espaco junta EXATAMENTE um par de
+ * nomes distintos, o da Apple. Nenhum outro colide. O risco de juntar lojas
+ * diferentes existe no papel - e a medicao na base de verdade e o que
+ * autoriza, nao a intuicao.
+ */
+export function merchantCompareKey(
+  name: string | null | undefined,
+): string | null {
+  const limpo = name
+    ?.normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, "")
+    .trim();
+  return limpo ? limpo : null;
+}
+
+/**
  * Por que chave este lancamento deve ser AGRUPADO.
  *
  * Usada por tudo que conta por estabelecimento - proposta de subcategoria,
  * reconhecimento de cobranca fixa, sugestao de recorrencia. Uma funcao so para
  * as tres nao divergirem.
+ *
+ * O nome canonico sai INTEIRO, com espaco e acento: ele e nome proprio, e
+ * `isCanonicalMarketplace` compara contra ele por igualdade. So o nome cru,
+ * que nao tem grafia oficial nenhuma, passa pela chave de comparacao.
  */
 export function merchantKey(t: Transaction): string | null {
   const canonico = canonicalMerchant(t.merchantNormalized);
   if (canonico) return canonico;
-  return t.merchantNormalized ?? null;
+  return merchantCompareKey(t.merchantNormalized);
 }
 
 /**
