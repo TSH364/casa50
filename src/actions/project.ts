@@ -7,19 +7,23 @@ import { requireHouseId } from "./shared";
 import type { FormState } from "./shared";
 
 /**
- * Obra: itens, cotações e compras (secao 15).
+ * Projetos: itens, cotações e compras (secao 15).
+ *
+ * "Projeto" e não "obra" porque a forma serve a qualquer coisa que se compre
+ * por partes depois de juntar propostas — a reforma de agora, e o que vier
+ * depois. O schema já dizia isso (`projects`); a tela é que dizia obra.
  *
  * Nada aqui grava resumo. Quantidade comprada, valor gasto e status saem da
  * soma das compras a cada leitura — ver `domain/project.ts`.
  */
 
-const novaObraSchema = z.object({
-  name: z.string().trim().min(1, "Dê um nome à obra.").max(120),
+const novoProjetoSchema = z.object({
+  name: z.string().trim().min(1, "Dê um nome ao projeto.").max(120),
   startedOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
 });
 
 export async function createProject(input: unknown): Promise<FormState & { id?: string }> {
-  const parsed = novaObraSchema.safeParse(input);
+  const parsed = novoProjetoSchema.safeParse(input);
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? "Dados inválidos." };
   }
@@ -38,10 +42,10 @@ export async function createProject(input: unknown): Promise<FormState & { id?: 
     .single();
 
   if (error) {
-    console.error("[obra] falha ao criar", { code: error.code });
-    return { error: "Não foi possível criar a obra." };
+    console.error("[projetos] falha ao criar", { code: error.code });
+    return { error: "Não foi possível criar o projeto." };
   }
-  revalidatePath("/obra");
+  revalidatePath("/projetos");
   return { ok: true, id: data.id as string };
 }
 
@@ -74,10 +78,10 @@ export async function addProjectItem(input: unknown): Promise<FormState> {
   });
 
   if (error) {
-    console.error("[obra] falha ao criar item", { code: error.code });
+    console.error("[projetos] falha ao criar item", { code: error.code });
     return { error: "Não foi possível adicionar o item." };
   }
-  revalidatePath("/obra");
+  revalidatePath("/projetos");
   return { ok: true };
 }
 
@@ -110,10 +114,10 @@ export async function addQuote(input: unknown): Promise<FormState> {
   });
 
   if (error) {
-    console.error("[obra] falha ao gravar cotacao", { code: error.code });
+    console.error("[projetos] falha ao gravar cotacao", { code: error.code });
     return { error: "Não foi possível guardar a cotação." };
   }
-  revalidatePath("/obra");
+  revalidatePath("/projetos");
   return { ok: true };
 }
 
@@ -146,7 +150,7 @@ export async function chooseQuote(input: {
     .eq("is_chosen", true);
 
   if (limpar) {
-    console.error("[obra] falha ao desmarcar cotacao", { code: limpar.code });
+    console.error("[projetos] falha ao desmarcar cotacao", { code: limpar.code });
     return { error: "Não foi possível trocar a escolha." };
   }
 
@@ -159,12 +163,12 @@ export async function chooseQuote(input: {
       .eq("item_id", parsed.data.itemId);
 
     if (error) {
-      console.error("[obra] falha ao escolher cotacao", { code: error.code });
+      console.error("[projetos] falha ao escolher cotacao", { code: error.code });
       return { error: "Não foi possível escolher esta proposta." };
     }
   }
 
-  revalidatePath("/obra");
+  revalidatePath("/projetos");
   return { ok: true };
 }
 
@@ -200,10 +204,10 @@ export async function addPurchase(input: unknown): Promise<FormState> {
   });
 
   if (error) {
-    console.error("[obra] falha ao gravar compra", { code: error.code });
+    console.error("[projetos] falha ao gravar compra", { code: error.code });
     return { error: "Não foi possível registrar a compra." };
   }
-  revalidatePath("/obra");
+  revalidatePath("/projetos");
   return { ok: true };
 }
 
@@ -219,10 +223,10 @@ export async function removePurchase(id: string): Promise<FormState> {
     .eq("id", id);
 
   if (error) {
-    console.error("[obra] falha ao remover compra", { code: error.code });
+    console.error("[projetos] falha ao remover compra", { code: error.code });
     return { error: "Não foi possível remover a compra." };
   }
-  revalidatePath("/obra");
+  revalidatePath("/projetos");
   return { ok: true };
 }
 
@@ -251,10 +255,10 @@ export async function setItemClosed(input: {
     .eq("id", parsed.data.itemId);
 
   if (error) {
-    console.error("[obra] falha ao encerrar item", { code: error.code });
+    console.error("[projetos] falha ao encerrar item", { code: error.code });
     return { error: "Não foi possível encerrar o item." };
   }
-  revalidatePath("/obra");
+  revalidatePath("/projetos");
   return { ok: true };
 }
 
@@ -272,9 +276,9 @@ export async function removeProjectItem(id: string): Promise<FormState> {
     .eq("id", id);
 
   if (error) {
-    console.error("[obra] falha ao remover item", { code: error.code });
+    console.error("[projetos] falha ao remover item", { code: error.code });
     return { error: "Não foi possível remover o item." };
   }
-  revalidatePath("/obra");
+  revalidatePath("/projetos");
   return { ok: true };
 }

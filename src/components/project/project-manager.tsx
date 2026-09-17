@@ -14,6 +14,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card as Panel, CardHeader } from "@/components/ui/card";
 import { Input } from "@/components/ui/field";
+import { QuotePdfInput } from "./quote-pdf-input";
+import { formatCents as fc } from "@/lib/money";
 import { formatCents, parseAmountCents } from "@/lib/money";
 import { cn } from "@/lib/utils";
 import {
@@ -24,7 +26,7 @@ import {
 } from "@/domain/project";
 
 /**
- * A obra por dentro (secao 15).
+ * O projeto por dentro (secao 15).
  *
  * A tela responde uma pergunta só, e por isso o item é a unidade: "o que foi
  * comprado, o que não foi, o que foi comprado pela metade". O status nunca é
@@ -83,7 +85,7 @@ export function ProjectManager({
     <div className="space-y-4">
       <Panel>
         <CardHeader
-          title="A obra em números"
+          title="O projeto em números"
           description="O previsto vem da cotação escolhida de cada item; o gasto, das compras registradas."
         />
 
@@ -422,6 +424,9 @@ function NovaCotacao({
 }) {
   const [supplier, setSupplier] = useState("");
   const [valor, setValor] = useState("");
+  /** Os outros valores que o PDF trazia, para corrigir sem redigitar. */
+  const [alternativas, setAlternativas] = useState<{ cents: number; context: string }[]>([]);
+  const [lido, setLido] = useState(false);
 
   function salvar() {
     const cents = parseAmountCents(valor);
@@ -436,12 +441,48 @@ function NovaCotacao({
         toast.success("Cotação guardada.");
         setSupplier("");
         setValor("");
+        setAlternativas([]);
+        setLido(false);
       }
     });
   }
 
   return (
     <div className="mt-2 flex flex-wrap gap-1.5">
+      <QuotePdfInput
+        onRead={(p) => {
+          if (p.supplier) setSupplier(p.supplier);
+          if (p.total) setValor(String(p.total.cents / 100).replace(".", ","));
+          setAlternativas(p.alternatives.map((a) => ({ cents: a.cents, context: a.context })));
+          setLido(true);
+        }}
+      />
+
+      {/* O que foi lido fica DITO, e editável. O PDF do fornecedor não tem
+          formato garantido, então o app propõe e a pessoa confere — gravar
+          sozinho o número errado seria pior que não ler PDF nenhum. */}
+      {lido ? (
+        <p className="basis-full text-[12px] text-ink-faint">
+          Li o PDF e preenchi abaixo. Confira antes de guardar.
+        </p>
+      ) : null}
+      {alternativas.length > 0 ? (
+        <div className="basis-full text-[12px] text-ink-faint">
+          Outros valores no arquivo:{" "}
+          {alternativas.map((a) => (
+            <button
+              key={`${a.cents}-${a.context}`}
+              type="button"
+              title={a.context}
+              onClick={() => setValor(String(a.cents / 100).replace(".", ","))}
+              className="mr-1.5 text-brand underline underline-offset-2"
+            >
+              {fc(a.cents)}
+            </button>
+          ))}
+        </div>
+      ) : null}
+
       {/* Linha própria: a 360px o nome do fornecedor dividido com valor e
           botão ficava estreito demais para se ler o que já foi digitado. */}
       <Input

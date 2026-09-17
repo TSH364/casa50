@@ -539,23 +539,27 @@ export async function listSubcategoryDismissals(
 }
 
 // --------------------------------------------------------------------------
-// Obra (secao 15)
+// Projetos (secao 15)
 // --------------------------------------------------------------------------
 
-/** A obra ativa da casa, ou `null` enquanto nao houver nenhuma. */
-export async function getActiveProject(houseId: string): Promise<Project | null> {
+/**
+ * Os projetos ativos da casa, do mais novo para o mais antigo.
+ *
+ * Lista, e nao "o projeto ativo": a forma serve a qualquer coisa que se
+ * compre por partes depois de juntar propostas, e mais de uma dessas pode
+ * estar em curso ao mesmo tempo.
+ */
+export async function listProjects(houseId: string): Promise<Project[]> {
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("projects")
     .select(PROJECT_COLUMNS)
     .eq("house_id", houseId)
     .eq("is_active", true)
-    .order("created_at", { ascending: true })
-    .limit(1)
-    .maybeSingle();
+    .order("created_at", { ascending: false });
 
-  if (error) fail("a obra", error);
-  return data ? mapProject(data) : null;
+  if (error) fail("os projetos", error);
+  return (data ?? []).map(mapProject);
 }
 
 /**
@@ -589,9 +593,9 @@ export async function listProjectItems(
       .order("date", { ascending: true }),
   ]);
 
-  if (itens.error) fail("os itens da obra", itens.error);
+  if (itens.error) fail("os itens do projeto", itens.error);
   if (cotacoes.error) fail("as cotações", cotacoes.error);
-  if (compras.error) fail("as compras da obra", compras.error);
+  if (compras.error) fail("as compras do projeto", compras.error);
 
   const porItem = new Map<string, ProjectItem>();
   for (const row of itens.data ?? []) {
