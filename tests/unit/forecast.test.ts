@@ -66,6 +66,7 @@ function rec(overrides: Partial<Recurrence> = {}): Recurrence {
     nextDate: "2026-09-10",
     expectedDay: 10,
     isActive: true,
+    offCard: false,
     source: "manual",
     ...overrides,
   };
@@ -301,6 +302,74 @@ describe("reconcileRecurrences", () => {
    * aparecia como ausente em todo mês que usasse a outra grafia, mesmo tendo
    * sido paga. Um alarme falso por mês, sempre.
    */
+  it("a conta que não passa no cartão nunca é 'ausente'", () => {
+    /**
+     * O caso real: a parcela do financiamento da casa, R$ 2.200, dia 20,
+     * começou em setembro/2026. Ela se paga por boleto e NENHUMA fatura de
+     * cartão jamais vai trazê-la.
+     *
+     * Marcá-la de ausente é acusar a falta de algo que nunca viria — todo mês,
+     * para sempre. E um aviso que nunca sai ensina a ignorar todos os outros.
+     */
+    const parcela = rec({
+      description: "Parcela casa",
+      merchant: null,
+      amount: 2200,
+      expectedDay: 20,
+      offCard: true,
+    });
+
+    // Dia 25: já passou do vencimento e não há lançamento nenhum.
+    const depois = new Date("2026-08-25T12:00:00");
+    const r = reconcileRecurrences([parcela], [], "2026-08", depois);
+    expect(r[0]?.status).toBe("to_confirm");
+    expect(r[0]?.status).not.toBe("missing");
+  });
+
+  it("no mês já encerrado, idem — e este ramo do código é outro", () => {
+    /**
+     * Olhar agosto em outubro passa por um caminho diferente do de olhar o mês
+     * corrente, e eu tinha reescrito os dois mas só testado um. Descobri ao
+     * remover a correção para conferir se o teste pegava: ele não pegou,
+     * porque reverti o ramo que o teste não exercitava.
+     */
+    const parcela = rec({ amount: 2200, expectedDay: 20, offCard: true, merchant: null });
+    const outubro = new Date("2026-10-05T12:00:00");
+    expect(reconcileRecurrences([parcela], [], "2026-08", outubro)[0]?.status).toBe(
+      "to_confirm",
+    );
+  });
+
+  it("antes do vencimento ela continua só pendente", () => {
+    // Pedir confirmação de um pagamento que ainda não venceu seria inventar
+    // tarefa: no dia 15 não há nada a confirmar.
+    const parcela = rec({ amount: 2200, expectedDay: 20, offCard: true, merchant: null });
+    const antes = new Date("2026-08-15T12:00:00");
+    expect(reconcileRecurrences([parcela], [], "2026-08", antes)[0]?.status).toBe("pending");
+  });
+
+  it("a que passa no cartão continua sendo cobrada como antes", () => {
+    // A mudança não pode afrouxar o alarme de quem DEVERIA ter aparecido.
+    const netflix = rec({ merchant: "NETFLIX", amount: 55.9, expectedDay: 10 });
+    const depois = new Date("2026-08-25T12:00:00");
+    expect(reconcileRecurrences([netflix], [], "2026-08", depois)[0]?.status).toBe("missing");
+  });
+
+  it("confirmada, some do pedido — mesmo sendo fora do cartão", () => {
+    // Uma vez lançada e confirmada, a conta virou fato e não pede mais nada.
+    const parcela = rec({
+      description: "Parcela casa", merchant: "PARCELA CASA",
+      amount: 2200, expectedDay: 20, offCard: true,
+    });
+    const lancamento = tx({
+      merchantNormalized: "PARCELA CASA", amount: 2200,
+      origin: "recurrence", recurringId: parcela.id,
+    });
+    const depois = new Date("2026-08-25T12:00:00");
+    const r = reconcileRecurrences([parcela], [lancamento], "2026-08", depois);
+    expect(r[0]?.status).toBe("confirmed");
+  });
+
   it("o vínculo gravado vence o nome parecido", () => {
     // O ganho de ligar na importação: com `recurring_id` preenchido não há o
     // que casar por texto. Aqui o nome aponta para a linha errada de

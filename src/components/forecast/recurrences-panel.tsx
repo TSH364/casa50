@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import {
   acceptDetectedRecurrence,
+  confirmRecurrencePayment,
   deleteRecurrence,
   setRecurrenceActive,
 } from "@/actions/recurrences";
@@ -23,7 +24,8 @@ import { Button } from "@/components/ui/button";
 import { Card as Panel, CardHeader } from "@/components/ui/card";
 import { ConfirmDialog } from "@/components/ui/dialog";
 import { EmptyState } from "@/components/states";
-import { formatCents } from "@/lib/money";
+import { Input } from "@/components/ui/field";
+import { formatCents, parseAmountCents } from "@/lib/money";
 import { monthLabel } from "@/domain/month";
 import { cn } from "@/lib/utils";
 import type { RecurrenceCandidate, RecurrenceMatch } from "@/domain/forecast";
@@ -54,6 +56,19 @@ const STATUS = {
     Icon: CircleDashed,
     tone: "text-ink-faint",
     chip: "bg-surface-3 text-ink-muted",
+  },
+  /**
+   * Conta que não passa no cartão, esperando confirmação.
+   *
+   * Tom de atenção e não de perigo: há algo a fazer, mas nada deu errado. O
+   * vermelho de "não apareceu" acusa falta; aqui não falta nada — a conta
+   * simplesmente não chega por fatura, e quem diz quanto foi pago é a casa.
+   */
+  to_confirm: {
+    label: "Confirmar pagamento",
+    Icon: CircleDashed,
+    tone: "text-attention",
+    chip: "bg-attention-soft text-attention",
   },
 } as const;
 
@@ -102,6 +117,7 @@ export function RecurrencesPanel({
   }
 
   const missing = matches.filter((m) => m.status === "missing");
+  const aConfirmar = matches.filter((m) => m.status === "to_confirm");
   const divergent = matches.filter((m) => m.status === "divergent");
   const visibleCandidates = candidates.filter(
     (c) => !dismissed.has(c.merchantNormalized),
@@ -109,14 +125,14 @@ export function RecurrencesPanel({
 
   return (
     <>
-      {missing.length > 0 || divergent.length > 0 ? (
+      {missing.length > 0 || divergent.length > 0 || aConfirmar.length > 0 ? (
         <Panel>
           <CardHeader
             title="Conferir neste mês"
             description={`O que estava previsto para ${monthLabel(month)} e não bateu.`}
           />
           <ul className="space-y-2">
-            {[...missing, ...divergent].map((match) => {
+            {[...aConfirmar, ...missing, ...divergent].map((match) => {
               const meta = STATUS[match.status];
               return (
                 <li
@@ -132,7 +148,9 @@ export function RecurrencesPanel({
                       {match.recurrence.description}
                     </p>
                     <p className="truncate text-[12px] text-ink-faint">
-                      {match.status === "missing"
+                      {match.status === "to_confirm"
+                        ? `${formatCents(match.expectedCents)} combinados — não chega pela fatura`
+                        : match.status === "missing"
                         ? `Esperado ${formatCents(match.expectedCents)}${
                             match.recurrence.expectedDay
                               ? ` até o dia ${match.recurrence.expectedDay}`
@@ -141,6 +159,13 @@ export function RecurrencesPanel({
                         : `Esperado ${formatCents(match.expectedCents)}, veio ${formatCents(match.actualCents ?? 0)}`}
                     </p>
                   </div>
+                  {match.status === "to_confirm" ? (
+                    <ConfirmarPagamento
+                      recurrenceId={match.recurrence.id}
+                      month={month}
+                      expectedCents={match.expectedCents}
+                    />
+                  ) : null}
                   {match.status === "divergent" ? (
                     <span
                       className={cn(
@@ -353,5 +378,73 @@ export function RecurrencesPanel({
         }}
       />
     </>
+  );
+}
+
+
+/**
+ * Lança a conta que não passa no cartão, com o valor conferido.
+ *
+ * O VALOR VEM PREENCHIDO E EDITÁVEL, e isso é o ponto: parcela de
+ * financiamento muda com juros, seguro e TR, e um botão que gravasse o valor
+ * combinado registraria errado em silêncio — justo no lançamento que ninguém
+ * vai reconferir, porque "é sempre o mesmo".
+ */
+function ConfirmarPagamento({
+  recurrenceId,
+  month,
+  expectedCents,
+}: {
+  recurrenceId: string;
+  month: MonthKey;
+  expectedCents: number;
+}) {
+  const [aberto, setAberto] = useState(false);
+  const [valor, setValor] = useState(
+    String(expectedCents / 100).replace(".", ","),
+  );
+  const [enviando, startTransition] = useTransition();
+
+  function confirmar() {
+    const cents = parseAmountCents(valor);
+    if (cents === null) {
+      toast.error("Valor inválido.");
+      return;
+    }
+    startTransition(async () => {
+      const r = await confirmRecurrencePayment({
+        recurrenceId,
+        month,
+        amountCents: cents,
+      });
+      if (r.error) toast.error(r.error);
+      else {
+        toast.success("Pagamento lançado.");
+        setAberto(false);
+      }
+    });
+  }
+
+  if (!aberto) {
+    return (
+      <Button size="sm" variant="outline" onClick={() => setAberto(true)}>
+        Lançar
+      </Button>
+    );
+  }
+
+  return (
+    <div className="flex shrink-0 items-center gap-1.5">
+      <Input
+        value={valor}
+        onChange={(e) => setValor(e.target.value)}
+        inputMode="decimal"
+        className="w-24"
+        aria-label="Valor pago"
+      />
+      <Button size="sm" disabled={enviando} onClick={confirmar}>
+        Confirmar
+      </Button>
+    </div>
   );
 }

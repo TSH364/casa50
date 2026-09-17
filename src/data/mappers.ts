@@ -160,7 +160,7 @@ export function mapTransaction(row: Record<string, unknown>): Transaction {
 }
 
 export const RECURRENCE_COLUMNS =
-  "id, house_id, description, merchant, amount, category_id, card_id, owner_id, interval, next_date, expected_day, is_active, source";
+  "id, house_id, description, merchant, amount, category_id, card_id, owner_id, interval, next_date, expected_day, is_active, off_card, source";
 
 export function mapRecurrence(row: Record<string, unknown>): Recurrence {
   return {
@@ -176,6 +176,7 @@ export function mapRecurrence(row: Record<string, unknown>): Recurrence {
     nextDate: String(row.next_date).slice(0, 10),
     expectedDay: (row.expected_day as number | null) ?? null,
     isActive: Boolean(row.is_active),
+    offCard: Boolean(row.off_card),
     source: row.source as "manual" | "detected",
   };
 }

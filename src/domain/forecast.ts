@@ -134,7 +134,16 @@ export type ReconcileStatus =
   /** Não apareceu, e o dia esperado já passou. */
   | "missing"
   /** Não apareceu ainda, mas o dia esperado não chegou. */
-  | "pending";
+  | "pending"
+  /**
+   * Lançada como previsão, esperando a casa confirmar o valor pago.
+   *
+   * Só acontece com conta que não passa no cartão (`off_card`): o app compõe
+   * a linha — data, valor, categoria, mês — e a pessoa confirma. É o estado
+   * que faz a parcela do financiamento existir no app sem que ninguém precise
+   * digitá-la, e sem que o app declare pago o que talvez não tenha sido.
+   */
+  | "to_confirm";
 
 export interface RecurrenceMatch {
   recurrence: Recurrence;
@@ -277,7 +286,16 @@ export function reconcileRecurrences(
       // Mês passado sem o lançamento é ausência. Mês corrente só vira ausência
       // depois do dia esperado - antes disso a conta simplesmente não venceu,
       // e alarmar seria mentira.
-      let status: ReconcileStatus = "missing";
+      // "AUSENTE" SÓ FAZ SENTIDO PARA QUEM DEVERIA TER APARECIDO.
+      //
+      // A conta que não passa no cartão nunca vai chegar por fatura: marcá-la
+      // de ausente é acusar a ausência de algo que jamais viria. MEDIDO no
+      // caso real: a parcela do financiamento ficaria "não apareceu" todo mês,
+      // para sempre — e um aviso que nunca sai ensina a ignorar os outros.
+      //
+      // Ela fica pendente até o dia esperado, e depois passa a pedir o
+      // lançamento em vez de acusar falta.
+      let status: ReconcileStatus = recurrence.offCard ? "to_confirm" : "missing";
       if (month > currentMonthKey) {
         status = "pending";
       } else if (month === currentMonthKey) {
@@ -285,7 +303,12 @@ export function reconcileRecurrences(
           recurrence.expectedDay ?? daysInMonth(month),
           daysInMonth(month),
         );
-        status = now.getDate() < dueDay ? "pending" : "missing";
+        status =
+          now.getDate() < dueDay
+            ? "pending"
+            : recurrence.offCard
+              ? "to_confirm"
+              : "missing";
       }
 
       return {

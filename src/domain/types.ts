@@ -176,6 +176,14 @@ export interface Recurrence {
   nextDate: IsoDate;
   expectedDay: number | null;
   isActive: boolean;
+  /**
+   * A conta nao chega por fatura de cartao (boleto, debito, pix).
+   *
+   * Muda duas coisas: ela nunca e marcada como "ausente" - nada viria por
+   * fatura para faltar - e o app lanca a previsao dela para a casa confirmar
+   * o valor pago.
+   */
+  offCard: boolean;
   source: "manual" | "detected";
 }
 
