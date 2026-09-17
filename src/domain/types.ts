@@ -245,3 +245,19 @@ export interface CalendarEvent {
   allDay: boolean;
   kind: EventKind;
 }
+
+/**
+ * Uma obra ou reforma (secao 15).
+ *
+ * Os itens, cotacoes e compras dela vivem em `domain/project.ts`, junto da
+ * aritmetica que decide o que foi comprado, o que nao foi e o que foi comprado
+ * pela metade.
+ */
+export interface Project {
+  id: string;
+  houseId: string;
+  name: string;
+  note: string | null;
+  isActive: boolean;
+  startedOn: IsoDate | null;
+}

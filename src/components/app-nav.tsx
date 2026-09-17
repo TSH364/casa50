@@ -6,6 +6,7 @@ import {
   House,
   ReceiptText,
   TrendingUp,
+  Hammer,
   Sparkles,
   Target,
   Users,
@@ -18,6 +19,7 @@ const ITEMS = [
   { href: "/previsao", label: "Previsão", Icon: TrendingUp },
   { href: "/insights", label: "Insights", Icon: Sparkles },
   { href: "/metas", label: "Metas", Icon: Target },
+  { href: "/obra", label: "Obra", Icon: Hammer },
   { href: "/casa", label: "Casa", Icon: Users },
 ] as const;
 
