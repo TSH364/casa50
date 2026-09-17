@@ -1,5 +1,6 @@
 import { toCents } from "@/lib/money";
 import type { ProjectPurchase, ProjectQuote } from "@/domain/project";
+import { isPaymentMethod } from "@/domain/purchase";
 import type {
   Budget,
   CalendarEvent,
@@ -283,7 +284,7 @@ export function mapProject(row: Record<string, unknown>): Project {
 }
 
 export const PROJECT_ITEM_COLUMNS =
-  "id, house_id, project_id, stage, name, unit, planned_quantity, note, sort_order, closed_at";
+  "id, house_id, project_id, stage, name, unit, planned_quantity, note, sort_order, priority, closed_at";
 
 /**
  * O item vem SEM cotacao e SEM compra: as duas sao listas proprias, e o
@@ -303,6 +304,7 @@ export function mapProjectItemRow(row: Record<string, unknown>) {
       row.planned_quantity === null ? null : Number(row.planned_quantity),
     note: (row.note as string | null) ?? null,
     sortOrder: Number(row.sort_order ?? 0),
+    priority: row.priority === null || row.priority === undefined ? null : Number(row.priority),
     closedAt: (row.closed_at as string | null) ?? null,
   };
 }
@@ -326,7 +328,7 @@ export function mapProjectQuote(row: Record<string, unknown>): ProjectQuote & {
 }
 
 export const PROJECT_PURCHASE_COLUMNS =
-  "id, house_id, item_id, transaction_id, quantity, amount, date, supplier, note";
+  "id, house_id, item_id, transaction_id, quantity, amount, date, supplier, note, payment_method, invoice_month, installment_total";
 
 export function mapProjectPurchase(
   row: Record<string, unknown>,
@@ -339,5 +341,12 @@ export function mapProjectPurchase(
     amountCents: toCents(Number(row.amount)),
     date: String(row.date).slice(0, 10),
     supplier: (row.supplier as string | null) ?? null,
+    paymentMethod: isPaymentMethod(row.payment_method) ? row.payment_method : null,
+    // O banco guarda `date`; o dominio so precisa do mes.
+    invoiceMonth: row.invoice_month ? String(row.invoice_month).slice(0, 7) : null,
+    installmentTotal:
+      row.installment_total === null || row.installment_total === undefined
+        ? null
+        : Number(row.installment_total),
   };
 }

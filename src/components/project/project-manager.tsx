@@ -5,16 +5,18 @@ import { toast } from "sonner";
 import { Check, ChevronDown, Plus, Trash2 } from "lucide-react";
 import {
   addProjectItem,
-  addPurchase,
   addQuote,
   chooseQuote,
   removePurchase,
   setItemClosed,
+  setItemPriority,
 } from "@/actions/project";
 import { Button } from "@/components/ui/button";
 import { Card as Panel, CardHeader } from "@/components/ui/card";
 import { Input } from "@/components/ui/field";
 import { QuotePdfInput } from "./quote-pdf-input";
+import { NovaCompra } from "./new-purchase";
+import { PAYMENT_LABEL, PRIORITY_LABEL } from "@/domain/purchase";
 import { formatCents as fc } from "@/lib/money";
 import { formatCents, parseAmountCents } from "@/lib/money";
 import { cn } from "@/lib/utils";
@@ -205,6 +207,14 @@ function ItemRow({
         <span className="min-w-0 flex-1 break-words text-[13px] text-ink">
           {item.name}
         </span>
+        {/* Só a prioridade ALTA ganha marca na lista fechada. Marcar os três
+            níveis encheria a tela de etiqueta e faria "alta" deixar de saltar,
+            que é a única coisa que ela precisa fazer. */}
+        {item.priority === 1 ? (
+          <span className="shrink-0 rounded-full bg-danger/15 px-2 py-0.5 text-[11px] font-medium text-danger">
+            1º
+          </span>
+        ) : null}
         <ChevronDown
           aria-hidden
           className={cn("size-3.5 shrink-0 text-ink-faint transition-transform", open && "rotate-180")}
@@ -365,6 +375,11 @@ function ItemDetalhe({
                   {c.quantity !== null ? (
                     <> · {QTD.format(c.quantity)}{item.unit ? ` ${item.unit}` : ""}</>
                   ) : null}
+                  {c.paymentMethod ? ` · ${PAYMENT_LABEL[c.paymentMethod]}` : ""}
+                  {/* "em 10x" e não o valor da parcela: o número ao lado já é
+                      a compra inteira, e mostrar os dois convidaria a somar
+                      errado. */}
+                  {c.installmentTotal ? ` em ${c.installmentTotal}x` : ""}
                   {c.supplier ? ` · ${c.supplier}` : ""}
                 </span>
                 <span className="tabular shrink-0 text-ink">
@@ -387,12 +402,53 @@ function ItemDetalhe({
           </ul>
           <NovaCompra
             itemId={item.id}
+            itemName={item.name}
             unit={item.unit}
+            supplier={progress.chosen?.supplier ?? null}
+            expectedCents={progress.expectedCents}
             pending={pending}
             startTransition={startTransition}
           />
         </>
       )}
+
+      {/* "O que comprar primeiro" é pergunta de lista, mas a resposta se dá
+          item a item — e aqui dentro, onde já se está decidindo sobre ele. */}
+      <div className="mt-3 border-t border-line pt-3">
+        <p className="mb-1 text-[12px] text-ink-faint">Prioridade</p>
+        <div className="flex flex-wrap gap-1.5">
+          {([1, 2, 3] as const).map((nivel) => (
+            <button
+              key={nivel}
+              type="button"
+              disabled={pending}
+              aria-pressed={item.priority === nivel}
+              onClick={() =>
+                acao(
+                  () =>
+                    setItemPriority({
+                      itemId: item.id,
+                      // Tocar de novo no nível marcado desmarca: sem isto, não
+                      // haveria como voltar a "ainda não decidi".
+                      priority: item.priority === nivel ? null : nivel,
+                    }),
+                  item.priority === nivel
+                    ? "Prioridade removida."
+                    : `Prioridade ${PRIORITY_LABEL[nivel].toLowerCase()}.`,
+                )
+              }
+              className={cn(
+                "min-h-9 rounded-[--radius-control] px-2.5 py-1.5 text-[12px]",
+                item.priority === nivel
+                  ? "bg-brand/15 text-brand"
+                  : "bg-surface-2 text-ink-faint",
+              )}
+            >
+              {PRIORITY_LABEL[nivel]}
+            </button>
+          ))}
+        </div>
+      </div>
 
       <button
         type="button"
@@ -502,72 +558,6 @@ function NovaCotacao({
       />
       <Button size="sm" variant="outline" disabled={pending} onClick={salvar}>
         Guardar
-      </Button>
-    </div>
-  );
-}
-
-function NovaCompra({
-  itemId,
-  unit,
-  pending,
-  startTransition,
-}: {
-  itemId: string;
-  unit: string | null;
-  pending: boolean;
-  startTransition: (fn: () => void) => void;
-}) {
-  const [valor, setValor] = useState("");
-  const [qtd, setQtd] = useState("");
-
-  function salvar() {
-    const cents = parseAmountCents(valor);
-    if (cents === null) {
-      toast.error("Informe o valor da compra.");
-      return;
-    }
-    const quantidade = qtd.trim() === "" ? null : Number(qtd.replace(",", "."));
-    if (quantidade !== null && (!Number.isFinite(quantidade) || quantidade <= 0)) {
-      toast.error("Quantidade inválida.");
-      return;
-    }
-    startTransition(async () => {
-      const r = await addPurchase({
-        itemId,
-        amountCents: cents,
-        quantity: quantidade,
-        date: new Date().toISOString().slice(0, 10),
-      });
-      if (r.error) toast.error(r.error);
-      else {
-        toast.success("Compra registrada.");
-        setValor("");
-        setQtd("");
-      }
-    });
-  }
-
-  return (
-    <div className="mt-2 flex flex-wrap gap-1.5">
-      <Input
-        value={qtd}
-        onChange={(e) => setQtd(e.target.value)}
-        placeholder={unit ? `Qtd (${unit})` : "Qtd"}
-        inputMode="decimal"
-        className="w-24"
-        aria-label="Quantidade comprada"
-      />
-      <Input
-        value={valor}
-        onChange={(e) => setValor(e.target.value)}
-        placeholder="R$"
-        inputMode="decimal"
-        className="min-w-0 flex-1"
-        aria-label="Valor da compra"
-      />
-      <Button size="sm" variant="outline" disabled={pending} onClick={salvar}>
-        Registrar
       </Button>
     </div>
   );
