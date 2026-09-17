@@ -85,6 +85,164 @@ export async function addProjectItem(input: unknown): Promise<FormState> {
   return { ok: true };
 }
 
+const itemDaPlanilhaSchema = z.object({
+  name: z.string().trim().min(1).max(160),
+  stage: z.string().trim().max(60).nullable().optional(),
+  unit: z.string().trim().max(20).nullable().optional(),
+  plannedQuantity: z.number().positive().max(9_999_999).nullable().optional(),
+  note: z.string().trim().max(500).nullable().optional(),
+  /** Fornecedor e valor viram UMA cotação, quando os dois vêm juntos. */
+  supplier: z.string().trim().max(120).nullable().optional(),
+  amountCents: z.number().int().min(0).max(9_999_999_999).nullable().optional(),
+});
+
+const importarItensSchema = z.object({
+  projectId: z.string().uuid(),
+  // O teto é do tamanho de uma planilha de obra, não de um banco de dados: mais
+  // que isso é engano de arquivo, e o limite diz isso antes de gravar.
+  items: z.array(itemDaPlanilhaSchema).min(1).max(500),
+});
+
+export interface ImportResult extends FormState {
+  created?: number;
+  quotes?: number;
+  /** Itens que o projeto já tinha, com o mesmo nome e a mesma etapa. */
+  duplicates?: string[];
+}
+
+/**
+ * Grava de uma vez os itens que vieram de uma planilha (secao 15).
+ *
+ * O QUE CHEGA AQUI JÁ FOI CONFERIDO NA TELA: o arquivo é aberto no navegador e
+ * a pessoa vê linha por linha antes de mandar. O servidor não lê planilha.
+ *
+ * NÃO REGRAVA O QUE JÁ EXISTE. Subir a mesma planilha duas vezes — porque a
+ * primeira falhou no meio, porque a aba estava errada, porque o celular
+ * recarregou — é o caminho mais provável até aqui, e duplicar quinze itens de
+ * obra é o tipo de estrago que só se descobre na hora de somar. A comparação é
+ * por nome e etapa, sem acento e sem caixa, que é como a pessoa lê "Piso
+ * Vinilico" e "piso vinílico": o mesmo item.
+ *
+ * O preço da planilha vira COTAÇÃO, e não campo do item: previsto sai de
+ * proposta, e uma proposta tem sempre de quem ela é. Linha sem fornecedor ou
+ * sem valor entra como item sem cotação — que é a verdade sobre um item que
+ * ainda não foi cotado.
+ */
+export async function importProjectItems(input: unknown): Promise<ImportResult> {
+  const parsed = importarItensSchema.safeParse(input);
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Dados inválidos." };
+  }
+  const [houseId, user] = await Promise.all([requireHouseId(), getCurrentUser()]);
+  const supabase = await createClient();
+
+  const { data: existentes, error: erroExistentes } = await supabase
+    .from("project_items")
+    .select("name, stage, sort_order")
+    .eq("house_id", houseId)
+    .eq("project_id", parsed.data.projectId);
+
+  if (erroExistentes) {
+    console.error("[projetos] falha ao conferir itens", { code: erroExistentes.code });
+    return { error: "Não foi possível conferir o que o projeto já tem." };
+  }
+
+  const chave = (name: string, stage?: string | null) =>
+    `${name}|${stage ?? ""}`
+      .normalize("NFD")
+      .replace(/[̀-ͯ]/g, "")
+      .toLowerCase()
+      .replace(/\s+/g, " ")
+      .trim();
+
+  const jaTem = new Set(
+    (existentes ?? []).map((r) => chave(r.name as string, r.stage as string | null)),
+  );
+  // Continua de onde a lista parou, para a ordem da planilha sobreviver a uma
+  // segunda importação.
+  let ordem = Math.max(0, ...(existentes ?? []).map((r) => Number(r.sort_order) || 0));
+
+  const duplicates: string[] = [];
+  const novos: typeof parsed.data.items = [];
+  for (const item of parsed.data.items) {
+    const k = chave(item.name, item.stage);
+    if (jaTem.has(k)) {
+      duplicates.push(item.name);
+      continue;
+    }
+    // Contra duplicata DENTRO do próprio arquivo, e não só contra o banco: uma
+    // aba de resumo repete o mesmo material em dois blocos.
+    jaTem.add(k);
+    novos.push(item);
+  }
+
+  if (novos.length === 0) {
+    return { ok: true, created: 0, quotes: 0, duplicates };
+  }
+
+  const { data: gravados, error } = await supabase
+    .from("project_items")
+    .insert(
+      novos.map((item) => ({
+        house_id: houseId,
+        project_id: parsed.data.projectId,
+        name: item.name,
+        stage: item.stage || null,
+        unit: item.unit || null,
+        planned_quantity: item.plannedQuantity ?? null,
+        note: item.note || null,
+        sort_order: (ordem += 1),
+        created_by: user?.id ?? null,
+      })),
+    )
+    .select("id, name, stage");
+
+  if (error || !gravados) {
+    console.error("[projetos] falha ao importar itens", { code: error?.code });
+    return { error: "Não foi possível gravar os itens da planilha." };
+  }
+
+  // Casa cada cotação ao seu item PELO NOME, e não pela posição na lista: a
+  // ordem das linhas devolvidas por um insert em lote é detalhe do banco, e
+  // apostar nela erraria de um jeito que ninguém veria — o preço do porcelanato
+  // no item da tinta, com o fornecedor errado junto.
+  const idPorChave = new Map(
+    gravados.map((row) => [chave(row.name as string, row.stage as string | null), row.id as string]),
+  );
+
+  const cotacoes = novos
+    .map((item) => ({ id: idPorChave.get(chave(item.name, item.stage)), item }))
+    .filter((p) => p.id && p.item.supplier && (p.item.amountCents ?? 0) > 0)
+    .map((p) => ({
+      house_id: houseId,
+      item_id: p.id as string,
+      supplier: p.item.supplier as string,
+      amount: (p.item.amountCents as number) / 100,
+      quantity: p.item.plannedQuantity ?? null,
+      note: "Preço de referência da planilha",
+      created_by: user?.id ?? null,
+    }));
+
+  let quotes = 0;
+  if (cotacoes.length > 0) {
+    const { error: erroCotacoes } = await supabase
+      .from("project_quotes")
+      .insert(cotacoes);
+    if (erroCotacoes) {
+      // Os itens já entraram, e dizer "não foi possível" apagaria isso da tela
+      // sem apagar do banco. O número que volta é o que de fato aconteceu.
+      console.error("[projetos] falha ao importar cotações", {
+        code: erroCotacoes.code,
+      });
+    } else {
+      quotes = cotacoes.length;
+    }
+  }
+
+  revalidatePath("/projetos");
+  return { ok: true, created: gravados.length, quotes, duplicates };
+}
+
 const cotacaoSchema = z.object({
   itemId: z.string().uuid(),
   supplier: z.string().trim().min(1, "Diga de quem é a proposta.").max(120),
