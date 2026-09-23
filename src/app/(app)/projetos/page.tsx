@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils";
 import { Card, CardHeader } from "@/components/ui/card";
 import { ProjectManager } from "@/components/project/project-manager";
 import { NewProject } from "@/components/project/new-project";
+import { SheetImport } from "@/components/project/sheet-import";
 
 export const metadata: Metadata = { title: "Projetos · Fluxo" };
 
@@ -104,12 +105,26 @@ export default async function ProjetosPage({
         <Card>
           <CardHeader
             title="Ainda sem itens"
-            description="Comece pelo que você já sabe que precisa comprar. Cotação e compra entram depois, item por item."
+            description="Se a lista já existe numa planilha, suba o arquivo. Senão, comece pelo que você já sabe que precisa comprar — cotação e compra entram depois, item por item."
           />
+          <SheetImport projectId={project.id} />
         </Card>
       ) : null}
 
       <ProjectManager projectId={project.id} summary={summary} />
+
+      {/* Depois da lista, e não antes: com itens na tela, subir planilha é o
+          caso raro (um bloco novo da obra), e o comum é registrar a compra do
+          que já está ali. */}
+      {items.length > 0 ? (
+        <Card>
+          <CardHeader
+            title="Itens de uma planilha"
+            description="Abre o arquivo aqui no aparelho e mostra o que encontrou. O que o projeto já tem não entra de novo."
+          />
+          <SheetImport projectId={project.id} />
+        </Card>
+      ) : null}
 
       <Card>
         <CardHeader
