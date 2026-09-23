@@ -41,6 +41,7 @@ export function NovaCompra({
   unit,
   supplier,
   expectedCents,
+  categoryLabel = null,
   pending,
   startTransition,
 }: {
@@ -51,6 +52,8 @@ export function NovaCompra({
   supplier: string | null;
   /** Quanto o item deveria custar, para mostrar a diferença. */
   expectedCents: number | null;
+  /** Categoria do projeto, onde a despesa de boleto/Pix vai entrar. */
+  categoryLabel?: string | null;
   pending: boolean;
   startTransition: (fn: () => void) => void;
 }) {
@@ -195,6 +198,7 @@ export function NovaCompra({
           lancar={lancar}
           setLancar={setLancar}
           metodo={metodo}
+          categoryLabel={categoryLabel}
         />
       )}
 
@@ -234,12 +238,14 @@ function ForaDoCartao({
   lancar,
   setLancar,
   metodo,
+  categoryLabel,
 }: {
   mes: string;
   setMes: (m: string) => void;
   lancar: boolean;
   setLancar: (v: boolean) => void;
   metodo: PaymentMethod;
+  categoryLabel: string | null;
 }) {
   return (
     <div className="space-y-1.5 rounded-[--radius-control] bg-surface-2 p-2.5">
@@ -261,10 +267,17 @@ function ForaDoCartao({
           className="mt-0.5 size-4 shrink-0 accent-brand"
         />
         <span>
-          Entra nos totais de {monthLabel(mes)}.{" "}
+          Entra nos totais de {monthLabel(mes)}
+          {categoryLabel ? `, em ${categoryLabel}` : ""}.{" "}
           <span className="text-ink-faint">
             {PAYMENT_LABEL[metodo]} não chega por fatura — sem isto, esta
             despesa não aparece no mês nem no orçamento.
+            {/* Dito aqui, na hora de lançar, e não só na tela do projeto:
+                uma despesa sem categoria não entra em orçamento nenhum, e
+                quem está registrando a compra é quem pode resolver agora. */}
+            {categoryLabel
+              ? null
+              : " Vai entrar sem categoria — escolha uma no topo do projeto."}
           </span>
         </span>
       </label>

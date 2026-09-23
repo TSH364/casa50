@@ -431,11 +431,30 @@ export async function addPurchase(input: unknown): Promise<PurchaseResult> {
     return { ok: true };
   }
 
+  // A categoria vem do PROJETO: uma obra inteira cai na mesma, e perguntar a
+  // cada compra seria mais um campo para responder sempre igual. Sem
+  // categoria definida, entra sem - e a tela avisa isso antes de gravar.
+  const { data: dono } = await supabase
+    .from("project_items")
+    .select("projects(category_id)")
+    .eq("house_id", houseId)
+    .eq("id", parsed.data.itemId)
+    .maybeSingle();
+  // Relação muitos-para-um volta como objeto; o `Array.isArray` cobre a
+  // tipagem do cliente, que não sabe disso.
+  const relacao = dono?.projects as unknown;
+  const projeto = (Array.isArray(relacao) ? relacao[0] : relacao) as
+    | { category_id?: string | null }
+    | null
+    | undefined;
+  const categoriaDoProjeto = projeto?.category_id ?? null;
+
   const { data: lancamento, error: erroLancamento } = await supabase
     .from("transactions")
     .insert({
       house_id: houseId,
       project_purchase_id: compra.id,
+      category_id: categoriaDoProjeto,
       card_id: null,
       date: parsed.data.date,
       invoice_month: `${mes}-01`,
@@ -538,6 +557,42 @@ export async function findTransactionsForItem(input: {
   // Vinte é o que cabe numa tela de celular sem virar outra lista para rolar.
   // Quando o certo não está entre eles, a busca por nome é o caminho.
   return { candidates: ranked.slice(0, 20).map((c) => c.transaction) };
+}
+
+/**
+ * A categoria em que entram as despesas que o projeto lança.
+ *
+ * Vale para o que vier DEPOIS: trocar aqui não reclassifica o que já foi
+ * lançado. Mexer em lançamento antigo a partir de uma tela que não o mostra
+ * mudaria o orçamento de meses fechados sem que ninguém visse — e o extrato é
+ * o lugar de reclassificar, onde o lançamento aparece.
+ */
+export async function setProjectCategory(input: {
+  projectId: string;
+  categoryId: string | null;
+}): Promise<FormState> {
+  const schema = z.object({
+    projectId: z.string().uuid(),
+    categoryId: z.string().uuid().nullable(),
+  });
+  const parsed = schema.safeParse(input);
+  if (!parsed.success) return { error: "Dados inválidos." };
+
+  const houseId = await requireHouseId();
+  const supabase = await createClient();
+
+  const { error } = await supabase
+    .from("projects")
+    .update({ category_id: parsed.data.categoryId })
+    .eq("house_id", houseId)
+    .eq("id", parsed.data.projectId);
+
+  if (error) {
+    console.error("[projetos] falha ao definir categoria", { code: error.code });
+    return { error: "Não foi possível guardar a categoria." };
+  }
+  revalidatePath("/projetos");
+  return { ok: true };
 }
 
 /**

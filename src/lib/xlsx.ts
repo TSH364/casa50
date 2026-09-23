@@ -23,6 +23,14 @@ export interface SheetData {
   name: string;
   /** Linhas densas: coluna 0 = A, buracos preenchidos com `null`. */
   grid: Cell[][];
+  /**
+   * O livro conta datas a partir de 1904, e nao de 1900.
+   *
+   * E o padrao do Excel antigo de Mac. Uma data e so um numero de dias, e
+   * ler um arquivo desses com a origem errada desloca todas as datas em
+   * quatro anos sem erro nenhum - por isso a origem viaja junto da grade.
+   */
+  date1904?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -281,6 +289,9 @@ export async function readWorkbook(buffer: ArrayBuffer): Promise<SheetData[]> {
 
   const alvos = lerRels(arquivos, "xl/_rels/workbook.xml.rels");
 
+  const pr = wb.getElementsByTagName("workbookPr")[0];
+  const date1904 = /^(1|true)$/i.test(pr?.getAttribute("date1904") ?? "");
+
   const ssXml = texto(arquivos, "xl/sharedStrings.xml");
   const compartilhados = ssXml === null ? [] : lerTextosCompartilhados(parseXml(ssXml));
 
@@ -306,7 +317,7 @@ export async function readWorkbook(buffer: ArrayBuffer): Promise<SheetData[]> {
     const arquivo = alvo.slice(pasta.length);
     const links = lerLinks(doc, lerRels(arquivos, `xl/${pasta}_rels/${arquivo}.rels`));
 
-    saida.push({ name: nome, grid: lerPlanilha(doc, compartilhados, links) });
+    saida.push({ name: nome, grid: lerPlanilha(doc, compartilhados, links), date1904 });
   }
 
   if (saida.length === 0) throw new Error("a planilha não tem nenhuma aba legível");

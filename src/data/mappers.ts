@@ -270,7 +270,7 @@ export function mapCalendarEvent(row: Record<string, unknown>): CalendarEvent {
 // --------------------------------------------------------------------------
 
 export const PROJECT_COLUMNS =
-  "id, house_id, name, note, is_active, started_on";
+  "id, house_id, name, note, is_active, started_on, category_id";
 
 export function mapProject(row: Record<string, unknown>): Project {
   return {
@@ -280,6 +280,7 @@ export function mapProject(row: Record<string, unknown>): Project {
     note: (row.note as string | null) ?? null,
     isActive: Boolean(row.is_active),
     startedOn: row.started_on ? String(row.started_on).slice(0, 10) : null,
+    categoryId: (row.category_id as string | null) ?? null,
   };
 }
 

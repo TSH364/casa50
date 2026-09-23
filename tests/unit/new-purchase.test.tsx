@@ -201,6 +201,21 @@ describe("NovaCompra", () => {
     expect(valorDigitado()).toBe("3306,59");
   });
 
+  it("diz em que categoria a despesa do boleto vai entrar", () => {
+    montar({ categoryLabel: "Moradia" });
+    fireEvent.click(screen.getByRole("button", { name: "Boleto" }));
+    expect(screen.getByText(/, em Moradia\./)).toBeTruthy();
+    expect(screen.queryByText(/Vai entrar sem categoria/)).toBeNull();
+  });
+
+  it("avisa, na hora de lançar, quando o projeto não tem categoria", () => {
+    // Uma despesa sem categoria nao entra em orcamento nenhum, e quem esta
+    // registrando a compra e quem pode resolver agora.
+    montar({ categoryLabel: null });
+    fireEvent.click(screen.getByRole("button", { name: "Pix" }));
+    expect(screen.getByText(/Vai entrar sem categoria/)).toBeTruthy();
+  });
+
   it("guarda o HTML para a medição de largura", async () => {
     const { container } = montar({ expectedCents: 8_000_00 });
     await vincular("PORTINARI");

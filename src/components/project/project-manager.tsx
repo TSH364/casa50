@@ -73,9 +73,12 @@ function Chip({ status }: { status: ItemStatus }) {
 export function ProjectManager({
   projectId,
   summary,
+  categoryLabel = null,
 }: {
   projectId: string;
   summary: ProjectSummary;
+  /** Onde entram as despesas de boleto/Pix, para o formulário poder dizer. */
+  categoryLabel?: string | null;
 }) {
   const [aberto, setAberto] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -155,6 +158,7 @@ export function ProjectManager({
                   setAberto(aberto === p.item.id ? null : p.item.id)
                 }
                 startTransition={startTransition}
+                categoryLabel={categoryLabel}
               />
             ))}
           </ul>
@@ -185,12 +189,14 @@ function ItemRow({
   pending,
   onToggle,
   startTransition,
+  categoryLabel,
 }: {
   progress: ItemProgress;
   open: boolean;
   pending: boolean;
   onToggle: () => void;
   startTransition: (fn: () => void) => void;
+  categoryLabel: string | null;
 }) {
   const { item, status, chosen, expectedCents, spentCents, boughtQuantity } = progress;
   const temQuantidade = item.plannedQuantity !== null;
@@ -269,6 +275,7 @@ function ItemRow({
           progress={progress}
           pending={pending}
           startTransition={startTransition}
+          categoryLabel={categoryLabel}
         />
       ) : null}
     </li>
@@ -279,10 +286,12 @@ function ItemDetalhe({
   progress,
   pending,
   startTransition,
+  categoryLabel,
 }: {
   progress: ItemProgress;
   pending: boolean;
   startTransition: (fn: () => void) => void;
+  categoryLabel: string | null;
 }) {
   const { item } = progress;
   const [aba, setAba] = useState<"cotacoes" | "compras">("cotacoes");
@@ -406,6 +415,7 @@ function ItemDetalhe({
             unit={item.unit}
             supplier={progress.chosen?.supplier ?? null}
             expectedCents={progress.expectedCents}
+            categoryLabel={categoryLabel}
             pending={pending}
             startTransition={startTransition}
           />
