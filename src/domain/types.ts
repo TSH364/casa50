@@ -268,4 +268,6 @@ export interface Project {
   note: string | null;
   isActive: boolean;
   startedOn: IsoDate | null;
+  /** Categoria das despesas que o app lança a partir das compras. */
+  categoryId: string | null;
 }

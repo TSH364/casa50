@@ -12,6 +12,8 @@ import {
 } from "lucide-react";
 import { commitImport, reviewImport, revertImport } from "@/actions/import";
 import { parseCsv, MAX_FILE_BYTES } from "@/importers/parse";
+import { parseSheet } from "@/importers/sheet";
+import type { SheetData } from "@/lib/xlsx";
 import type {
   DraftTransaction,
   ImportSummary,
@@ -40,10 +42,16 @@ const TYPE_LABEL: Record<string, string> = {
   adjustment: "Ajuste",
 };
 
-/** SHA-256 do conteúdo, para reconhecer o mesmo arquivo importado duas vezes. */
-async function hashFile(text: string): Promise<string | null> {
+/**
+ * SHA-256 do conteúdo, para reconhecer o mesmo arquivo importado duas vezes.
+ *
+ * Planilha entra pelos BYTES, e não por um texto derivado dela: a mesma
+ * fatura baixada duas vezes tem os mesmos bytes, e é isso que precisa bater.
+ */
+async function hashFile(content: string | ArrayBuffer): Promise<string | null> {
   if (typeof crypto?.subtle?.digest !== "function") return null;
-  const bytes = new TextEncoder().encode(text);
+  const bytes =
+    typeof content === "string" ? new TextEncoder().encode(content) : new Uint8Array(content);
   const digest = await crypto.subtle.digest("SHA-256", bytes);
   return [...new Uint8Array(digest)]
     .map((b) => b.toString(16).padStart(2, "0"))
@@ -82,6 +90,9 @@ export function ImportWizard({
   const [fileName, setFileName] = useState("");
   const [fileHash, setFileHash] = useState<string | null>(null);
   const [rawText, setRawText] = useState("");
+  // Planilha já aberta. Guardada em vez do arquivo porque cada ajuste da tela
+  // relê a fatura, e reabrir o zip a cada troca de coluna seria à toa.
+  const [sheets, setSheets] = useState<SheetData[] | null>(null);
   const [parsed, setParsed] = useState<ParseResult | null>(null);
   const [fileError, setFileError] = useState<string | null>(null);
 
@@ -105,6 +116,7 @@ export function ImportWizard({
     setFileName("");
     setFileHash(null);
     setRawText("");
+    setSheets(null);
     setParsed(null);
     setFileError(null);
     setReviewed([]);
@@ -126,15 +138,21 @@ export function ImportWizard({
     signConvention?: SignConvention | "";
     invoiceMonth?: string;
     amountColumn?: string;
+    /** Abas recém-abertas, antes de o estado ter sido atualizado. */
+    sheets?: SheetData[];
   } = {}) {
     const amount = overrides.amountColumn ?? amountColumn;
     const sign = overrides.signConvention ?? signOverride;
-    const result = parseCsv(text, {
+    const opcoes = {
       fileName: name,
       ...(overrides.invoiceMonth ? { invoiceMonth: overrides.invoiceMonth } : {}),
       ...(sign ? { signConvention: sign } : {}),
       ...(amount ? { columns: { amount } } : {}),
-    });
+    };
+    // As duas fontes caem no mesmo `buildDrafts`: o que difere é só como a
+    // linha vira objeto (ver `importers/sheet.ts`).
+    const fonte = overrides.sheets ?? sheets;
+    const result = fonte ? parseSheet(fonte, opcoes) : parseCsv(text, opcoes);
     setParsed(result);
     if (result.detectedMonth) setMonth(result.detectedMonth);
 
@@ -181,17 +199,40 @@ export function ImportWizard({
       );
       return;
     }
-    if (lower.endsWith(".xlsx") || lower.endsWith(".xls")) {
+    // .xls é o formato binário anterior a 2007, e não um zip de XML: não há
+    // o que abrir. Dizer isso é melhor que um "não consegui ler" genérico.
+    if (lower.endsWith(".xls")) {
       setFileError(
-        "Leitura de planilha ainda não está pronta. Salve a planilha como CSV e importe.",
+        "Este é o formato .xls antigo. Abra no Excel e salve como .xlsx (ou CSV), e importe de novo.",
       );
       return;
     }
+    if (lower.endsWith(".xlsx")) {
+      try {
+        const buffer = await file.arrayBuffer();
+        // O leitor entra por import dinâmico: quem só importa CSV não baixa.
+        const { readWorkbook } = await import("@/lib/xlsx");
+        const abas = await readWorkbook(buffer);
+        setSheets(abas);
+        setRawText("");
+        setFileName(file.name);
+        setFileHash(await hashFile(buffer));
+        runParse("", file.name, { sheets: abas });
+        setStep("conferir");
+      } catch (e) {
+        console.error("[importar] falha ao abrir planilha", e);
+        setFileError(
+          "Não consegui abrir esta planilha. Salve de novo como .xlsx, ou exporte a fatura em CSV.",
+        );
+      }
+      return;
+    }
     if (!lower.endsWith(".csv")) {
-      setFileError("Formato não reconhecido. Envie um arquivo .csv.");
+      setFileError("Formato não reconhecido. Envie um arquivo .csv ou .xlsx.");
       return;
     }
 
+    setSheets(null);
     const text = await file.text();
     setRawText(text);
     setFileName(file.name);
@@ -305,7 +346,7 @@ export function ImportWizard({
       <Card>
         <CardHeader
           title="Escolher arquivo"
-          description="CSV da fatura, exportado pelo app do banco."
+          description="CSV ou planilha (.xlsx) da fatura, exportados pelo app ou site do banco."
         />
         <label
           className="flex cursor-pointer flex-col items-center justify-center gap-3 rounded-[--radius-card] border border-dashed border-line-strong bg-surface-2 px-6 py-12 text-center transition-colors hover:border-brand"
@@ -321,11 +362,11 @@ export function ImportWizard({
             Arraste o arquivo ou toque para escolher
           </span>
           <span className="text-[13px] text-ink-faint">
-            .csv · até {MAX_FILE_BYTES / 1024 / 1024} MB
+            .csv ou .xlsx · até {MAX_FILE_BYTES / 1024 / 1024} MB
           </span>
           <input
             type="file"
-            accept=".csv,text/csv"
+            accept=".csv,text/csv,.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             className="sr-only"
             onChange={(e) => {
               const file = e.target.files?.[0];

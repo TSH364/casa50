@@ -393,6 +393,18 @@ export async function addPurchase(input: unknown): Promise<PurchaseResult> {
   const [houseId, user] = await Promise.all([requireHouseId(), getCurrentUser()]);
   const supabase = await createClient();
 
+  // O lançamento vinculado precisa ser DA CASA - o id vem do navegador, e a
+  // chave estrangeira só confere que ele existe, não de quem é.
+  if (parsed.data.transactionId) {
+    const { data: lancamentoVinculado } = await supabase
+      .from("transactions")
+      .select("id")
+      .eq("house_id", houseId)
+      .eq("id", parsed.data.transactionId)
+      .maybeSingle();
+    if (!lancamentoVinculado) return { error: "Lançamento não encontrado." };
+  }
+
   const method = parsed.data.paymentMethod ?? null;
   const mes = parsed.data.invoiceMonth ?? parsed.data.date.slice(0, 7);
 
@@ -431,11 +443,30 @@ export async function addPurchase(input: unknown): Promise<PurchaseResult> {
     return { ok: true };
   }
 
+  // A categoria vem do PROJETO: uma obra inteira cai na mesma, e perguntar a
+  // cada compra seria mais um campo para responder sempre igual. Sem
+  // categoria definida, entra sem - e a tela avisa isso antes de gravar.
+  const { data: dono } = await supabase
+    .from("project_items")
+    .select("projects(category_id)")
+    .eq("house_id", houseId)
+    .eq("id", parsed.data.itemId)
+    .maybeSingle();
+  // Relação muitos-para-um volta como objeto; o `Array.isArray` cobre a
+  // tipagem do cliente, que não sabe disso.
+  const relacao = dono?.projects as unknown;
+  const projeto = (Array.isArray(relacao) ? relacao[0] : relacao) as
+    | { category_id?: string | null }
+    | null
+    | undefined;
+  const categoriaDoProjeto = projeto?.category_id ?? null;
+
   const { data: lancamento, error: erroLancamento } = await supabase
     .from("transactions")
     .insert({
       house_id: houseId,
       project_purchase_id: compra.id,
+      category_id: categoriaDoProjeto,
       card_id: null,
       date: parsed.data.date,
       invoice_month: `${mes}-01`,
@@ -538,6 +569,62 @@ export async function findTransactionsForItem(input: {
   // Vinte é o que cabe numa tela de celular sem virar outra lista para rolar.
   // Quando o certo não está entre eles, a busca por nome é o caminho.
   return { candidates: ranked.slice(0, 20).map((c) => c.transaction) };
+}
+
+/**
+ * A categoria em que entram as despesas que o projeto lança.
+ *
+ * Vale para o que vier DEPOIS: trocar aqui não reclassifica o que já foi
+ * lançado. Mexer em lançamento antigo a partir de uma tela que não o mostra
+ * mudaria o orçamento de meses fechados sem que ninguém visse — e o extrato é
+ * o lugar de reclassificar, onde o lançamento aparece.
+ */
+export async function setProjectCategory(input: {
+  projectId: string;
+  categoryId: string | null;
+}): Promise<FormState> {
+  const schema = z.object({
+    projectId: z.string().uuid(),
+    categoryId: z.string().uuid().nullable(),
+  });
+  const parsed = schema.safeParse(input);
+  if (!parsed.success) return { error: "Dados inválidos." };
+
+  const houseId = await requireHouseId();
+  const supabase = await createClient();
+
+  // A categoria precisa ser DA CASA e de PRIMEIRO NÍVEL - o id vem do
+  // navegador. A chave estrangeira só confere que ela existe, não de quem é:
+  // sem isto, um id de categoria de outra casa passaria, e os lançamentos da
+  // obra apontariam para dado alheio. E subcategoria não serve porque o
+  // lançamento guarda categoria e subcategoria em colunas separadas - uma
+  // filha em `category_id` desmontaria o orçamento por categoria.
+  if (parsed.data.categoryId !== null) {
+    const { data: categoria, error: erroCategoria } = await supabase
+      .from("categories")
+      .select("id, parent_id")
+      .eq("house_id", houseId)
+      .eq("id", parsed.data.categoryId)
+      .maybeSingle();
+
+    if (erroCategoria || !categoria) return { error: "Categoria não encontrada." };
+    if (categoria.parent_id !== null) {
+      return { error: "Escolha uma categoria, e não uma subcategoria." };
+    }
+  }
+
+  const { error } = await supabase
+    .from("projects")
+    .update({ category_id: parsed.data.categoryId })
+    .eq("house_id", houseId)
+    .eq("id", parsed.data.projectId);
+
+  if (error) {
+    console.error("[projetos] falha ao definir categoria", { code: error.code });
+    return { error: "Não foi possível guardar a categoria." };
+  }
+  revalidatePath("/projetos");
+  return { ok: true };
 }
 
 /**

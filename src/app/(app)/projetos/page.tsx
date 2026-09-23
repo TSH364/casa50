@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getActiveHouse } from "@/lib/houses";
-import { listProjectItems, listProjects } from "@/data/queries";
+import { listCategories, listProjectItems, listProjects } from "@/data/queries";
 import { projectSummary, savingsFromChoices } from "@/domain/project";
 import { formatCents } from "@/lib/money";
 import { cn } from "@/lib/utils";
@@ -10,6 +10,7 @@ import { Card, CardHeader } from "@/components/ui/card";
 import { ProjectManager } from "@/components/project/project-manager";
 import { NewProject } from "@/components/project/new-project";
 import { SheetImport } from "@/components/project/sheet-import";
+import { ProjectCategory } from "@/components/project/project-category";
 
 export const metadata: Metadata = { title: "Projetos · Fluxo" };
 
@@ -54,7 +55,11 @@ export default async function ProjetosPage({
   const project =
     projects.find((p) => p.id === params.projeto) ?? projects[0]!;
 
-  const items = await listProjectItems(active.id, project.id);
+  const [items, categories] = await Promise.all([
+    listProjectItems(active.id, project.id),
+    listCategories(active.id),
+  ]);
+  const categoria = categories.find((c) => c.id === project.categoryId) ?? null;
   const summary = projectSummary(items);
   const economia = savingsFromChoices(items);
 
@@ -76,6 +81,13 @@ export default async function ProjetosPage({
             em relação à média das outras propostas.
           </p>
         ) : null}
+        <div className="mt-3">
+          <ProjectCategory
+            projectId={project.id}
+            categoryId={project.categoryId}
+            categories={categories}
+          />
+        </div>
       </header>
 
       {/* O seletor só existe quando há o que selecionar: com um projeto só,
@@ -111,7 +123,11 @@ export default async function ProjetosPage({
         </Card>
       ) : null}
 
-      <ProjectManager projectId={project.id} summary={summary} />
+      <ProjectManager
+        projectId={project.id}
+        summary={summary}
+        categoryLabel={categoria?.name ?? null}
+      />
 
       {/* Depois da lista, e não antes: com itens na tela, subir planilha é o
           caso raro (um bloco novo da obra), e o comum é registrar a compra do
