@@ -7,6 +7,13 @@ import { ImportWizard } from "@/components/import/import-wizard";
 
 export const metadata: Metadata = { title: "Importar fatura · Fluxo" };
 
+/**
+ * A revisao pode perguntar ao Jev sobre dezenas de estabelecimentos (ate
+ * 25 s, ver `classifyWithJev`). O padrao da Vercel corta antes disso, e o
+ * corte levaria a revisao inteira junto.
+ */
+export const maxDuration = 60;
+
 export default async function ImportarPage() {
   const { active } = await getActiveHouse();
   if (!active) notFound();

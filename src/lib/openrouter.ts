@@ -220,3 +220,149 @@ export async function checkKey(
     limitUsd: typeof limit === "number" && Number.isFinite(limit) ? limit : null,
   };
 }
+
+// ---------------------------------------------------------------------------
+// Decisoes: o Jev
+// ---------------------------------------------------------------------------
+
+/**
+ * A API de decisoes do OpenRouter, que serve o Jev.
+ *
+ * E OUTRO ENDERECO, e outro formato: nada de mensagens; vai uma situacao em
+ * texto (`state`) e perguntas tipadas, e volta, para cada pergunta, a opcao
+ * escolhida e a probabilidade de cada opcao. Nao ha texto para interpretar -
+ * o que volta ja e o dado.
+ *
+ * "alpha" esta no caminho: o formato pode mudar. Por isso a leitura da
+ * resposta e defensiva, e toda falha vira "sem palpite" para quem chama -
+ * nunca uma importacao que deixa de funcionar porque a IA mudou.
+ *
+ * SEM `provider.data_collection`, ao contrario do chat: o Jev tem um provedor
+ * so (a propria TypeSafe), e a API de decisoes nao documenta o campo. Mandar
+ * um campo que ela nao conhece e arriscar que TODAS as chamadas falhem.
+ */
+const DECISIONS_ENDPOINT = "https://openrouter.ai/api/alpha/decisions";
+
+/**
+ * Tempo maximo de uma decisao. MEDIDO no exemplo publico: 600 a 900 ms. Dez
+ * segundos e provedor travado, e quem esta esperando e a revisao da fatura.
+ */
+const DECISION_TIMEOUT_MS = 10_000;
+
+export interface ChoiceQuestion {
+  type: "choice";
+  instructions: string;
+  /** chave -> o que a opcao significa. A chave volta na resposta. */
+  criteria: Record<string, string>;
+}
+
+export interface ChoiceAnswer {
+  choice: string;
+  /** chave -> probabilidade, 0 a 1. */
+  probabilities: Record<string, number>;
+  confidence: number;
+}
+
+export interface DecideOptions {
+  apiKey: string | null;
+  model: string;
+  fetchImpl?: typeof fetch;
+}
+
+/**
+ * Uma situacao, varias perguntas de escolha, uma chamada.
+ *
+ * Devolve so as respostas que vieram no formato esperado; pergunta cuja
+ * resposta veio estranha simplesmente nao aparece no resultado.
+ */
+export async function decide(
+  state: string,
+  questions: Record<string, ChoiceQuestion>,
+  options: DecideOptions,
+): Promise<Record<string, ChoiceAnswer>> {
+  const chave = options.apiKey?.trim();
+  if (!chave) throw new OpenRouterError("A IA não está configurada.", 0);
+  const fetchImpl = options.fetchImpl ?? fetch;
+
+  const controle = new AbortController();
+  const relogio = setTimeout(() => controle.abort(), DECISION_TIMEOUT_MS);
+  let resposta: Response;
+  try {
+    resposta = await fetchImpl(DECISIONS_ENDPOINT, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${chave}`,
+        "Content-Type": "application/json",
+        "HTTP-Referer": process.env.NEXT_PUBLIC_SITE_URL || "https://fluxo.app",
+        "X-Title": "Fluxo",
+      },
+      body: JSON.stringify({ model: options.model, state, questions }),
+      signal: controle.signal,
+    });
+  } catch (e) {
+    const abortou = e instanceof Error && e.name === "AbortError";
+    throw new OpenRouterError(
+      abortou ? "O Jev demorou demais para responder." : "Não consegui falar com o OpenRouter.",
+      0,
+    );
+  } finally {
+    clearTimeout(relogio);
+  }
+
+  if (!resposta.ok) {
+    const corpo = await resposta.text().catch(() => "");
+    console.error("[openrouter] decisao falhou", {
+      status: resposta.status,
+      modelo: options.model,
+      corpo: corpo.slice(0, 300),
+    });
+    throw new OpenRouterError(mensagemPara(resposta.status, options.model), resposta.status);
+  }
+
+  const json = (await resposta.json().catch(() => null)) as {
+    answers?: Record<string, unknown>;
+    error?: { code?: number } | string;
+  } | null;
+
+  // Como no chat: o erro pode vir DENTRO de uma resposta 200.
+  if (!json || json.error) {
+    const codigo = typeof json?.error === "object" ? (json.error.code ?? 500) : 500;
+    console.error("[openrouter] decisao com erro no corpo", { modelo: options.model, erro: json?.error });
+    throw new OpenRouterError(mensagemPara(codigo, options.model), codigo);
+  }
+
+  const resultado: Record<string, ChoiceAnswer> = {};
+  for (const nome of Object.keys(questions)) {
+    const lida = lerEscolha(json.answers?.[nome], questions[nome]!);
+    if (lida) resultado[nome] = lida;
+  }
+  return resultado;
+}
+
+/**
+ * Confere uma resposta de escolha antes de confiar nela.
+ *
+ * A escolha tem de ser uma das chaves que foram perguntadas - uma chave
+ * inventada viraria, mais adiante, um id de categoria que nao existe - e as
+ * probabilidades tem de ser numeros entre 0 e 1.
+ */
+function lerEscolha(bruto: unknown, pergunta: ChoiceQuestion): ChoiceAnswer | null {
+  if (!bruto || typeof bruto !== "object") return null;
+  const r = bruto as { choice?: unknown; probabilities?: unknown; confidence?: unknown };
+  if (typeof r.choice !== "string" || !(r.choice in pergunta.criteria)) return null;
+
+  const probabilities: Record<string, number> = {};
+  if (r.probabilities && typeof r.probabilities === "object") {
+    for (const [k, v] of Object.entries(r.probabilities as Record<string, unknown>)) {
+      if (k in pergunta.criteria && typeof v === "number" && v >= 0 && v <= 1) {
+        probabilities[k] = v;
+      }
+    }
+  }
+  // Sem a probabilidade da escolhida nao ha como decidir se ela entra: a
+  // resposta vale como "nao sei".
+  if (probabilities[r.choice] === undefined) return null;
+
+  const confidence = typeof r.confidence === "number" ? r.confidence : 0;
+  return { choice: r.choice, probabilities, confidence };
+}

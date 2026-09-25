@@ -22,6 +22,16 @@ import type {
   ReviewedDraft,
 } from "@/importers/types";
 import type { TransactionType } from "@/domain/types";
+import { getAiKey } from "@/lib/ai-config";
+import { loadJevContext } from "@/lib/jev-context";
+import { runJev } from "@/lib/jev-run";
+import {
+  buildQuestions,
+  importAsks,
+  merchantState,
+  readVerdict,
+} from "@/domain/jev";
+import type { BuiltQuestions, MerchantAsk } from "@/domain/jev";
 
 /**
  * Gravação da importação (secao 6).
@@ -42,6 +52,11 @@ const draftSchema = z.object({
   type: z.enum(["expense", "income", "payment", "refund", "fee", "adjustment"]),
   categoryHint: z.string().max(120).nullable(),
   categoryId: z.string().uuid().nullable(),
+  /**
+   * Subcategoria que a revisao propos (hoje, so pelo Jev). Conferida de novo
+   * na gravacao: tem de ser filha da categoria da linha, nesta casa.
+   */
+  subcategoryId: z.string().uuid().nullable().optional(),
   cardLastFour: z.string().regex(/^\d{4}$/).nullable(),
   cardId: z.string().uuid().nullable(),
   installmentCurrent: z.number().int().min(1).max(99).nullable(),
@@ -114,6 +129,8 @@ interface CategoryMaps {
   ruleByPattern: Map<string, RuleTarget>;
   byName: Map<string, string>;
   nameById: Map<string, string>;
+  /** id -> id da categoria-mãe, ou `null` para categoria-mãe. */
+  parentById: Map<string, string | null>;
   /**
    * Nome canônico ("Transporte") -> id da categoria da casa que o atende.
    *
@@ -134,7 +151,7 @@ async function loadCategoryMaps(
       .eq("house_id", houseId),
     supabase
       .from("categories")
-      .select("id, name")
+      .select("id, name, parent_id")
       .eq("house_id", houseId)
       .eq("is_active", true),
   ]);
@@ -168,6 +185,9 @@ async function loadCategoryMaps(
     nameById: new Map(
       (categories ?? []).map((c) => [c.id as string, String(c.name)]),
     ),
+    parentById: new Map(
+      (categories ?? []).map((c) => [c.id as string, c.parent_id as string | null]),
+    ),
     byCanonical,
   };
 }
@@ -190,14 +210,16 @@ async function loadCategoryMaps(
  * Uma função só, usada pela importação e pela reanálise, para as duas não
  * divergirem - foi assim que o total da fatura já saiu errado antes.
  */
-function resolveCategoryId(
+type CategorySource = "regra" | "loja" | "banco" | "tipo";
+
+function resolveCategory(
   input: {
     merchantNormalized: string;
     categoryHint: string | null;
     type: string;
   },
   maps: CategoryMaps,
-): string | null {
+): { id: string | null; source: CategorySource | null } {
   /** Nome canônico da tabela -> categoria da casa, mesmo renomeada. */
   const canonical = (name: string | null) =>
     name ? maps.byCanonical.get(name) : undefined;
@@ -206,14 +228,28 @@ function resolveCategoryId(
     name ? maps.byName.get(normalizeMerchant(name)) : undefined;
 
   const fromRule = maps.ruleByPattern.get(input.merchantNormalized)?.categoryId;
+  if (fromRule) return { id: fromRule, source: "regra" };
   const fromMerchant = canonical(categoryFromMerchant(input.merchantNormalized));
+  if (fromMerchant) return { id: fromMerchant, source: "loja" };
   const fromHint = input.categoryHint
     ? (literal(input.categoryHint) ??
        canonical(categoryFromHint(input.categoryHint)))
     : undefined;
+  if (fromHint) return { id: fromHint, source: "banco" };
   const fromType = input.type === "fee" ? canonical("Tarifas") : undefined;
+  if (fromType) return { id: fromType, source: "tipo" };
+  return { id: null, source: null };
+}
 
-  return fromRule ?? fromMerchant ?? fromHint ?? fromType ?? null;
+function resolveCategoryId(
+  input: {
+    merchantNormalized: string;
+    categoryHint: string | null;
+    type: string;
+  },
+  maps: CategoryMaps,
+): string | null {
+  return resolveCategory(input, maps).id;
 }
 
 /**
@@ -233,6 +269,119 @@ function resolveSubcategoryId(
   const rule = maps.ruleByPattern.get(merchantNormalized);
   if (!rule || rule.categoryId !== categoryId) return null;
   return rule.subcategoryId;
+}
+
+/**
+ * A subcategoria que a revisao propos, se ela ainda faz sentido.
+ *
+ * Passa pelo navegador, entao e conferida aqui: tem de ser filha da
+ * categoria da linha, nesta casa. Uma subcategoria de Alimentacao numa linha
+ * que a pessoa deixou em Transporte ficaria pendurada numa arvore a que nao
+ * pertence - e um id de outra casa nem esta em `parentById`.
+ */
+function proposedSubcategoryId(
+  d: { subcategoryId?: string | null; categoryId: string | null },
+  maps: CategoryMaps,
+): string | null {
+  if (!d.subcategoryId || d.categoryId === null) return null;
+  return maps.parentById.get(d.subcategoryId) === d.categoryId ? d.subcategoryId : null;
+}
+
+/**
+ * O Jev olha o que as regras nao resolveram (secao 15).
+ *
+ * So entra onde a decisao atual e fraca - a dica do banco, que "erra muito",
+ * ou nada - e na subcategoria de lojas cuja categoria e firme mas que nenhuma
+ * regra separa ainda. Regra aprendida e nome de loja conhecido nunca sao
+ * trocados por palpite.
+ *
+ * O palpite entra MARCADO ("Jev · 87%"), e NAO vira regra aprendida: regra e
+ * o que a casa disse. Se o casal corrigir a linha depois, no extrato, ai sim
+ * nasce a regra - como qualquer correcao.
+ *
+ * Sem chave de IA, nao faz nada e nao diz nada: o Jev e um extra, e a
+ * importacao funcionava antes dele.
+ */
+async function classifyWithJev(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  houseId: string,
+  reviewed: ReviewedDraft[],
+  fonteFraca: ReadonlySet<number>,
+  maps: CategoryMaps,
+): Promise<{ note: string | null }> {
+  const candidatas = reviewed.filter(
+    (d) => d.decision === "new" && d.type === "expense",
+  );
+  if (candidatas.length === 0) return { note: null };
+
+  const apiKey = await getAiKey(houseId);
+  if (!apiKey) return { note: null };
+
+  const ctx = await loadJevContext(supabase, houseId);
+  const asks = importAsks(
+    candidatas.map((d) => ({
+      ...d,
+      weak: fonteFraca.has(d.row),
+      ruleDecidesSubcategory:
+        resolveSubcategoryId(d.merchantNormalized, d.categoryId, maps) !== null,
+    })),
+    ctx.subsByParent,
+  );
+
+  const perguntas = new Map<string, { ask: MerchantAsk; built: BuiltQuestions }>();
+  for (const ask of asks) {
+    const built = buildQuestions(ask, ctx);
+    if (built) perguntas.set(ask.merchant, { ask, built });
+  }
+  if (perguntas.size === 0) return { note: null };
+
+  const run = await runJev(
+    [...perguntas.values()].map(({ ask, built }) => ({
+      key: ask.merchant,
+      state: merchantState(ask.evidence),
+      questions: built.questions,
+    })),
+    { apiKey, maxJobs: 60, deadlineMs: 25_000 },
+  );
+
+  const lojas = new Set<string>();
+  let linhas = 0;
+  for (const d of reviewed) {
+    const p = perguntas.get(d.merchantNormalized);
+    const respostas = run.answers.get(d.merchantNormalized);
+    if (!p || !respostas || d.decision !== "new" || d.type !== "expense") continue;
+    const v = readVerdict(respostas, p.built, p.ask);
+
+    let mudou = false;
+    if (v.categoryId !== null && fonteFraca.has(d.row)) {
+      d.categoryId = v.categoryId;
+      d.categoryName = maps.nameById.get(v.categoryId) ?? null;
+      d.categoryVia = "jev";
+      d.jevProbability = v.categoryProbability ?? undefined;
+      mudou = true;
+    }
+    // A subcategoria so vale se a categoria da linha e a mae dela - e a
+    // mesma conferencia que a gravacao repete.
+    if (v.subcategoryId !== null && maps.parentById.get(v.subcategoryId) === d.categoryId) {
+      d.subcategoryId = v.subcategoryId;
+      d.subcategoryName = maps.nameById.get(v.subcategoryId) ?? null;
+      d.subcategoryProbability = v.subcategoryProbability ?? undefined;
+      mudou = true;
+    }
+    if (mudou) {
+      linhas += 1;
+      lojas.add(d.merchantNormalized);
+    }
+  }
+
+  const partes: string[] = [];
+  if (linhas > 0) {
+    partes.push(
+      `O Jev classificou ${linhas} lançamento(s) de ${lojas.size} estabelecimento(s) que as regras não resolviam. Estão marcados com "Jev" e a certeza dele — confira.`,
+    );
+  }
+  if (run.stoppedBy) partes.push(run.stoppedBy);
+  return { note: partes.length > 0 ? partes.join(" ") : null };
 }
 
 /**
@@ -291,6 +440,7 @@ export async function reviewImport(
   // Repetições dentro do próprio arquivo também precisam aparecer.
   const seenInFile = new Set<string>();
   let autoCategorized = 0;
+  const fonteFraca = new Set<number>();
 
   const reviewed: ReviewedDraft[] = drafts.map((draft) => {
     // O cartão da linha vence o cartão escolhido para o arquivo todo: uma
@@ -309,8 +459,13 @@ export async function reviewImport(
 
     let categoryId = draft.categoryId;
     if (categoryId === null) {
-      categoryId = resolveCategoryId(draft, maps);
+      const resolvida = resolveCategory(draft, maps);
+      categoryId = resolvida.id;
       if (categoryId !== null) autoCategorized += 1;
+      // Guardado para o Jev: so onde a fonte e fraca ele pode trocar.
+      if (resolvida.source === null || resolvida.source === "banco") {
+        fonteFraca.add(draft.row);
+      }
     }
 
     const existingId = existingByKey.get(key);
@@ -330,6 +485,9 @@ export async function reviewImport(
       ...(existingId ? { duplicateOfId: existingId } : {}),
     };
   });
+
+  const jev = await classifyWithJev(supabase, houseId, reviewed, fonteFraca, maps);
+  if (jev.note) notes.push(jev.note);
 
   if (autoCategorized > 0) {
     notes.push(
@@ -592,11 +750,9 @@ export async function commitImport(input: unknown): Promise<CommitResult> {
     origin: "invoice" as const,
     status: "confirmed" as const,
     category_id: d.categoryId,
-    subcategory_id: resolveSubcategoryId(
-      d.merchantNormalized,
-      d.categoryId,
-      maps,
-    ),
+    subcategory_id:
+      resolveSubcategoryId(d.merchantNormalized, d.categoryId, maps) ??
+      proposedSubcategoryId(d, maps),
     visibility: "shared" as const,
     installment_current: d.installmentCurrent,
     installment_total: d.installmentTotal,

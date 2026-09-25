@@ -538,6 +538,36 @@ export async function listSubcategoryDismissals(
   );
 }
 
+/**
+ * Quantas despesas de cada categoria ainda estao sem subcategoria.
+ *
+ * Contagem no banco (`head: true`), e nao lista: e so o numero que a tela de
+ * categorias mostra ao lado do botao do Jev.
+ */
+export async function countWithoutSubcategory(
+  houseId: string,
+  categoryIds: readonly string[],
+): Promise<Map<string, number>> {
+  const supabase = await createClient();
+  const pares = await Promise.all(
+    categoryIds.map(async (id) => {
+      const { count, error } = await supabase
+        .from("transactions")
+        .select("id", { count: "exact", head: true })
+        .eq("house_id", houseId)
+        .eq("category_id", id)
+        .eq("type", "expense")
+        .is("subcategory_id", null);
+      if (error) {
+        console.error("[categorias] falha ao contar", { code: error.code });
+        return [id, 0] as const;
+      }
+      return [id, count ?? 0] as const;
+    }),
+  );
+  return new Map(pares);
+}
+
 // --------------------------------------------------------------------------
 // Projetos (secao 15)
 // --------------------------------------------------------------------------

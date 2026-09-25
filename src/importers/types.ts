@@ -79,6 +79,14 @@ export interface ReviewedDraft extends DraftTransaction {
   decision: DraftDecision;
   /** Nome da categoria resolvida, só para a revisão mostrar. */
   categoryName?: string | null;
+  /** "jev" quando a categoria veio do palpite do Jev, e não de regra. */
+  categoryVia?: "jev";
+  /** Certeza do Jev na categoria, 0 a 1. */
+  jevProbability?: number;
+  /** Subcategoria proposta na revisão; conferida de novo ao gravar. */
+  subcategoryId?: string | null;
+  subcategoryName?: string | null;
+  subcategoryProbability?: number;
   /** Preenchido quando `decision === "duplicate"`. */
   duplicateOfId?: string;
 }

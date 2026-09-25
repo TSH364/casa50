@@ -35,3 +35,16 @@ export function isQuoteModel(value: unknown): value is QuoteModelId {
  * servidor.
  */
 export const OPENROUTER_KEY_RE = /^sk-or-[A-Za-z0-9_-]{16,200}$/;
+
+/**
+ * O Jev, da TypeSafe, que classifica (secao 15).
+ *
+ * Nao e modelo de conversa: recebe uma situacao e perguntas de escolha, e
+ * devolve a opcao escolhida COM a probabilidade de cada uma. E a
+ * probabilidade que interessa aqui - e ela que decide se o palpite entra
+ * sozinho, vai para a casa conferir, ou e descartado.
+ *
+ * Fixo, sem opcao na tela: e o unico modelo que fala a API de decisoes, e um
+ * select com uma opcao so seria enfeite.
+ */
+export const JEV_MODEL = "typesafe/jev-1.13";

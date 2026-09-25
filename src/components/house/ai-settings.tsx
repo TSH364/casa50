@@ -108,7 +108,7 @@ export function AiSettings({
     <Card>
       <CardHeader
         title="Inteligência artificial"
-        description="Lê orçamento em PDF e foto. Usa a sua conta do OpenRouter — cada leitura custa centavos."
+        description="Lê orçamento em PDF e foto, e o Jev classifica lançamentos na importação e nas subcategorias. Usa a sua conta do OpenRouter — cada uso custa centavos."
       />
 
       <div className="space-y-3">
@@ -135,7 +135,8 @@ export function AiSettings({
               </p>
             ) : (
               <p className="text-ink-muted">
-                Nenhuma chave. Sem ela, o orçamento é lido sem IA, e foto não é lida.
+                Nenhuma chave. Sem ela, o orçamento é lido sem IA, foto não é lida, e o Jev
+                não classifica.
               </p>
             )}
 
