@@ -8,6 +8,9 @@ import { signOut } from "@/app/entrar/actions";
 import { syncStaleCalendars } from "@/actions/calendar";
 import { Button } from "@/components/ui/button";
 import { buildInfo, buildLabel, versionLabel } from "@/lib/version";
+import { cookies } from "next/headers";
+import { ThemeToggle } from "@/components/theme-toggle";
+import { THEME_COOKIE, parseTheme } from "@/lib/theme";
 
 export default async function AppLayout({
   children,
@@ -30,6 +33,7 @@ export default async function AppLayout({
   after(syncStaleCalendars);
 
   const build = buildInfo();
+  const tema = parseTheme((await cookies()).get(THEME_COOKIE)?.value);
 
   return (
     <div className="flex min-h-dvh">
@@ -67,6 +71,7 @@ export default async function AppLayout({
             >
               {versionLabel(build)}
             </span>
+            <ThemeToggle initial={tema} />
             <form action={signOut}>
               <Button variant="ghost" size="sm" type="submit">
                 Sair

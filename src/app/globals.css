@@ -59,6 +59,13 @@
   --color-day-2: #7079e4;
   --color-day-3: #5960bd;
   --color-day-4: #434897;
+  /*
+   * A tinta do numero SOBRE a rampa. Fixa, igual nos dois temas, porque a
+   * rampa tambem e: se usasse `canvas`/`ink`, que se invertem no tema claro,
+   * o numero sumiria justamente nos dias que tem gasto.
+   */
+  --color-on-day-dark: #08090c;
+  --color-on-day-light: #f3f4f8;
 
   /*
    * Escala divergente da matriz mes x categoria: dois matizes e um meio
@@ -88,6 +95,82 @@
 
 :root {
   color-scheme: dark;
+}
+
+/* ===========================================================================
+   Tema claro.
+
+   O escuro continua o padrao: e o que esta em `@theme` acima. O claro so
+   redefine os tokens, entao nenhum componente sabe que tema e - quem pinta
+   com `bg-surface` e `text-ink` ja funciona nos dois.
+
+   Escolha por aparelho (`data-theme` no <html>, vindo de um cookie; ver
+   `lib/theme.ts`). "Seguir o celular" usa a preferencia do sistema.
+
+   MEDIDO (contraste WCAG), todos AA:
+     ink sobre surface/surface-2/surface-3   17,9 / 15,7 / 14,2
+     ink-muted sobre surface                 7,9
+     ink-faint sobre surface/surface-2/surface-3   6,1 / 5,4 / 4,8
+     brand / positive / attention / danger sobre surface    7,5 / 8,1 / 8,2 / 7,7
+     cada cor semantica sobre o proprio -soft               6,2 / 6,7 / 7,0 / 6,2
+     branco sobre brand / danger (botoes)                   7,5 / 7,7
+   O primeiro ajuste passava sobre fundo liso e reprovava nas etiquetas
+   translucidas (`bg-attention/15` e parentes: "parcial" deu 4,3 sobre o
+   surface-2). Os tons foram escurecidos ate passarem ali tambem.
+   Matriz mes x categoria (Delta E OKLab x100): abaixo-acima 17,6,
+   tipico-abaixo 19,8, tipico-acima 19,5 - os tokens do escuro, clareados
+   sem mais, davam ~13 e reprovavam.
+   A rampa do calendario e a mesma do escuro: contra a superficie branca vai
+   de 2,7 a 8,0:1, e mais gasto continua mais escuro.
+   =========================================================================== */
+:root[data-theme="light"] {
+  color-scheme: light;
+  --color-canvas: #f4f5f8;
+  --color-surface: #ffffff;
+  --color-surface-2: #eef0f4;
+  --color-surface-3: #e2e5ec;
+  --color-line: #dcdfe6;
+  --color-line-strong: #c3c8d2;
+  --color-ink: #15171d;
+  --color-ink-muted: #4b5160;
+  --color-ink-faint: #5c6271;
+  --color-brand: #3d45bd;
+  --color-brand-soft: #e5e7ff;
+  --color-positive: #065c3e;
+  --color-positive-soft: #d6f1e5;
+  --color-attention: #704600;
+  --color-attention-soft: #faebcc;
+  --color-danger: #9c272c;
+  --color-danger-soft: #fbe1e2;
+  --color-cell-below: #6cc79f;
+  --color-cell-typical: #e4e7ee;
+  --color-cell-above: #f0a95a;
+}
+
+@media (prefers-color-scheme: light) {
+  :root[data-theme="system"] {
+    color-scheme: light;
+    --color-canvas: #f4f5f8;
+    --color-surface: #ffffff;
+    --color-surface-2: #eef0f4;
+    --color-surface-3: #e2e5ec;
+    --color-line: #dcdfe6;
+    --color-line-strong: #c3c8d2;
+    --color-ink: #15171d;
+    --color-ink-muted: #4b5160;
+    --color-ink-faint: #5c6271;
+    --color-brand: #3d45bd;
+    --color-brand-soft: #e5e7ff;
+    --color-positive: #065c3e;
+    --color-positive-soft: #d6f1e5;
+    --color-attention: #704600;
+    --color-attention-soft: #faebcc;
+    --color-danger: #9c272c;
+    --color-danger-soft: #fbe1e2;
+    --color-cell-below: #6cc79f;
+    --color-cell-typical: #e4e7ee;
+    --color-cell-above: #f0a95a;
+  }
 }
 
 * {
