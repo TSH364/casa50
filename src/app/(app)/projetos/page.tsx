@@ -11,8 +11,17 @@ import { ProjectManager } from "@/components/project/project-manager";
 import { NewProject } from "@/components/project/new-project";
 import { SheetImport } from "@/components/project/sheet-import";
 import { ProjectCategory } from "@/components/project/project-category";
+import { isOpenRouterConfigured } from "@/lib/openrouter";
 
 export const metadata: Metadata = { title: "Projetos · Fluxo" };
+
+/**
+ * A leitura de orçamento com IA roda numa ação desta página, e leitura de
+ * imagem leva de 5 a 20 segundos. O padrão da Vercel cortaria antes; 60 é o
+ * teto do plano gratuito, e o cliente do OpenRouter desiste aos 45 para o erro
+ * chegar como mensagem, e não como página quebrada.
+ */
+export const maxDuration = 60;
 
 /**
  * Projetos (secao 15).
@@ -127,6 +136,7 @@ export default async function ProjetosPage({
         projectId={project.id}
         summary={summary}
         categoryLabel={categoria?.name ?? null}
+        aiEnabled={isOpenRouterConfigured()}
       />
 
       {/* Depois da lista, e não antes: com itens na tela, subir planilha é o
