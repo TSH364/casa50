@@ -48,3 +48,17 @@ export const OPENROUTER_KEY_RE = /^sk-or-[A-Za-z0-9_-]{16,200}$/;
  * select com uma opcao so seria enfeite.
  */
 export const JEV_MODEL = "typesafe/jev-1.13";
+
+/**
+ * O modelo da conversa: o roteador GRATUITO do OpenRouter.
+ *
+ * Um roteador, e nao um modelo fixo, porque o catalogo gratuito muda toda
+ * semana - um `:free` que existe hoje pode sumir, e a conversa quebraria no
+ * dia seguinte. O roteador escolhe, entre os gratuitos disponiveis, um que
+ * saiba usar ferramentas.
+ *
+ * A casa escolheu o gratuito sabendo o custo: o provedor pode guardar e
+ * treinar com o que recebe. Ver `allowDataCollection` em `lib/openrouter.ts`.
+ * `OPENROUTER_CHAT_MODEL` troca, se um dia valer fixar um.
+ */
+export const DEFAULT_CHAT_MODEL = "openrouter/free";

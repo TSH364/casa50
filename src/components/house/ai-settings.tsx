@@ -108,7 +108,7 @@ export function AiSettings({
     <Card>
       <CardHeader
         title="Inteligência artificial"
-        description="Lê orçamento em PDF e foto, e o Jev classifica lançamentos na importação e nas subcategorias. Usa a sua conta do OpenRouter — cada uso custa centavos."
+        description="Lê orçamento em PDF e foto, o Jev classifica lançamentos, e a Conversa responde perguntas sobre os dados. Usa a sua conta do OpenRouter."
       />
 
       <div className="space-y-3">
@@ -217,6 +217,23 @@ export function AiSettings({
             Criar chave no OpenRouter
             <ExternalLink className="size-3" aria-hidden />
           </a>
+        ) : null}
+        {temChave ? (
+          // A conversa usa modelos gratuitos, e o OpenRouter so libera os
+          // gratuitos com esta opcao ligada na conta - sem ela, toda pergunta
+          // volta com "nenhum modelo disponivel".
+          <p className="text-[12px] text-ink-faint">
+            Para a Conversa (modelos gratuitos): no OpenRouter, em{" "}
+            <a
+              href="https://openrouter.ai/settings/privacy"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-brand underline underline-offset-2"
+            >
+              Settings → Privacy
+            </a>
+            , ligue os endpoints gratuitos. Eles podem usar as conversas para treino.
+          </p>
         ) : null}
         {canManage && !doServidor ? (
           <p className="text-[12px] text-ink-faint">

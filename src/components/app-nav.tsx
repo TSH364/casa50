@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   House,
+  MessageCircle,
   ReceiptText,
   TrendingUp,
   Hammer,
@@ -20,6 +21,9 @@ const ITEMS = [
   { href: "/insights", label: "Insights", Icon: Sparkles },
   { href: "/metas", label: "Metas", Icon: Target },
   { href: "/projetos", label: "Projetos", Icon: Hammer },
+  // So no computador: a barra do celular ja tem sete, e uma oitava espremia
+  // os rotulos. No celular a conversa fica no icone da barra de cima.
+  { href: "/conversa", label: "Conversa", Icon: MessageCircle, desktopOnly: true },
   { href: "/casa", label: "Casa", Icon: Users },
 ] as const;
 
@@ -43,7 +47,7 @@ export function AppNav() {
         style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
       >
         <ul className="mx-auto flex max-w-lg">
-          {ITEMS.map(({ href, label, Icon }) => (
+          {ITEMS.filter((i) => !("desktopOnly" in i)).map(({ href, label, Icon }) => (
             <li key={href} className="flex-1">
               <Link
                 href={href}

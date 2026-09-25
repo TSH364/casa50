@@ -89,20 +89,38 @@ export interface CallOptions {
   fetchImpl?: typeof fetch;
 }
 
-/** Uma pergunta, uma resposta em texto. */
-export async function chatCompletion(
-  messages: readonly ChatMessage[],
-  options: CallOptions,
-): Promise<string> {
-  const chave = options.apiKey?.trim();
-  if (!chave) {
-    throw new OpenRouterError("A leitura com IA não está configurada.", 0);
-  }
-  const modelo = options.model?.trim() || DEFAULT_MODEL;
-  const fetchImpl = options.fetchImpl ?? fetch;
+interface PostOptions {
+  apiKey: string | null;
+  model: string;
+  body: Record<string, unknown>;
+  timeoutMs: number;
+  fetchImpl?: typeof fetch;
+  /** Frase de erro por status, quando o padrao nao serve a quem chama. */
+  message?: (status: number) => string | null;
+  /** Frase quando o relogio estoura. */
+  timeoutMessage: string;
+}
+
+interface RawMessage {
+  content?: unknown;
+  tool_calls?: unknown;
+}
+
+/**
+ * Uma chamada ao chat do OpenRouter, com as falhas ja traduzidas.
+ *
+ * Compartilhada pela leitura de orcamento e pela conversa: as duas precisam
+ * da mesma chave no cabecalho, do mesmo relogio, e de achar o erro que as
+ * vezes vem DENTRO de uma resposta 200.
+ */
+async function postChat(o: PostOptions): Promise<{ message: RawMessage; servedBy: string | null }> {
+  const chave = o.apiKey?.trim();
+  if (!chave) throw new OpenRouterError("A IA não está configurada.", 0);
+  const fetchImpl = o.fetchImpl ?? fetch;
+  const frase = (status: number) => o.message?.(status) ?? mensagemPara(status, o.model);
 
   const controle = new AbortController();
-  const relogio = setTimeout(() => controle.abort(), TIMEOUT_MS);
+  const relogio = setTimeout(() => controle.abort(), o.timeoutMs);
 
   let resposta: Response;
   try {
@@ -116,23 +134,13 @@ export async function chatCompletion(
         "HTTP-Referer": process.env.NEXT_PUBLIC_SITE_URL || "https://fluxo.app",
         "X-Title": "Fluxo",
       },
-      body: JSON.stringify({
-        model: modelo,
-        messages,
-        // Leitura de documento nao e escrita criativa: a mesma foto tem de dar
-        // o mesmo numero nas duas vezes que alguem tentar.
-        temperature: 0,
-        max_tokens: options.maxTokens ?? 800,
-        provider: { data_collection: "deny" },
-      }),
+      body: JSON.stringify({ model: o.model, ...o.body }),
       signal: controle.signal,
     });
   } catch (e) {
     const abortou = e instanceof Error && e.name === "AbortError";
     throw new OpenRouterError(
-      abortou
-        ? "A leitura com IA demorou demais. Tente de novo, ou preencha à mão."
-        : "Não consegui falar com o OpenRouter.",
+      abortou ? o.timeoutMessage : "Não consegui falar com o OpenRouter.",
       0,
     );
   } finally {
@@ -142,27 +150,171 @@ export async function chatCompletion(
   if (!resposta.ok) {
     // O corpo do erro vai para o log e nao para a tela: pode citar a conta.
     const corpo = await resposta.text().catch(() => "");
-    console.error("[openrouter] falha", { status: resposta.status, modelo, corpo: corpo.slice(0, 300) });
-    throw new OpenRouterError(mensagemPara(resposta.status, modelo), resposta.status);
+    console.error("[openrouter] falha", { status: resposta.status, modelo: o.model, corpo: corpo.slice(0, 300) });
+    throw new OpenRouterError(frase(resposta.status), resposta.status);
   }
 
   const json = (await resposta.json().catch(() => null)) as {
-    choices?: { message?: { content?: unknown } }[];
+    model?: unknown;
+    choices?: { message?: RawMessage }[];
     error?: { message?: string; code?: number };
   } | null;
 
   // O OpenRouter as vezes responde 200 com o erro DENTRO do corpo, quando o
   // provedor falha depois de a chamada ter sido aceita.
   if (json?.error) {
-    console.error("[openrouter] erro no corpo", { modelo, erro: json.error });
-    throw new OpenRouterError(mensagemPara(json.error.code ?? 500, modelo), json.error.code ?? 500);
+    console.error("[openrouter] erro no corpo", { modelo: o.model, erro: json.error });
+    throw new OpenRouterError(frase(json.error.code ?? 500), json.error.code ?? 500);
   }
 
-  const conteudo = json?.choices?.[0]?.message?.content;
+  return {
+    message: json?.choices?.[0]?.message ?? {},
+    servedBy: typeof json?.model === "string" ? json.model : null,
+  };
+}
+
+/** Uma pergunta, uma resposta em texto. */
+export async function chatCompletion(
+  messages: readonly ChatMessage[],
+  options: CallOptions,
+): Promise<string> {
+  if (!options.apiKey?.trim()) {
+    throw new OpenRouterError("A leitura com IA não está configurada.", 0);
+  }
+  const modelo = options.model?.trim() || DEFAULT_MODEL;
+  const { message } = await postChat({
+    apiKey: options.apiKey,
+    model: modelo,
+    timeoutMs: TIMEOUT_MS,
+    timeoutMessage: "A leitura com IA demorou demais. Tente de novo, ou preencha à mão.",
+    fetchImpl: options.fetchImpl,
+    body: {
+      messages,
+      // Leitura de documento nao e escrita criativa: a mesma foto tem de dar
+      // o mesmo numero nas duas vezes que alguem tentar.
+      temperature: 0,
+      max_tokens: options.maxTokens ?? 800,
+      provider: { data_collection: "deny" },
+    },
+  });
+
+  const conteudo = message.content;
   if (typeof conteudo !== "string" || conteudo.trim() === "") {
     throw new OpenRouterError("A IA respondeu vazio.", 200);
   }
   return conteudo;
+}
+
+// ---------------------------------------------------------------------------
+// Conversa com ferramentas
+// ---------------------------------------------------------------------------
+
+export interface ToolDefinition {
+  type: "function";
+  function: {
+    name: string;
+    description: string;
+    parameters: Record<string, unknown>;
+  };
+}
+
+export interface ToolCall {
+  id: string;
+  type: "function";
+  function: { name: string; arguments: string };
+}
+
+export type TurnMessage =
+  | { role: "system" | "user"; content: string }
+  | { role: "assistant"; content: string | null; tool_calls?: ToolCall[] }
+  | { role: "tool"; tool_call_id: string; content: string };
+
+export interface TurnOptions {
+  apiKey: string | null;
+  model: string;
+  tools: readonly ToolDefinition[];
+  /**
+   * Se o provedor pode guardar o que recebe (e treinar com isso).
+   *
+   * A conversa usa modelos GRATUITOS, e a casa escolheu isso sabendo: quase
+   * todo endpoint gratuito guarda, e com "deny" nenhum deles atende. A
+   * leitura de orcamento continua com "deny" - la nao ha por que abrir mao.
+   */
+  allowDataCollection: boolean;
+  maxTokens?: number;
+  timeoutMs?: number;
+  fetchImpl?: typeof fetch;
+}
+
+export interface TurnResult {
+  content: string | null;
+  toolCalls: ToolCall[];
+  /** Modelo que de fato respondeu - o roteador gratuito escolhe um. */
+  servedBy: string | null;
+}
+
+/** O que dizer quando a conversa falha, em termos de modelo gratuito. */
+function mensagemDaConversa(status: number): string | null {
+  if (status === 404) {
+    return "Nenhum modelo gratuito aceitou a conversa. No OpenRouter, em Settings → Privacy, ligue os endpoints gratuitos (eles podem usar os dados para treino).";
+  }
+  if (status === 429) {
+    return "Acabou a cota dos modelos gratuitos por agora (50 chamadas por dia, ou 20 por minuto). Tente mais tarde.";
+  }
+  if (status === 402) {
+    return "O OpenRouter recusou por falta de crédito — mesmo o gratuito exige conta sem saldo negativo.";
+  }
+  return null;
+}
+
+/**
+ * Uma rodada da conversa: o modelo responde, ou pede ferramentas.
+ *
+ * Quem chama roda o laco (pede, executa, devolve o resultado). Este arquivo
+ * so fala com o OpenRouter e nao sabe o que as ferramentas fazem.
+ */
+export async function chatTurn(
+  messages: readonly TurnMessage[],
+  options: TurnOptions,
+): Promise<TurnResult> {
+  const { message, servedBy } = await postChat({
+    apiKey: options.apiKey,
+    model: options.model,
+    timeoutMs: options.timeoutMs ?? 25_000,
+    timeoutMessage: "A IA demorou demais para responder. Tente de novo.",
+    fetchImpl: options.fetchImpl,
+    message: mensagemDaConversa,
+    body: {
+      messages,
+      // Sem ferramentas, a rodada e a de fechar: o modelo tem de responder
+      // com o que ja consultou.
+      ...(options.tools.length > 0 ? { tools: options.tools, tool_choice: "auto" } : {}),
+      temperature: 0.2,
+      max_tokens: options.maxTokens ?? 900,
+      provider: { data_collection: options.allowDataCollection ? "allow" : "deny" },
+    },
+  });
+
+  const toolCalls: ToolCall[] = [];
+  if (Array.isArray(message.tool_calls)) {
+    for (const bruto of message.tool_calls as unknown[]) {
+      const c = bruto as { id?: unknown; function?: { name?: unknown; arguments?: unknown } };
+      if (typeof c?.id !== "string" || typeof c.function?.name !== "string") continue;
+      toolCalls.push({
+        id: c.id,
+        type: "function",
+        function: {
+          name: c.function.name,
+          arguments: typeof c.function.arguments === "string" ? c.function.arguments : "{}",
+        },
+      });
+    }
+  }
+  const content = typeof message.content === "string" && message.content.trim() !== "" ? message.content : null;
+  if (content === null && toolCalls.length === 0) {
+    throw new OpenRouterError("A IA respondeu vazio. Tente perguntar de outro jeito.", 200);
+  }
+  return { content, toolCalls, servedBy };
 }
 
 // ---------------------------------------------------------------------------

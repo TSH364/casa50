@@ -137,6 +137,9 @@ export interface TransactionFilter {
   limit?: number;
 }
 
+/** O teto de linhas por resposta do PostgREST no Supabase. */
+const PAGINA_POSTGREST = 1000;
+
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
@@ -181,46 +184,68 @@ export async function listTransactions(
     (cartoes ?? []).map((c) => [c.id as string, (c.owner_id as string | null) ?? null]),
   );
 
-  let query = supabase
-    .from("transactions")
-    .select(TRANSACTION_COLUMNS)
-    .eq("house_id", houseId);
+  // Id que nao e uuid nao e de ninguem: vem da URL, e nao pode virar texto
+  // dentro do filtro `or` do PostgREST.
+  const filtroPessoa = filter.memberId ? memberOrFilter(filter.memberId, donoDoCartao) : null;
+  if (filter.memberId && filtroPessoa === null) return [];
 
-  if (filter.month) {
-    query = query.eq("invoice_month", fromMonthKey(filter.month));
-  }
-  if (filter.fromMonth) {
-    query = query.gte("invoice_month", fromMonthKey(filter.fromMonth));
-  }
-  if (filter.toMonth) {
-    query = query.lte("invoice_month", fromMonthKey(filter.toMonth));
-  }
-  if (filter.memberId) {
-    const filtro = memberOrFilter(filter.memberId, donoDoCartao);
-    // Id que nao e uuid nao e de ninguem: vem da URL, e nao pode virar texto
-    // dentro do filtro `or` do PostgREST.
-    if (filtro === null) return [];
-    query = query.or(filtro);
-  }
-  if (filter.cardId) query = query.eq("card_id", filter.cardId);
-  // "sem" é o recorte que mais importa depois de importar uma fatura: é a
-  // lista do que ainda falta categorizar.
-  if (filter.categoryId === "sem") query = query.is("category_id", null);
-  else if (filter.categoryId) query = query.eq("category_id", filter.categoryId);
+  // Monta a consulta do zero a cada pagina: o construtor do Supabase e
+  // consumido quando e aguardado, e nao pode ser reaproveitado.
+  const montar = () => {
+    let query = supabase
+      .from("transactions")
+      .select(TRANSACTION_COLUMNS)
+      .eq("house_id", houseId);
 
-  if (filter.search?.trim()) {
-    // Escapa vírgula e parêntese, que são separadores da sintaxe `or` do
-    // PostgREST e permitiriam alterar o filtro pela caixa de busca.
-    const term = filter.search.trim().replace(/[,()]/g, " ");
-    query = query.or(
-      `description.ilike.%${term}%,merchant_original.ilike.%${term}%,merchant_alias.ilike.%${term}%`,
-    );
-  }
+    if (filter.month) {
+      query = query.eq("invoice_month", fromMonthKey(filter.month));
+    }
+    if (filter.fromMonth) {
+      query = query.gte("invoice_month", fromMonthKey(filter.fromMonth));
+    }
+    if (filter.toMonth) {
+      query = query.lte("invoice_month", fromMonthKey(filter.toMonth));
+    }
+    if (filtroPessoa) query = query.or(filtroPessoa);
+    if (filter.cardId) query = query.eq("card_id", filter.cardId);
+    // "sem" é o recorte que mais importa depois de importar uma fatura: é a
+    // lista do que ainda falta categorizar.
+    if (filter.categoryId === "sem") query = query.is("category_id", null);
+    else if (filter.categoryId) query = query.eq("category_id", filter.categoryId);
 
-  const { data, error } = await query
-    .order("date", { ascending: false })
-    .order("created_at", { ascending: false })
-    .limit(filter.limit ?? 500);
+    if (filter.search?.trim()) {
+      // Escapa vírgula e parêntese, que são separadores da sintaxe `or` do
+      // PostgREST e permitiriam alterar o filtro pela caixa de busca.
+      const term = filter.search.trim().replace(/[,()]/g, " ");
+      query = query.or(
+        `description.ilike.%${term}%,merchant_original.ilike.%${term}%,merchant_alias.ilike.%${term}%`,
+      );
+    }
+    return query
+      .order("date", { ascending: false })
+      .order("created_at", { ascending: false })
+      // Desempate estavel: sem ele, duas linhas do mesmo dia e horario podem
+      // trocar de lugar entre uma pagina e outra, e uma aparece duas vezes.
+      .order("id", { ascending: false });
+  };
+
+  // Em paginas de 1.000: o PostgREST do Supabase corta CADA resposta nesse
+  // numero, sem avisar. MEDIDO: a casa tem ~120 lancamentos por mes, entao
+  // os 12 meses que o Inicio le passavam de 1.400 - e os meses mais antigos
+  // sumiam das medias e do mapa de fluxo, sem erro nenhum.
+  const limite = filter.limit ?? 500;
+  const data: Record<string, unknown>[] = [];
+  let error: { code?: string; message: string } | null = null;
+  for (let de = 0; de < limite; de += PAGINA_POSTGREST) {
+    const ate = Math.min(de + PAGINA_POSTGREST, limite) - 1;
+    const pagina = await montar().range(de, ate);
+    if (pagina.error) {
+      error = pagina.error;
+      break;
+    }
+    data.push(...((pagina.data ?? []) as Record<string, unknown>[]));
+    if ((pagina.data ?? []).length < ate - de + 1) break;
+  }
 
   if (error) fail("os lançamentos", error);
   const rows = (data ?? []).map((row) => {
