@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient, getCurrentUser } from "@/lib/supabase/server";
 import { z } from "zod";
-import { transactionSchema } from "@/domain/schemas";
+import { DOS_DOIS, transactionSchema } from "@/domain/schemas";
 import { fromMonthKey } from "@/data/mappers";
 import {
   fieldErrorsFrom,
@@ -23,7 +23,8 @@ function toRow(input: Parsed) {
     type: input.type,
     category_id: input.categoryId,
     subcategory_id: input.subcategoryId,
-    member_id: input.memberId,
+    member_id: input.memberId === DOS_DOIS ? null : input.memberId,
+    is_joint: input.memberId === DOS_DOIS,
     card_id: input.cardId,
     visibility: input.visibility,
     split_type: input.splitType,

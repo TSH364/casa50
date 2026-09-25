@@ -97,7 +97,11 @@ export function TransactionList({
           const details = [
             shortDate(t.date),
             TYPE_LABEL[t.type],
-            memberName(t.memberId),
+            t.isJoint
+              ? members.length === 2
+                ? "os dois"
+                : "todos"
+              : memberName(t.memberId),
             cardName(t.cardId),
             t.installment
               ? `parcela ${t.installment.current}/${t.installment.total}`

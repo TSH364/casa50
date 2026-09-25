@@ -74,11 +74,14 @@ export function ProjectManager({
   projectId,
   summary,
   categoryLabel = null,
+  aiEnabled = false,
 }: {
   projectId: string;
   summary: ProjectSummary;
   /** Onde entram as despesas de boleto/Pix, para o formulário poder dizer. */
   categoryLabel?: string | null;
+  /** A leitura de orçamento com IA está configurada no servidor. */
+  aiEnabled?: boolean;
 }) {
   const [aberto, setAberto] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -159,6 +162,7 @@ export function ProjectManager({
                 }
                 startTransition={startTransition}
                 categoryLabel={categoryLabel}
+                aiEnabled={aiEnabled}
               />
             ))}
           </ul>
@@ -190,6 +194,7 @@ function ItemRow({
   onToggle,
   startTransition,
   categoryLabel,
+  aiEnabled,
 }: {
   progress: ItemProgress;
   open: boolean;
@@ -197,6 +202,7 @@ function ItemRow({
   onToggle: () => void;
   startTransition: (fn: () => void) => void;
   categoryLabel: string | null;
+  aiEnabled: boolean;
 }) {
   const { item, status, chosen, expectedCents, spentCents, boughtQuantity } = progress;
   const temQuantidade = item.plannedQuantity !== null;
@@ -276,6 +282,7 @@ function ItemRow({
           pending={pending}
           startTransition={startTransition}
           categoryLabel={categoryLabel}
+          aiEnabled={aiEnabled}
         />
       ) : null}
     </li>
@@ -287,11 +294,13 @@ function ItemDetalhe({
   pending,
   startTransition,
   categoryLabel,
+  aiEnabled,
 }: {
   progress: ItemProgress;
   pending: boolean;
   startTransition: (fn: () => void) => void;
   categoryLabel: string | null;
+  aiEnabled: boolean;
 }) {
   const { item } = progress;
   const [aba, setAba] = useState<"cotacoes" | "compras">("cotacoes");
@@ -372,6 +381,7 @@ function ItemDetalhe({
             itemId={item.id}
             pending={pending}
             startTransition={startTransition}
+            aiEnabled={aiEnabled}
           />
         </>
       ) : (
@@ -483,16 +493,21 @@ function NovaCotacao({
   itemId,
   pending,
   startTransition,
+  aiEnabled = false,
 }: {
   itemId: string;
   pending: boolean;
   startTransition: (fn: () => void) => void;
+  aiEnabled?: boolean;
 }) {
   const [supplier, setSupplier] = useState("");
   const [valor, setValor] = useState("");
   /** Os outros valores que o PDF trazia, para corrigir sem redigitar. */
   const [alternativas, setAlternativas] = useState<{ cents: number; context: string }[]>([]);
-  const [lido, setLido] = useState(false);
+  /** Como foi lido, e o que conferir. `null` enquanto nada foi lido. */
+  const [lido, setLido] = useState<{ via: "ia" | "regra"; aviso?: string; nota?: string } | null>(
+    null,
+  );
 
   function salvar() {
     const cents = parseAmountCents(valor);
@@ -508,7 +523,7 @@ function NovaCotacao({
         setSupplier("");
         setValor("");
         setAlternativas([]);
-        setLido(false);
+        setLido(null);
       }
     });
   }
@@ -516,11 +531,18 @@ function NovaCotacao({
   return (
     <div className="mt-2 flex flex-wrap gap-1.5">
       <QuotePdfInput
-        onRead={(p) => {
+        aiEnabled={aiEnabled}
+        onRead={(p, info) => {
           if (p.supplier) setSupplier(p.supplier);
-          if (p.total) setValor(String(p.total.cents / 100).replace(".", ","));
+          if (p.total) setValor((p.total.cents / 100).toFixed(2).replace(".", ","));
           setAlternativas(p.alternatives.map((a) => ({ cents: a.cents, context: a.context })));
-          setLido(true);
+          setLido({
+            ...info,
+            // Só o que precisa de atenção vira nota: "total" conferido no
+            // documento não tem o que dizer; lido de imagem, ou não achado no
+            // texto, tem.
+            nota: p.total && p.total.confidence !== "alta" ? p.total.context : undefined,
+          });
         }}
       />
 
@@ -528,9 +550,17 @@ function NovaCotacao({
           formato garantido, então o app propõe e a pessoa confere — gravar
           sozinho o número errado seria pior que não ler PDF nenhum. */}
       {lido ? (
-        <p className="basis-full text-[12px] text-ink-faint">
-          Li o PDF e preenchi abaixo. Confira antes de guardar.
-        </p>
+        <div className="basis-full space-y-0.5 text-[12px]">
+          <p className="text-ink-faint">
+            {lido.via === "ia" ? "Li com IA" : "Li o PDF"} e preenchi abaixo. Confira antes de
+            guardar.
+          </p>
+          {lido.aviso ? <p className="text-attention">{lido.aviso}</p> : null}
+          {/* O aviso que só a leitura com IA precisa: o valor pode não estar
+              no documento. O leitor por regra só escolhe entre números que
+              estão lá; a IA pode devolver um que não está. */}
+          {lido.nota ? <p className="text-attention">Total: {lido.nota}.</p> : null}
+        </div>
       ) : null}
       {alternativas.length > 0 ? (
         <div className="basis-full text-[12px] text-ink-faint">

@@ -24,6 +24,7 @@ function tx(overrides: Partial<Transaction> = {}): Transaction {
     invoiceId: null,
     cardId: null,
     memberId: null,
+    isJoint: false,
     date,
     description: "COMPRA",
     merchantOriginal: null,

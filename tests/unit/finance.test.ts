@@ -27,6 +27,7 @@ function tx(partial: Partial<Transaction> = {}): Transaction {
     invoiceId: null,
     cardId: null,
     memberId: null,
+    isJoint: false,
     date: "2026-08-12",
     invoiceMonth: "2026-08",
     description: "Compra",

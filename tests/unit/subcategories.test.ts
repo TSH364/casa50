@@ -11,6 +11,7 @@ function tx(overrides: Partial<Transaction> & { date: string }): Transaction {
     invoiceId: null,
     cardId: null,
     memberId: null,
+    isJoint: false,
     invoiceMonth: overrides.date.slice(0, 7),
     description: "COMPRA",
     merchantOriginal: null,

@@ -137,48 +137,122 @@ export interface TransactionFilter {
   limit?: number;
 }
 
+/** O teto de linhas por resposta do PostgREST no Supabase. */
+const PAGINA_POSTGREST = 1000;
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * `belongsToMember`, escrita como filtro do PostgREST.
+ *
+ * Dos dois, OU marcado com a pessoa, OU sem ninguem marcado num cartao dela.
+ * Tem de dar exatamente a mesma resposta que a regra do dominio: a lista vem
+ * daqui, e o total ao lado dela, de la.
+ *
+ * `null` quando o id nao e um uuid - ele vem da URL (`?membro=`), e texto
+ * livre dentro de um `or` poderia reescrever o filtro.
+ */
+export function memberOrFilter(
+  memberId: string,
+  cardOwners: ReadonlyMap<string, string | null>,
+): string | null {
+  if (!UUID.test(memberId)) return null;
+  const partes = [`is_joint.is.true`, `member_id.eq.${memberId}`];
+  const cartoes = [...cardOwners]
+    .filter(([id, dono]) => dono === memberId && UUID.test(id))
+    .map(([id]) => id);
+  if (cartoes.length > 0) {
+    partes.push(`and(member_id.is.null,card_id.in.(${cartoes.join(",")}))`);
+  }
+  return partes.join(",");
+}
+
 export async function listTransactions(
   houseId: string,
   filter: TransactionFilter = {},
 ): Promise<Transaction[]> {
   const supabase = await createClient();
-  let query = supabase
-    .from("transactions")
-    .select(TRANSACTION_COLUMNS)
+
+  // Dono de cada cartao: decide de quem e o lancamento que ninguem marcou
+  // (ver `belongsToMember`). Uma consulta pequena - a casa tem poucos cartoes.
+  const { data: cartoes, error: cartoesError } = await supabase
+    .from("cards")
+    .select("id, owner_id")
     .eq("house_id", houseId);
+  if (cartoesError) fail("os cartões", cartoesError);
+  const donoDoCartao = new Map(
+    (cartoes ?? []).map((c) => [c.id as string, (c.owner_id as string | null) ?? null]),
+  );
 
-  if (filter.month) {
-    query = query.eq("invoice_month", fromMonthKey(filter.month));
-  }
-  if (filter.fromMonth) {
-    query = query.gte("invoice_month", fromMonthKey(filter.fromMonth));
-  }
-  if (filter.toMonth) {
-    query = query.lte("invoice_month", fromMonthKey(filter.toMonth));
-  }
-  if (filter.memberId) query = query.eq("member_id", filter.memberId);
-  if (filter.cardId) query = query.eq("card_id", filter.cardId);
-  // "sem" é o recorte que mais importa depois de importar uma fatura: é a
-  // lista do que ainda falta categorizar.
-  if (filter.categoryId === "sem") query = query.is("category_id", null);
-  else if (filter.categoryId) query = query.eq("category_id", filter.categoryId);
+  // Id que nao e uuid nao e de ninguem: vem da URL, e nao pode virar texto
+  // dentro do filtro `or` do PostgREST.
+  const filtroPessoa = filter.memberId ? memberOrFilter(filter.memberId, donoDoCartao) : null;
+  if (filter.memberId && filtroPessoa === null) return [];
 
-  if (filter.search?.trim()) {
-    // Escapa vírgula e parêntese, que são separadores da sintaxe `or` do
-    // PostgREST e permitiriam alterar o filtro pela caixa de busca.
-    const term = filter.search.trim().replace(/[,()]/g, " ");
-    query = query.or(
-      `description.ilike.%${term}%,merchant_original.ilike.%${term}%,merchant_alias.ilike.%${term}%`,
-    );
-  }
+  // Monta a consulta do zero a cada pagina: o construtor do Supabase e
+  // consumido quando e aguardado, e nao pode ser reaproveitado.
+  const montar = () => {
+    let query = supabase
+      .from("transactions")
+      .select(TRANSACTION_COLUMNS)
+      .eq("house_id", houseId);
 
-  const { data, error } = await query
-    .order("date", { ascending: false })
-    .order("created_at", { ascending: false })
-    .limit(filter.limit ?? 500);
+    if (filter.month) {
+      query = query.eq("invoice_month", fromMonthKey(filter.month));
+    }
+    if (filter.fromMonth) {
+      query = query.gte("invoice_month", fromMonthKey(filter.fromMonth));
+    }
+    if (filter.toMonth) {
+      query = query.lte("invoice_month", fromMonthKey(filter.toMonth));
+    }
+    if (filtroPessoa) query = query.or(filtroPessoa);
+    if (filter.cardId) query = query.eq("card_id", filter.cardId);
+    // "sem" é o recorte que mais importa depois de importar uma fatura: é a
+    // lista do que ainda falta categorizar.
+    if (filter.categoryId === "sem") query = query.is("category_id", null);
+    else if (filter.categoryId) query = query.eq("category_id", filter.categoryId);
+
+    if (filter.search?.trim()) {
+      // Escapa vírgula e parêntese, que são separadores da sintaxe `or` do
+      // PostgREST e permitiriam alterar o filtro pela caixa de busca.
+      const term = filter.search.trim().replace(/[,()]/g, " ");
+      query = query.or(
+        `description.ilike.%${term}%,merchant_original.ilike.%${term}%,merchant_alias.ilike.%${term}%`,
+      );
+    }
+    return query
+      .order("date", { ascending: false })
+      .order("created_at", { ascending: false })
+      // Desempate estavel: sem ele, duas linhas do mesmo dia e horario podem
+      // trocar de lugar entre uma pagina e outra, e uma aparece duas vezes.
+      .order("id", { ascending: false });
+  };
+
+  // Em paginas de 1.000: o PostgREST do Supabase corta CADA resposta nesse
+  // numero, sem avisar. MEDIDO: a casa tem ~120 lancamentos por mes, entao
+  // os 12 meses que o Inicio le passavam de 1.400 - e os meses mais antigos
+  // sumiam das medias e do mapa de fluxo, sem erro nenhum.
+  const limite = filter.limit ?? 500;
+  const data: Record<string, unknown>[] = [];
+  let error: { code?: string; message: string } | null = null;
+  for (let de = 0; de < limite; de += PAGINA_POSTGREST) {
+    const ate = Math.min(de + PAGINA_POSTGREST, limite) - 1;
+    const pagina = await montar().range(de, ate);
+    if (pagina.error) {
+      error = pagina.error;
+      break;
+    }
+    data.push(...((pagina.data ?? []) as Record<string, unknown>[]));
+    if ((pagina.data ?? []).length < ate - de + 1) break;
+  }
 
   if (error) fail("os lançamentos", error);
-  const rows = (data ?? []).map(mapTransaction);
+  const rows = (data ?? []).map((row) => {
+    const t = mapTransaction(row);
+    t.cardOwnerId = t.cardId ? (donoDoCartao.get(t.cardId) ?? null) : null;
+    return t;
+  });
 
   // O corte é feito em memória, e não como filtro no PostgREST: em SQL,
   // `category_id NOT IN (...)` descarta em silêncio as linhas com categoria
@@ -536,6 +610,82 @@ export async function listSubcategoryDismissals(
   return new Set(
     (data ?? []).map((r) => `${r.category_id}|${r.suggestion_key}`),
   );
+}
+
+/**
+ * Quantas despesas de cada categoria ainda estao sem subcategoria.
+ *
+ * Contagem no banco (`head: true`), e nao lista: e so o numero que a tela de
+ * categorias mostra ao lado do botao do Jev.
+ */
+export async function countWithoutSubcategory(
+  houseId: string,
+  categoryIds: readonly string[],
+): Promise<Map<string, number>> {
+  const supabase = await createClient();
+  const pares = await Promise.all(
+    categoryIds.map(async (id) => {
+      const { count, error } = await supabase
+        .from("transactions")
+        .select("id", { count: "exact", head: true })
+        .eq("house_id", houseId)
+        .eq("category_id", id)
+        .eq("type", "expense")
+        .is("subcategory_id", null);
+      if (error) {
+        console.error("[categorias] falha ao contar", { code: error.code });
+        return [id, 0] as const;
+      }
+      return [id, count ?? 0] as const;
+    }),
+  );
+  return new Map(pares);
+}
+
+/**
+ * Quem aparece nos lancamentos de cada cartao que ainda nao tem dono.
+ *
+ * Serve a SUGESTAO em Cartoes ("parece ser do Vini"), e nada mais: o dono so
+ * muda quando alguem confirma. Sugere so quando uma pessoa so aparece no
+ * cartao - com duas, nao ha dono evidente, e chutar seria pior que perguntar.
+ */
+export async function suggestCardOwners(
+  houseId: string,
+): Promise<Map<string, { memberId: string; count: number }>> {
+  const supabase = await createClient();
+  const { data: cartoes } = await supabase
+    .from("cards")
+    .select("id")
+    .eq("house_id", houseId)
+    .is("owner_id", null);
+  const semDono = (cartoes ?? []).map((c) => c.id as string);
+  const sugestoes = new Map<string, { memberId: string; count: number }>();
+  if (semDono.length === 0) return sugestoes;
+
+  const { data, error } = await supabase
+    .from("transactions")
+    .select("card_id, member_id")
+    .eq("house_id", houseId)
+    .in("card_id", semDono)
+    .not("member_id", "is", null)
+    .limit(5000);
+  if (error) {
+    console.error("[cartoes] falha ao sugerir donos", { code: error.code });
+    return sugestoes;
+  }
+
+  const porCartao = new Map<string, Map<string, number>>();
+  for (const r of data ?? []) {
+    const pessoas = porCartao.get(r.card_id as string) ?? new Map<string, number>();
+    pessoas.set(r.member_id as string, (pessoas.get(r.member_id as string) ?? 0) + 1);
+    porCartao.set(r.card_id as string, pessoas);
+  }
+  for (const [cardId, pessoas] of porCartao) {
+    if (pessoas.size !== 1) continue;
+    const [memberId, count] = [...pessoas][0]!;
+    sugestoes.set(cardId, { memberId, count });
+  }
+  return sugestoes;
 }
 
 // --------------------------------------------------------------------------

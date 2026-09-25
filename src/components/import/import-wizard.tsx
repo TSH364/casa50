@@ -28,6 +28,7 @@ import { Select } from "@/components/ui/select";
 import { formatCents } from "@/lib/money";
 import { addMonths, monthLabel } from "@/domain/month";
 import { cn } from "@/lib/utils";
+import { probabilityLabel } from "@/domain/jev";
 import type { Card as CardType } from "@/domain/types";
 import type { MemberSummary } from "@/lib/houses";
 
@@ -571,7 +572,7 @@ export function ImportWizard({
               disabled={pending || errors.length > 0 || parsed.drafts.length === 0}
               onClick={goReview}
             >
-              {pending ? "Verificando…" : "Verificar duplicidades"}
+              {pending ? "Verificando e classificando…" : "Verificar duplicidades"}
             </Button>
           </div>
         </Card>
@@ -660,6 +661,15 @@ export function ImportWizard({
                   ) : null}
                   <span className="block truncate text-[12px] text-ink-faint">
                     {d.categoryName ?? "Sem categoria"}
+                    {d.subcategoryName ? ` › ${d.subcategoryName}` : null}
+                    {d.categoryVia === "jev" || d.subcategoryName ? (
+                      // Palpite marcado como palpite: quem revisa precisa saber
+                      // o que veio de regra da casa e o que a IA achou.
+                      <span className="ml-1.5 rounded-full bg-brand-soft px-1.5 text-[11px] text-brand">
+                        Jev
+                        {jevCerteza(d) !== null ? ` · ${probabilityLabel(jevCerteza(d)!)}` : ""}
+                      </span>
+                    ) : null}
                   </span>
                 </span>
                 <span className="tabular shrink-0 text-sm text-ink">
@@ -723,4 +733,10 @@ export function ImportWizard({
   }
 
   return null;
+}
+
+/** A certeza que a marca "Jev" mostra: a da categoria, se foi ela; senão a da subcategoria. */
+function jevCerteza(d: ReviewedDraft): number | null {
+  if (d.categoryVia === "jev" && d.jevProbability !== undefined) return d.jevProbability;
+  return d.subcategoryProbability ?? null;
 }

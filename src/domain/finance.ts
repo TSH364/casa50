@@ -74,9 +74,31 @@ export interface SummaryOptions {
   hiddenCategoryIds?: ReadonlySet<string>;
 }
 
+/**
+ * De quem e o lancamento, para o filtro por pessoa.
+ *
+ * Tres casos, nesta ordem:
+ *
+ *   1. dos dois: e de cada um, com o valor cheio - o jantar dos dois aparece
+ *      no filtro do Vini e no da Larissa;
+ *   2. marcado com alguem: e dessa pessoa;
+ *   3. ninguem marcou: e do dono do cartao. MEDIDO: dois tercos dos
+ *      lancamentos da casa (743 de 1.113) vem da fatura sem pessoa. Sem esta
+ *      regra, o filtro de cada um mostrava so o terco que alguem marcou a
+ *      mao - e "Todos" era o unico recorte que fazia sentido.
+ *
+ * A mesma regra roda no banco, em `listTransactions`: as duas tem de dar a
+ * mesma resposta, ou a lista e o total ao lado dela deixam de bater.
+ */
+export function belongsToMember(t: Transaction, memberId: string): boolean {
+  if (t.isJoint) return true;
+  if (t.memberId !== null) return t.memberId === memberId;
+  return (t.cardOwnerId ?? null) === memberId;
+}
+
 function matches(t: Transaction, month: MonthKey, o: SummaryOptions): boolean {
   if (t.invoiceMonth !== month) return false;
-  if (o.memberId != null && t.memberId !== o.memberId) return false;
+  if (o.memberId != null && !belongsToMember(t, o.memberId)) return false;
   if (o.cardId != null && t.cardId !== o.cardId) return false;
   return true;
 }

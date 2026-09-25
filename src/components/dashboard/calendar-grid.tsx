@@ -43,10 +43,12 @@ const FUNDO = [
  */
 const TINTA = [
   "text-ink-faint",
-  "text-canvas",
-  "text-canvas",
-  "text-ink",
-  "text-ink",
+  // Tintas fixas, e nao `canvas`/`ink`: estas se invertem no tema claro, e a
+  // rampa por baixo delas nao.
+  "text-on-day-dark",
+  "text-on-day-dark",
+  "text-on-day-light",
+  "text-on-day-light",
 ] as const;
 
 const INTEIRO = new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 0 });
