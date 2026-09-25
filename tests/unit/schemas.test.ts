@@ -39,15 +39,14 @@ describe("transactionSchema - campos que o navegador não envia", () => {
     if (result.success) expect(result.data.subcategoryId).toBeNull();
   });
 
-  it("aceita o formulário sem divisão, que some quando a despesa é individual", () => {
+  it("a divisão saiu do formulário: individual ou compartilhado, sem ela", () => {
     const { splitType: _omitido, ...semDivisao } = BASE;
-    const result = transactionSchema.safeParse({
-      ...semDivisao,
-      visibility: "individual",
-    });
-
-    expect(result.success).toBe(true);
-    if (result.success) expect(result.data.splitType).toBe("none");
+    for (const visibility of ["individual", "shared"]) {
+      const result = transactionSchema.safeParse({ ...semDivisao, visibility });
+      expect(result.success).toBe(true);
+      // Nem aparece no resultado: a acao nao regrava a coluna antiga.
+      if (result.success) expect(result.data).not.toHaveProperty("splitType");
+    }
   });
 
   it("aceita o formulário sem parcela nem cartão", () => {

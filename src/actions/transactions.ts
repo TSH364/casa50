@@ -27,7 +27,6 @@ function toRow(input: Parsed) {
     is_joint: input.memberId === DOS_DOIS,
     card_id: input.cardId,
     visibility: input.visibility,
-    split_type: input.splitType,
     note: input.note,
     merchant_alias: input.merchantAlias,
     installment_current: input.installmentCurrent,

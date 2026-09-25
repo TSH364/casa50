@@ -1,22 +1,19 @@
 import Link from "next/link";
-import { ArrowRight, Check, CircleAlert, Handshake } from "lucide-react";
+import { ArrowRight, Check, CircleAlert } from "lucide-react";
 import {
   listBudgets,
   listCategories,
   listRecurrences,
-  listSettlements,
   listTransactions,
 } from "@/data/queries";
 import { budgetProgress, committedInstallments } from "@/domain/finance";
 import { installmentsDueIn, installmentSeries, reconcileRecurrences } from "@/domain/forecast";
-import { monthSettlement } from "@/domain/settlement";
 import { addMonths, monthLabel, monthShortLabel } from "@/domain/month";
 import { formatCents, toCents } from "@/lib/money";
 import { Card, CardHeader } from "@/components/ui/card";
 import { Skeleton } from "@/components/states";
 import { cn } from "@/lib/utils";
 import type { MonthKey } from "@/domain/types";
-import type { MemberSummary } from "@/lib/houses";
 
 export function PanelsSkeleton() {
   return (
@@ -49,22 +46,20 @@ function SeeAll({ href, label }: { href: string; label: string }) {
  * Painéis do mês no Início (secao 7).
  *
  * Tudo aqui é leitura resumida do que tem tela própria: recorrências e
- * parcelas vivem em Previsão, orçamentos em Orçamentos, divisão em Acerto.
+ * parcelas vivem em Previsão, orçamentos em Orçamentos.
  * O Início mostra o suficiente para decidir se vale entrar, e leva para lá.
  */
 export async function MonthPanels({
   houseId,
   month,
-  members,
   excludeCategoryIds,
 }: {
   houseId: string;
   month: MonthKey;
-  members: MemberSummary[];
   /** Categorias fora dos totais da casa. Vem de `houseView`. */
   excludeCategoryIds: string[];
 }) {
-  const [monthTransactions, history, recurrences, budgets, categories, settlements] =
+  const [monthTransactions, history, recurrences, budgets, categories] =
     await Promise.all([
       listTransactions(houseId, { month, excludeCategoryIds }),
       listTransactions(houseId, {
@@ -76,7 +71,6 @@ export async function MonthPanels({
       listRecurrences(houseId),
       listBudgets(houseId, month),
       listCategories(houseId),
-      listSettlements(houseId, month),
     ]);
 
   const matches = reconcileRecurrences(recurrences, history, month);
@@ -127,18 +121,6 @@ export async function MonthPanels({
       };
     })
     .sort((a, b) => b.progress.ratio - a.progress.ratio);
-
-  const settlement = monthSettlement(
-    monthTransactions,
-    members.map((m) => m.userId),
-    month,
-  );
-  const settledKeys = new Set(
-    settlements.map((s) => `${s.fromMember}:${s.toMember}`),
-  );
-  const openTransfers = settlement.transfers.filter(
-    (t) => !settledKeys.has(`${t.fromMemberId}:${t.toMemberId}`),
-  );
 
   return (
     <>
@@ -312,42 +294,6 @@ export async function MonthPanels({
         )}
       </Card>
 
-      {members.length > 1 ? (
-        <Card>
-          <CardHeader
-            title="Acerto do mês"
-            description="Divisão do que é da casa."
-            action={<SeeAll href={`/acerto?mes=${month}`} label="Abrir" />}
-          />
-          {openTransfers.length === 0 ? (
-            <p className="flex items-center gap-2 text-[13px] text-ink-muted">
-              <Check className="size-3.5 shrink-0 text-positive" aria-hidden />
-              {settlement.sharedCents === 0
-                ? "Nada compartilhado com responsável definido neste mês."
-                : "As contas do mês estão empatadas."}
-            </p>
-          ) : (
-            <ul className="space-y-1.5">
-              {openTransfers.map((t) => (
-                <li
-                  key={`${t.fromMemberId}:${t.toMemberId}`}
-                  className="flex items-center gap-2 text-[13px]"
-                >
-                  <Handshake className="size-3.5 shrink-0 text-brand" aria-hidden />
-                  <span className="min-w-0 flex-1 truncate text-ink-muted">
-                    {members.find((m) => m.userId === t.fromMemberId)?.fullName}{" "}
-                    deve a{" "}
-                    {members.find((m) => m.userId === t.toMemberId)?.fullName}
-                  </span>
-                  <span className="tabular shrink-0 font-medium text-ink">
-                    {formatCents(t.amountCents)}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </Card>
-      ) : null}
     </>
   );
 }

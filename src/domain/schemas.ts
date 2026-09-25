@@ -158,13 +158,6 @@ export const transactionSchema = z
     ),
     cardId: optionalUuid,
     visibility: z.enum(["individual", "shared"]),
-    // Desabilitado quando a despesa e individual, e select desabilitado nao
-    // e enviado: ausencia significa "sem divisao", que e o unico valor que a
-    // regra abaixo aceita nesse caso.
-    splitType: z
-      .enum(["none", "equal", "income_proportional", "custom"])
-      .optional()
-      .default("none"),
     note: optionalText,
     merchantAlias: optionalText,
     installmentCurrent: optional(
@@ -193,10 +186,6 @@ export const transactionSchema = z
       path: ["installmentCurrent"],
     },
   )
-  .refine((v) => v.splitType === "none" || v.visibility === "shared", {
-    message: "Só faz sentido dividir uma despesa marcada como compartilhada.",
-    path: ["splitType"],
-  })
   .refine((v) => v.memberId !== DOS_DOIS || v.visibility === "shared", {
     // Individual e de quem gastou; um gasto dos dois nao e de uma pessoa so.
     message: "Gasto dos dois é compartilhado.",

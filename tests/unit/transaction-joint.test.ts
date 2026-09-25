@@ -65,4 +65,10 @@ describe("createTransaction", () => {
     await createTransaction({}, formulario(vini));
     expect(gravados[0]).toMatchObject({ member_id: vini, is_joint: false });
   });
+
+  it("não grava mais a divisão: o acerto saiu, e a coluna antiga fica como estava", async () => {
+    gravados.length = 0;
+    await createTransaction({}, formulario(DOS_DOIS));
+    expect(gravados[0]).not.toHaveProperty("split_type");
+  });
 });

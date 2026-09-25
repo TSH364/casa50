@@ -148,6 +148,8 @@ export default async function InicioPage({
           houseId={active.id}
           month={month}
           excludeCategoryIds={excludeCategoryIds}
+          memberId={memberId}
+          memberName={members.find((m) => m.userId === memberId)?.fullName.split(" ")[0] ?? null}
         />
       </Suspense>
 
@@ -176,7 +178,6 @@ export default async function InicioPage({
         <MonthPanels
           houseId={active.id}
           month={month}
-          members={members}
           excludeCategoryIds={excludeCategoryIds}
         />
       </Suspense>

@@ -33,13 +33,6 @@ const VISIBILITY = [
   { value: "individual", label: "Individual" },
 ];
 
-const SPLIT = [
-  { value: "none", label: "Sem divisão" },
-  { value: "equal", label: "Meio a meio" },
-  { value: "income_proportional", label: "Proporcional à renda" },
-  { value: "custom", label: "Personalizada" },
-];
-
 function todayIso() {
   const now = new Date();
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
@@ -279,24 +272,6 @@ export function TransactionFormDialog({
                 onChange={(e) =>
                   setVisibility(e.target.value as "shared" | "individual")
                 }
-              />
-            </Field>
-            <Field
-              label="Divisão"
-              htmlFor="splitType"
-              error={err.splitType}
-              hint={
-                visibility === "individual"
-                  ? "Só despesa compartilhada é dividida."
-                  : undefined
-              }
-            >
-              <Select
-                id="splitType"
-                name="splitType"
-                options={SPLIT}
-                disabled={visibility === "individual"}
-                defaultValue={transaction?.splitType ?? "none"}
               />
             </Field>
           </div>
