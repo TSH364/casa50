@@ -11,7 +11,7 @@ import { ProjectManager } from "@/components/project/project-manager";
 import { NewProject } from "@/components/project/new-project";
 import { SheetImport } from "@/components/project/sheet-import";
 import { ProjectCategory } from "@/components/project/project-category";
-import { isOpenRouterConfigured } from "@/lib/openrouter";
+import { getAiStatus } from "@/lib/ai-config";
 
 export const metadata: Metadata = { title: "Projetos · Fluxo" };
 
@@ -64,9 +64,10 @@ export default async function ProjetosPage({
   const project =
     projects.find((p) => p.id === params.projeto) ?? projects[0]!;
 
-  const [items, categories] = await Promise.all([
+  const [items, categories, ia] = await Promise.all([
     listProjectItems(active.id, project.id),
     listCategories(active.id),
+    getAiStatus(active.id),
   ]);
   const categoria = categories.find((c) => c.id === project.categoryId) ?? null;
   const summary = projectSummary(items);
@@ -136,7 +137,7 @@ export default async function ProjetosPage({
         projectId={project.id}
         summary={summary}
         categoryLabel={categoria?.name ?? null}
-        aiEnabled={isOpenRouterConfigured()}
+        aiEnabled={ia.source !== null}
       />
 
       {/* Depois da lista, e não antes: com itens na tela, subir planilha é o

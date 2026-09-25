@@ -2,12 +2,8 @@
 
 import { z } from "zod";
 import { requireHouseId } from "./shared";
-import {
-  chatCompletion,
-  isOpenRouterConfigured,
-  OpenRouterError,
-  type ContentPart,
-} from "@/lib/openrouter";
+import { chatCompletion, OpenRouterError, type ContentPart } from "@/lib/openrouter";
+import { getAiKey, getAiStatus } from "@/lib/ai-config";
 import { parseQuoteAnswer, QUOTE_PROMPT } from "@/domain/quote-ai";
 import type { QuoteProposal } from "@/domain/quote-pdf";
 
@@ -65,9 +61,12 @@ export interface QuoteAiResult {
 export async function readQuoteWithAI(input: unknown): Promise<QuoteAiResult> {
   // A casa ANTES de tudo, inclusive de dizer se a IA esta ligada: quem nao e
   // membro nao tem por que saber nem isso.
-  await requireHouseId();
+  const houseId = await requireHouseId();
 
-  if (!isOpenRouterConfigured()) {
+  // A chave so e decriptada aqui, no servidor, na hora de usar - e nunca
+  // volta para o navegador.
+  const apiKey = await getAiKey(houseId);
+  if (!apiKey) {
     return { configured: false, error: "A leitura com IA não está configurada." };
   }
 
@@ -93,10 +92,14 @@ export async function readQuoteWithAI(input: unknown): Promise<QuoteAiResult> {
         ];
 
   try {
-    const resposta = await chatCompletion([
-      { role: "system", content: QUOTE_PROMPT },
-      { role: "user", content: conteudo },
-    ]);
+    const { quoteModel } = await getAiStatus(houseId);
+    const resposta = await chatCompletion(
+      [
+        { role: "system", content: QUOTE_PROMPT },
+        { role: "user", content: conteudo },
+      ],
+      { apiKey, model: quoteModel },
+    );
 
     const proposal = parseQuoteAnswer(
       resposta,

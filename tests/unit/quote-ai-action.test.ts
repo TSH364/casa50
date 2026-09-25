@@ -14,6 +14,7 @@ const estado = {
   configurado: true as boolean,
   resposta: '{"fornecedor":"Loja","total":100}' as string,
   mensagens: [] as ChatMessage[][],
+  chaves: [] as string[],
 };
 
 vi.mock("@/actions/shared", () => ({
@@ -21,6 +22,16 @@ vi.mock("@/actions/shared", () => ({
     if (!estado.casa) throw new Error("Nenhuma casa ativa.");
     return "casa-1";
   },
+}));
+
+vi.mock("@/lib/ai-config", () => ({
+  getAiKey: async () => (estado.configurado ? "sk-or-da-casa" : null),
+  getAiStatus: async () => ({
+    source: estado.configurado ? "casa" : null,
+    keyHint: null,
+    quoteModel: "anthropic/claude-sonnet-5",
+    quoteModelLocked: false,
+  }),
 }));
 
 vi.mock("@/lib/openrouter", async () => {
@@ -31,8 +42,8 @@ vi.mock("@/lib/openrouter", async () => {
   }
   return {
     OpenRouterError,
-    isOpenRouterConfigured: () => estado.configurado,
-    chatCompletion: async (messages: ChatMessage[]) => {
+    chatCompletion: async (messages: ChatMessage[], opcoes: { apiKey: string }) => {
+      estado.chaves.push(opcoes.apiKey);
       estado.mensagens.push(messages);
       if (estado.resposta === "ERRO") throw new OpenRouterError("A conta do OpenRouter está sem créditos.", 402);
       return estado.resposta;
@@ -50,6 +61,12 @@ describe("readQuoteWithAI", () => {
     estado.configurado = true;
     estado.resposta = '{"fornecedor":"Loja","total":100}';
     estado.mensagens = [];
+    estado.chaves = [];
+  });
+
+  it("usa a chave da casa, decriptada no servidor", async () => {
+    await readQuoteWithAI({ kind: "text", text: "Total 100,00" });
+    expect(estado.chaves).toEqual(["sk-or-da-casa"]);
   });
 
   it("sem casa, recusa antes de chamar a IA — e antes de dizer se ela existe", async () => {

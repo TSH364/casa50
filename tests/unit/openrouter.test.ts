@@ -1,9 +1,10 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
 
-const { chatCompletion, DEFAULT_MODEL, isOpenRouterConfigured, OpenRouterError } =
-  await import("@/lib/openrouter");
+const { chatCompletion, checkKey, DEFAULT_MODEL, OpenRouterError } = await import(
+  "@/lib/openrouter"
+);
 
 /**
  * O cliente do OpenRouter.
@@ -14,6 +15,8 @@ const { chatCompletion, DEFAULT_MODEL, isOpenRouterConfigured, OpenRouterError }
  * toda chamada morrer com 404. E que cada falha vira uma frase em portugues
  * que diz o que fazer.
  */
+
+const CHAVE = "sk-or-teste";
 
 function respostaOk(conteudo: string) {
   return new Response(JSON.stringify({ choices: [{ message: { content: conteudo } }] }), {
@@ -33,28 +36,20 @@ function capturar(resposta: Response = respostaOk("{}")) {
 const PERGUNTA = [{ role: "user" as const, content: "oi" }];
 
 describe("chatCompletion", () => {
-  beforeEach(() => {
-    vi.stubEnv("OPENROUTER_API_KEY", "sk-or-teste");
-    vi.stubEnv("OPENROUTER_MODEL", "");
-  });
-  afterEach(() => {
-    vi.unstubAllEnvs();
-  });
-
   it("chama o endpoint do OpenRouter com a chave no cabeçalho", async () => {
     const { chamadas, fetchImpl } = capturar();
-    await chatCompletion(PERGUNTA, { fetchImpl });
+    await chatCompletion(PERGUNTA, { apiKey: CHAVE, fetchImpl });
 
     expect(chamadas[0]?.url).toBe("https://openrouter.ai/api/v1/chat/completions");
     const headers = chamadas[0]?.init.headers as Record<string, string>;
-    expect(headers.Authorization).toBe("Bearer sk-or-teste");
+    expect(headers.Authorization).toBe(`Bearer ${CHAVE}`);
     // A chave nunca no corpo: corpo de requisicao vai parar em log.
-    expect(String(chamadas[0]?.init.body)).not.toContain("sk-or-teste");
+    expect(String(chamadas[0]?.init.body)).not.toContain(CHAVE);
   });
 
   it("só aceita provedor que não guarda os dados", async () => {
     const { chamadas, fetchImpl } = capturar();
-    await chatCompletion(PERGUNTA, { fetchImpl });
+    await chatCompletion(PERGUNTA, { apiKey: CHAVE, fetchImpl });
     const corpo = JSON.parse(String(chamadas[0]?.init.body));
     expect(corpo.provider).toEqual({ data_collection: "deny" });
   });
@@ -64,26 +59,29 @@ describe("chatCompletion", () => {
     // os provedores e a chamada morre com 404 - ha registro publico disso. O
     // JSON e pedido no texto e conferido na volta.
     const { chamadas, fetchImpl } = capturar();
-    await chatCompletion(PERGUNTA, { fetchImpl });
+    await chatCompletion(PERGUNTA, { apiKey: CHAVE, fetchImpl });
     const corpo = JSON.parse(String(chamadas[0]?.init.body));
     expect(corpo).not.toHaveProperty("response_format");
     expect(corpo.temperature).toBe(0);
   });
 
-  it("usa o modelo padrão, e o da variável quando definida", async () => {
+  it("usa o modelo pedido, e o padrão quando nenhum vem", async () => {
     const a = capturar();
-    await chatCompletion(PERGUNTA, { fetchImpl: a.fetchImpl });
+    await chatCompletion(PERGUNTA, { apiKey: CHAVE, fetchImpl: a.fetchImpl });
     expect(JSON.parse(String(a.chamadas[0]?.init.body)).model).toBe(DEFAULT_MODEL);
 
-    vi.stubEnv("OPENROUTER_MODEL", "google/gemini-3.6-flash");
     const b = capturar();
-    await chatCompletion(PERGUNTA, { fetchImpl: b.fetchImpl });
+    await chatCompletion(PERGUNTA, {
+      apiKey: CHAVE,
+      model: "google/gemini-3.6-flash",
+      fetchImpl: b.fetchImpl,
+    });
     expect(JSON.parse(String(b.chamadas[0]?.init.body)).model).toBe("google/gemini-3.6-flash");
   });
 
   it("devolve o texto da resposta", async () => {
     const { fetchImpl } = capturar(respostaOk('{"total":10}'));
-    expect(await chatCompletion(PERGUNTA, { fetchImpl })).toBe('{"total":10}');
+    expect(await chatCompletion(PERGUNTA, { apiKey: CHAVE, fetchImpl })).toBe('{"total":10}');
   });
 
   it.each([
@@ -94,7 +92,7 @@ describe("chatCompletion", () => {
     [503, /problema agora/],
   ])("HTTP %i vira uma frase que diz o que fazer", async (status, frase) => {
     const { fetchImpl } = capturar(new Response("{}", { status }));
-    await expect(chatCompletion(PERGUNTA, { fetchImpl })).rejects.toThrow(frase);
+    await expect(chatCompletion(PERGUNTA, { apiKey: CHAVE, fetchImpl })).rejects.toThrow(frase);
   });
 
   it("erro dentro de um 200 também é erro", async () => {
@@ -105,19 +103,57 @@ describe("chatCompletion", () => {
         status: 200,
       }),
     );
-    await expect(chatCompletion(PERGUNTA, { fetchImpl })).rejects.toBeInstanceOf(OpenRouterError);
+    await expect(chatCompletion(PERGUNTA, { apiKey: CHAVE, fetchImpl })).rejects.toBeInstanceOf(
+      OpenRouterError,
+    );
   });
 
   it("resposta vazia é erro, e não texto vazio", async () => {
     const { fetchImpl } = capturar(respostaOk("   "));
-    await expect(chatCompletion(PERGUNTA, { fetchImpl })).rejects.toThrow(/vazio/);
+    await expect(chatCompletion(PERGUNTA, { apiKey: CHAVE, fetchImpl })).rejects.toThrow(/vazio/);
   });
 
   it("sem chave, não chama nada", async () => {
-    vi.stubEnv("OPENROUTER_API_KEY", "");
     const { chamadas, fetchImpl } = capturar();
-    expect(isOpenRouterConfigured()).toBe(false);
-    await expect(chatCompletion(PERGUNTA, { fetchImpl })).rejects.toThrow(/não está configurada/);
+    await expect(chatCompletion(PERGUNTA, { apiKey: null, fetchImpl })).rejects.toThrow(
+      /não está configurada/,
+    );
     expect(chamadas).toHaveLength(0);
+  });
+});
+
+describe("checkKey", () => {
+  it("lê gasto e limite da chave, sem gastar crédito", async () => {
+    const { chamadas, fetchImpl } = capturar(
+      new Response(JSON.stringify({ data: { label: "x", usage: 0.42, limit: 5 } }), {
+        status: 200,
+      }),
+    );
+    expect(await checkKey(CHAVE, fetchImpl)).toEqual({ usageUsd: 0.42, limitUsd: 5 });
+    expect(chamadas[0]?.url).toBe("https://openrouter.ai/api/v1/key");
+    // Consulta, e nao chamada de modelo: sem corpo, sem metodo POST.
+    expect(chamadas[0]?.init.method).toBeUndefined();
+  });
+
+  it("chave sem limite vem com limite nulo, e não zero", async () => {
+    // Zero seria "limite de zero dolares" - o contrario do que e.
+    const { fetchImpl } = capturar(
+      new Response(JSON.stringify({ data: { usage: 1, limit: null } }), { status: 200 }),
+    );
+    expect((await checkKey(CHAVE, fetchImpl)).limitUsd).toBeNull();
+  });
+
+  it("chave recusada diz para conferir se foi copiada inteira", async () => {
+    const { fetchImpl } = capturar(new Response("{}", { status: 401 }));
+    await expect(checkKey(CHAVE, fetchImpl)).rejects.toThrow(/copiou inteira/);
+  });
+
+  it("sem rede, a falha é de rede — e não 'chave inválida'", async () => {
+    // A tela precisa distinguir os dois: chave errada nao se guarda; rede fora
+    // do ar nao e motivo para recusar uma chave boa.
+    const fetchImpl = (async () => {
+      throw new TypeError("fetch failed");
+    }) as unknown as typeof fetch;
+    await expect(checkKey(CHAVE, fetchImpl)).rejects.toMatchObject({ status: 0 });
   });
 });

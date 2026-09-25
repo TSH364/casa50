@@ -13,18 +13,21 @@ import { Card, CardHeader } from "@/components/ui/card";
 import { MembersManager } from "@/components/house/members-manager";
 import { CalendarsManager } from "@/components/calendar/calendars-manager";
 import { PendingInvites } from "@/components/house/pending-invites";
+import { AiSettings } from "@/components/house/ai-settings";
+import { getAiStatus } from "@/lib/ai-config";
 import { buildInfo, buildLabel } from "@/lib/version";
 
 export const metadata: Metadata = { title: "Casa · Fluxo" };
 
 export default async function CasaPage() {
   const { active } = await getActiveHouse();
-  const [roster, invites, user, members, calendars] = await Promise.all([
+  const [roster, invites, user, members, calendars, ia] = await Promise.all([
     active ? listRoster(active.id) : Promise.resolve([]),
     listPendingInvitesForMe(),
     getCurrentUser(),
     active ? listMembers(active.id) : Promise.resolve([]),
     active ? listCalendarSources(active.id) : Promise.resolve([]),
+    active ? getAiStatus(active.id) : Promise.resolve(null),
   ]);
 
   // Só dono e administrador convidam, mudam papel ou removem. O RLS recusaria
@@ -47,6 +50,10 @@ export default async function CasaPage() {
           canManage={canManage}
         />
       ) : null}
+
+      {/* Mesma regra dos membros: a chave paga pelas chamadas, então só quem
+          administra a casa a troca. Os demais veem o estado. */}
+      {active && ia ? <AiSettings status={ia} canManage={canManage} /> : null}
 
       {active ? (
         <CalendarsManager

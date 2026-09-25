@@ -1,4 +1,5 @@
 import "server-only";
+import { DEFAULT_QUOTE_MODEL } from "@/domain/ai-models";
 
 /**
  * Cliente do OpenRouter (secao 15).
@@ -22,8 +23,9 @@ import "server-only";
  *      nenhum. O JSON e pedido no texto e conferido na volta
  *      (`domain/quote-ai.ts`), o que funciona em qualquer modelo.
  *
- *   3. MODELO POR VARIAVEL DE AMBIENTE. Modelo muda de nome e de preco a cada
- *      poucos meses; trocar nao deve exigir deploy de codigo.
+ *   3. A CHAVE E O MODELO VEM DE QUEM CHAMA. Podem estar na variavel de
+ *      ambiente ou na configuracao da casa (ver `lib/ai-config.ts`); este
+ *      arquivo so fala com o OpenRouter e nao sabe de onde eles vieram.
  */
 
 const ENDPOINT = "https://openrouter.ai/api/v1/chat/completions";
@@ -32,7 +34,7 @@ const ENDPOINT = "https://openrouter.ai/api/v1/chat/completions";
  * Modelo padrao. Confirmado no catalogo do OpenRouter em setembro/2026.
  * Le imagem, e a leitura de um orcamento custa centavos.
  */
-export const DEFAULT_MODEL = "anthropic/claude-sonnet-5";
+export const DEFAULT_MODEL: string = DEFAULT_QUOTE_MODEL;
 
 /**
  * Tempo maximo da chamada. Leitura de imagem leva de 5 a 20 segundos; mais
@@ -62,14 +64,6 @@ export class OpenRouterError extends Error {
   }
 }
 
-export function isOpenRouterConfigured(): boolean {
-  return Boolean(process.env.OPENROUTER_API_KEY?.trim());
-}
-
-export function openRouterModel(): string {
-  return process.env.OPENROUTER_MODEL?.trim() || DEFAULT_MODEL;
-}
-
 /**
  * O que dizer para cada falha, em portugues e com o que fazer.
  *
@@ -88,16 +82,23 @@ function mensagemPara(status: number, modelo: string): string {
   return "A leitura com IA falhou.";
 }
 
+export interface CallOptions {
+  apiKey: string | null;
+  model?: string;
+  maxTokens?: number;
+  fetchImpl?: typeof fetch;
+}
+
 /** Uma pergunta, uma resposta em texto. */
 export async function chatCompletion(
   messages: readonly ChatMessage[],
-  options: { maxTokens?: number; fetchImpl?: typeof fetch } = {},
+  options: CallOptions,
 ): Promise<string> {
-  const chave = process.env.OPENROUTER_API_KEY?.trim();
+  const chave = options.apiKey?.trim();
   if (!chave) {
     throw new OpenRouterError("A leitura com IA não está configurada.", 0);
   }
-  const modelo = openRouterModel();
+  const modelo = options.model?.trim() || DEFAULT_MODEL;
   const fetchImpl = options.fetchImpl ?? fetch;
 
   const controle = new AbortController();
@@ -162,4 +163,60 @@ export async function chatCompletion(
     throw new OpenRouterError("A IA respondeu vazio.", 200);
   }
   return conteudo;
+}
+
+// ---------------------------------------------------------------------------
+// A chave em si: vale, e quanto ja gastou
+// ---------------------------------------------------------------------------
+
+export interface KeyInfo {
+  /** Gasto acumulado da chave, em dolar (a moeda dos creditos do OpenRouter). */
+  usageUsd: number;
+  /** Limite de gasto posto na chave, ou `null` se ela nao tem limite. */
+  limitUsd: number | null;
+}
+
+/**
+ * Pergunta ao OpenRouter se a chave vale, e quanto ela ja gastou.
+ *
+ * Serve a dois momentos da tela da Casa: ANTES de guardar - para nao
+ * criptografar com capricho uma chave que o OpenRouter vai recusar - e ao
+ * abrir a tela, para mostrar o gasto e se ha limite.
+ *
+ * `GET /api/v1/key` nao gasta credito.
+ */
+export async function checkKey(
+  apiKey: string,
+  fetchImpl: typeof fetch = fetch,
+): Promise<KeyInfo> {
+  const controle = new AbortController();
+  const relogio = setTimeout(() => controle.abort(), 10_000);
+  let resposta: Response;
+  try {
+    resposta = await fetchImpl("https://openrouter.ai/api/v1/key", {
+      headers: { Authorization: `Bearer ${apiKey.trim()}` },
+      signal: controle.signal,
+    });
+  } catch {
+    throw new OpenRouterError("Não consegui falar com o OpenRouter para testar a chave.", 0);
+  } finally {
+    clearTimeout(relogio);
+  }
+
+  if (resposta.status === 401 || resposta.status === 403) {
+    throw new OpenRouterError("O OpenRouter recusou esta chave. Confira se copiou inteira.", 401);
+  }
+  if (!resposta.ok) {
+    throw new OpenRouterError(mensagemPara(resposta.status, ""), resposta.status);
+  }
+
+  const json = (await resposta.json().catch(() => null)) as {
+    data?: { usage?: unknown; limit?: unknown };
+  } | null;
+  const usage = Number(json?.data?.usage ?? 0);
+  const limit = json?.data?.limit;
+  return {
+    usageUsd: Number.isFinite(usage) ? usage : 0,
+    limitUsd: typeof limit === "number" && Number.isFinite(limit) ? limit : null,
+  };
 }
