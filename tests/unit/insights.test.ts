@@ -10,6 +10,7 @@ function tx(overrides: Partial<Transaction> = {}): Transaction {
     invoiceId: null,
     cardId: null,
     memberId: null,
+    isJoint: false,
     date: "2026-08-10",
     invoiceMonth: "2026-08",
     description: "COMPRA",

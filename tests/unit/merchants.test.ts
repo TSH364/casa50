@@ -10,7 +10,7 @@ import type { Transaction } from "@/domain/types";
 
 function tx(partial: Partial<Transaction> = {}): Transaction {
   return {
-    id: "t1", houseId: "casa", invoiceId: null, cardId: null, memberId: null,
+    id: "t1", houseId: "casa", invoiceId: null, cardId: null, memberId: null, isJoint: false,
     date: "2026-08-12", invoiceMonth: "2026-08", description: "COMPRA",
     merchantOriginal: null, merchantNormalized: null, merchantAlias: null,
     amount: 100, currency: "BRL", originalAmount: null, originalCurrency: null,

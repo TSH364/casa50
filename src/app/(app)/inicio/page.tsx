@@ -1,5 +1,6 @@
 import { Suspense } from "react";
 import type { Metadata } from "next";
+import { PersonFilterNote } from "@/components/person-filter-note";
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { getActiveHouse, listMembers } from "@/lib/houses";
@@ -111,6 +112,8 @@ export default async function InicioPage({
           options={members.map((m) => ({ value: m.userId, label: m.fullName }))}
         />
       ) : null}
+
+      {memberId ? <PersonFilterNote cards={cards} houseWidePanels /> : null}
 
       {cards.filter((c) => c.isActive).length > 1 ? (
         <FilterChips

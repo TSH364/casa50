@@ -9,6 +9,7 @@ import { Dialog, DialogClose, DialogContent } from "@/components/ui/dialog";
 import { Field, Input, Textarea } from "@/components/ui/field";
 import { Select } from "@/components/ui/select";
 import { monthLabel, monthOf, addMonths } from "@/domain/month";
+import { DOS_DOIS } from "@/domain/schemas";
 import type { Card, Category, Transaction } from "@/domain/types";
 import type { MemberSummary } from "@/lib/houses";
 
@@ -239,8 +240,15 @@ export function TransactionFormDialog({
                 id="memberId"
                 name="memberId"
                 placeholder="—"
-                defaultValue={transaction?.memberId ?? ""}
-                options={members.map((m) => ({ value: m.userId, label: m.fullName }))}
+                defaultValue={transaction?.isJoint ? DOS_DOIS : (transaction?.memberId ?? "")}
+                options={[
+                  ...members.map((m) => ({ value: m.userId, label: m.fullName })),
+                  // Com duas pessoas, "Os dois"; com mais, "Todos". Nome de
+                  // gente nunca vai fixo no codigo (secao 4).
+                  ...(members.length > 1
+                    ? [{ value: DOS_DOIS, label: members.length === 2 ? "Os dois" : "Todos" }]
+                    : []),
+                ]}
               />
             </Field>
             <Field

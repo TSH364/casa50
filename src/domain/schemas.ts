@@ -127,6 +127,9 @@ export const TRANSACTION_TYPES = [
   "adjustment",
 ] as const;
 
+/** O valor de "Os dois" no campo "Quem gastou". */
+export const DOS_DOIS = "dos-dois";
+
 export const transactionSchema = z
   .object({
     description: z.string().trim().min(2, "Descreva o lançamento.").max(200),
@@ -137,7 +140,22 @@ export const transactionSchema = z
     type: z.enum(TRANSACTION_TYPES),
     categoryId: optionalUuid,
     subcategoryId: optionalUuid,
-    memberId: optionalUuid,
+    /**
+     * Quem gastou: uma pessoa, ou `DOS_DOIS`. O valor especial vira
+     * `isJoint` na acao - no banco, "dos dois" e uma coluna propria, e
+     * `member_id` fica nulo.
+     */
+    memberId: optional(
+      z
+        .string()
+        .trim()
+        .transform((v) => (v === "" || v === "none" ? null : v))
+        .nullable()
+        .refine(
+          (v) => v === null || v === DOS_DOIS || z.string().uuid().safeParse(v).success,
+          { message: "Seleção inválida." },
+        ),
+    ),
     cardId: optionalUuid,
     visibility: z.enum(["individual", "shared"]),
     // Desabilitado quando a despesa e individual, e select desabilitado nao
@@ -178,6 +196,11 @@ export const transactionSchema = z
   .refine((v) => v.splitType === "none" || v.visibility === "shared", {
     message: "Só faz sentido dividir uma despesa marcada como compartilhada.",
     path: ["splitType"],
+  })
+  .refine((v) => v.memberId !== DOS_DOIS || v.visibility === "shared", {
+    // Individual e de quem gastou; um gasto dos dois nao e de uma pessoa so.
+    message: "Gasto dos dois é compartilhado.",
+    path: ["visibility"],
   })
   .refine((v) => v.subcategoryId === null || v.categoryId !== null, {
     message: "Escolha a categoria antes da subcategoria.",

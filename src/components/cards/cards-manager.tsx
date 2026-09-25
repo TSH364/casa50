@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
 import { Archive, CreditCard, Pencil, Plus, RotateCcw, Trash2 } from "lucide-react";
-import { archiveCard, deleteCard, restoreCard } from "@/actions/cards";
+import { archiveCard, deleteCard, restoreCard, setCardOwner } from "@/actions/cards";
 import { CardFormDialog } from "./card-form";
 import { Button } from "@/components/ui/button";
 import { Card as Panel, CardHeader } from "@/components/ui/card";
@@ -16,9 +16,12 @@ import type { MemberSummary } from "@/lib/houses";
 export function CardsManager({
   cards,
   members,
+  ownerSuggestions = {},
 }: {
   cards: Card[];
   members: MemberSummary[];
+  /** Cartao sem dono -> a unica pessoa marcada nos lancamentos dele. */
+  ownerSuggestions?: Record<string, { memberId: string; count: number }>;
 }) {
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<Card | undefined>();
@@ -71,7 +74,7 @@ export function CardsManager({
       <Panel>
         <CardHeader
           title="Cartões"
-          description="Quem é dono do cartão é campo próprio, não é deduzido de quem importa a fatura."
+          description="O dono do cartão decide de quem é cada lançamento que ninguém marcou, no filtro por pessoa."
           action={
             <Button size="sm" onClick={openNew}>
               <Plus aria-hidden /> Novo
@@ -119,6 +122,26 @@ export function CardsManager({
                       ? ` · limite ${formatBRL(card.creditLimit)}`
                       : ""}
                   </p>
+                  {card.ownerId === null && ownerSuggestions[card.id] ? (
+                    // Sugestao, nunca decisao: o dono so muda com o toque.
+                    <button
+                      type="button"
+                      disabled={pending}
+                      className="mt-1 inline-flex min-h-9 items-center rounded-full border border-brand/50 bg-brand-soft px-3 text-[12px] text-ink disabled:opacity-50"
+                      onClick={() => {
+                        const s = ownerSuggestions[card.id]!;
+                        run(
+                          () => setCardOwner({ cardId: card.id, ownerId: s.memberId }),
+                          "Dono definido.",
+                        );
+                      }}
+                    >
+                      É de {members.find((m) => m.userId === ownerSuggestions[card.id]!.memberId)?.fullName ?? "?"}?
+                      <span className="ml-1 text-ink-faint">
+                        ({ownerSuggestions[card.id]!.count} lançamentos marcados)
+                      </span>
+                    </button>
+                  ) : null}
                 </div>
 
                 <div className="flex shrink-0 items-center">

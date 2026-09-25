@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { listMembers } from "@/lib/houses";
 import { cardSchema } from "@/domain/schemas";
 import {
   fieldErrorsFrom,
@@ -142,6 +143,40 @@ export async function deleteCard(cardId: string): Promise<FormState> {
   if (error) {
     console.error("[cartoes] falha ao excluir", { code: error.code });
     return { error: "Não foi possível excluir o cartão." };
+  }
+
+  revalidateCards();
+  return { ok: true };
+}
+
+/**
+ * Define so o dono do cartao - o "É de Fulano" da sugestao em Cartoes.
+ *
+ * O dono decide de quem e cada lancamento do cartao que ninguem marcou, no
+ * filtro por pessoa. Por isso a pessoa tem de ser DESTA casa: um id de fora
+ * faria os lancamentos sumirem do filtro de todo mundo.
+ */
+export async function setCardOwner(input: {
+  cardId: string;
+  ownerId: string;
+}): Promise<FormState> {
+  const houseId = await requireHouseId();
+  const membros = await listMembers(houseId);
+  if (!membros.some((m) => m.userId === input.ownerId)) {
+    return { error: "Essa pessoa não é da casa." };
+  }
+
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("cards")
+    .update({ owner_id: input.ownerId })
+    .eq("id", input.cardId)
+    .eq("house_id", houseId)
+    .select("id");
+
+  if (error || !data || data.length === 0) {
+    console.error("[cartoes] falha ao definir o dono", { code: error?.code });
+    return { error: "Não foi possível definir o dono." };
   }
 
   revalidateCards();

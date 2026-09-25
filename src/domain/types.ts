@@ -112,6 +112,17 @@ export interface Transaction {
   cardId: string | null;
   /** Quem realizou o gasto. */
   memberId: string | null;
+  /**
+   * Gasto dos dois. Aparece no filtro de cada pessoa, com o valor cheio.
+   * Sempre com `memberId` nulo - o banco garante.
+   */
+  isJoint: boolean;
+  /**
+   * Dono do cartao do lancamento, quando o cartao tem dono. Nao e coluna do
+   * lancamento: `listTransactions` preenche a partir de `cards.owner_id`, e e
+   * o que decide de quem e um lancamento que ninguem marcou.
+   */
+  cardOwnerId?: string | null;
 
   date: IsoDate;
   invoiceMonth: MonthKey;

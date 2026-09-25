@@ -91,7 +91,7 @@ export function mapCategory(row: Record<string, unknown>): Category {
 }
 
 export const TRANSACTION_COLUMNS = `
-  id, house_id, invoice_id, card_id, member_id, date, invoice_month,
+  id, house_id, invoice_id, card_id, member_id, is_joint, date, invoice_month,
   description, merchant_original, merchant_normalized, merchant_alias,
   amount, currency, original_amount, original_currency,
   type, origin, status, category_id, subcategory_id, note, receipt_url,
@@ -112,6 +112,7 @@ export function mapTransaction(row: Record<string, unknown>): Transaction {
     invoiceId: (row.invoice_id as string | null) ?? null,
     cardId: (row.card_id as string | null) ?? null,
     memberId: (row.member_id as string | null) ?? null,
+    isJoint: row.is_joint === true,
 
     date: (row.date as string).slice(0, 10),
     invoiceMonth: toMonthKey(row.invoice_month as string),
