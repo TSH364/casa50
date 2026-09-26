@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Transaction } from "@/domain/types";
-import type { Proposal } from "@/domain/chat";
+import type { ChartSpec, Proposal } from "@/domain/chat";
 
 /**
  * As propostas da conversa: a IA propoe, a casa confirma.
@@ -118,6 +118,7 @@ const ctx = () => ({
   categories: CATS,
   excludeCategoryIds: [],
   proposals: [] as Proposal[],
+  charts: [] as ChartSpec[],
 });
 
 describe("ferramentas de propor", () => {

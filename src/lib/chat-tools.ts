@@ -25,7 +25,7 @@ import {
   resolveRange,
 } from "@/domain/chat";
 import { refOf, refPrefix } from "@/domain/chat";
-import type { Proposal, Range, ToolName } from "@/domain/chat";
+import type { ChartSpec, Proposal, Range, ToolName } from "@/domain/chat";
 import { normalizeMerchant } from "@/importers/detect";
 import { formatCents, toCents } from "@/lib/money";
 import type { Category, MonthKey, Transaction } from "@/domain/types";
@@ -57,6 +57,8 @@ export interface ToolContext {
    * depois do toque, grava.
    */
   proposals: Proposal[];
+  /** Graficos pedidos nesta pergunta - vao para a tela abaixo da resposta. */
+  charts: ChartSpec[];
   /** Hoje, AAAA-MM-DD, no fuso da casa - a data padrao de um lancamento. */
   todayIso: string;
 }
@@ -515,6 +517,79 @@ function proporLancamento(
   return `Proposta criada (ainda NÃO gravada): ${a.descricao}, ${R(amountCents)}, em ${data}${cat.label ? `, ${cat.label}` : ", sem categoria"}${personLabel ? `, de ${personLabel}` : ""}. Peça para a casa confirmar no cartão.`;
 }
 
+// ---------------------------------------------------------------------------
+// Graficos
+// ---------------------------------------------------------------------------
+
+/** Nome curto do mes para o eixo: "ago/26". */
+function mesCurto(m: MonthKey): string {
+  const nomes = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
+  return `${nomes[Number(m.slice(5, 7)) - 1]}/${m.slice(2, 4)}`;
+}
+
+/** Barras demais viram uma lista ilegivel: o resto vai para "Outros". */
+const MAX_BARRAS = 10;
+
+async function grafico(
+  ctx: ToolContext,
+  a: { tipo: "por_mes" | "por_categoria" | "por_loja"; de?: string; ate?: string; categoria?: string; pessoa?: string },
+): Promise<string> {
+  // Por mes, sem intervalo: os ultimos 6. Os outros, sem intervalo: o mes.
+  const padrao = a.tipo === "por_mes" && !a.de && !a.ate ? { de: addMonths(ctx.today, -5), ate: ctx.today } : {};
+  const f = filtros(ctx, { ...a, ...padrao });
+  if (typeof f === "string") return f;
+  const txs = await lerLancamentos(ctx, f);
+  const realizado = (t: Transaction) =>
+    t.status !== "forecast" && t.status !== "cancelled" && t.status !== "missing";
+
+  let points: { label: string; cents: number }[];
+  let titulo: string;
+  if (a.tipo === "por_mes") {
+    points = monthRange(f.range.from, f.range.to).map((m) => ({
+      label: mesCurto(m),
+      // O mesmo total do Inicio.
+      cents: summarizeMonth(txs, m, { memberId: f.memberId }).spentCents,
+    }));
+    titulo = "Gasto por mês";
+  } else {
+    const soma = new Map<string, number>();
+    for (const t of txs) {
+      if (!realizado(t)) continue;
+      const v = spendingCents(t);
+      if (v <= 0) continue;
+      const k =
+        a.tipo === "por_loja"
+          ? merchantLabel(t)
+          : f.category && f.category.parentId === null
+            ? t.subcategoryId ? nomeCategoria(ctx, t.subcategoryId) : `${f.category.name} (sem subcategoria)`
+            : nomeCategoria(ctx, t.categoryId);
+      soma.set(k, (soma.get(k) ?? 0) + v);
+    }
+    const ordenados = [...soma].sort((x, y) => y[1] - x[1]);
+    points = ordenados.slice(0, MAX_BARRAS).map(([label, cents]) => ({ label, cents }));
+    const resto = ordenados.slice(MAX_BARRAS).reduce((acc, [, c]) => acc + c, 0);
+    if (resto > 0) points.push({ label: `Outros (${ordenados.length - MAX_BARRAS})`, cents: resto });
+    titulo = a.tipo === "por_loja" ? "Gasto por loja" : "Gasto por categoria";
+  }
+
+  if (points.every((p) => p.cents === 0)) return `${cabecalho(f, ctx, titulo)[0]}\nNenhum gasto no período: nada para desenhar.`;
+
+  const [linhaCabecalho, ...notas] = cabecalho(f, ctx, titulo);
+  ctx.charts.push({
+    id: novoId(),
+    kind: a.tipo === "por_mes" ? "colunas" : "barras",
+    title: titulo,
+    subtitle: linhaCabecalho!.slice(titulo.length + 3),
+    points,
+  });
+  // O modelo recebe os mesmos numeros, para comentar o grafico sem inventar.
+  return [
+    `Gráfico criado (aparece abaixo da sua resposta): ${linhaCabecalho}`,
+    ...notas,
+    ...points.map((p) => `- ${p.label}: ${R(p.cents)}`),
+  ].join("\n");
+}
+
 /**
  * Executa uma ferramenta pedida pelo modelo.
  *
@@ -568,6 +643,9 @@ export async function runTool(
       break;
     case "propor_lancamento":
       output = proporLancamento(ctx, a);
+      break;
+    case "grafico":
+      output = await grafico(ctx, a);
       break;
   }
   return { output: capToolOutput(output), tool: name };

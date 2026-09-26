@@ -26,7 +26,7 @@ import {
   firstName,
   trimHistory,
 } from "@/domain/chat";
-import type { Proposal, ToolName } from "@/domain/chat";
+import type { ChartSpec, Proposal, ToolName } from "@/domain/chat";
 import { currentMonth } from "@/domain/month";
 
 /**
@@ -70,6 +70,8 @@ export interface ChatReply {
   fellBack?: boolean;
   /** Mudancas propostas - NAO gravadas; a tela mostra como cartoes. */
   proposals?: Proposal[];
+  /** Graficos com numeros do app, para desenhar abaixo da resposta. */
+  charts?: ChartSpec[];
 }
 
 /** Tempo total da pergunta, abaixo do `maxDuration` da pagina. */
@@ -105,6 +107,7 @@ export async function askHouse(input: z.input<typeof schema>): Promise<ChatReply
     categories: view.categories,
     excludeCategoryIds: view.excludeCategoryIds,
     proposals: [],
+    charts: [],
     // AAAA-MM-DD no fuso da casa: "gastei ontem" as 23h nao pode cair amanha.
     todayIso: new Date().toLocaleDateString("sv-SE", { timeZone: "America/Sao_Paulo" }),
   };
@@ -201,6 +204,7 @@ async function runConversation(
   const consultadas = new Set<ToolName>();
   // Uma tentativa que falhou no gratuito nao deixa proposta para tras.
   ctx.proposals.length = 0;
+  ctx.charts.length = 0;
   const inicio = Date.now();
 
   for (let rodada = 0; rodada <= MAX_TOOL_ROUNDS; rodada += 1) {
@@ -223,6 +227,7 @@ async function runConversation(
         consulted: [...consultadas].map((t) => TOOL_LABEL[t]),
         model: turn.servedBy,
         ...(ctx.proposals.length > 0 ? { proposals: [...ctx.proposals] } : {}),
+        ...(ctx.charts.length > 0 ? { charts: [...ctx.charts] } : {}),
       };
     }
 

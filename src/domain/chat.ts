@@ -198,6 +198,13 @@ export const TOOL_ARGS = {
       subcategoria: texto,
     })
     .refine((a) => (a.codigos?.length ?? 0) > 0 || a.loja, "Diga os códigos dos lançamentos ou a loja."),
+  grafico: z.object({
+    tipo: z.enum(["por_mes", "por_categoria", "por_loja"]),
+    de: mes,
+    ate: mes,
+    categoria: texto,
+    pessoa: texto,
+  }),
   propor_lancamento: z.object({
     descricao: z.string().trim().min(2).max(200),
     valor: z.coerce.number().positive().max(10_000_000),
@@ -346,6 +353,29 @@ export const TOOL_DEFINITIONS = [
   {
     type: "function" as const,
     function: {
+      name: "grafico",
+      description:
+        "Desenha um gráfico com os dados da casa, calculados pelo app (não por você): gasto por mês, por categoria ou por loja. O gráfico aparece abaixo da sua resposta e pode ser exportado em PDF.",
+      parameters: {
+        type: "object",
+        properties: {
+          tipo: {
+            type: "string",
+            enum: ["por_mes", "por_categoria", "por_loja"],
+            description: "por_mes: evolução mês a mês; por_categoria / por_loja: onde foi o dinheiro no período.",
+          },
+          de: { type: "string", description: `Primeiro mês. ${MES_DESC}` },
+          ate: { type: "string", description: `Último mês. ${MES_DESC}` },
+          categoria: { type: "string", description: CATEGORIA_DESC },
+          pessoa: { type: "string", description: PESSOA_DESC },
+        },
+        required: ["tipo"],
+      },
+    },
+  },
+  {
+    type: "function" as const,
+    function: {
       name: "propor_lancamento",
       description:
         "PROPÕE um lançamento manual novo (uma despesa). Não grava: a casa confirma num cartão. Use quando pedirem para registrar um gasto.",
@@ -376,7 +406,25 @@ export const TOOL_LABEL: Record<ToolName, string> = {
   listar_sem_categoria: "lançamentos sem categoria",
   propor_classificacao: "proposta de classificação",
   propor_lancamento: "proposta de lançamento",
+  grafico: "gráfico",
 };
+
+/**
+ * Um grafico da conversa. Os numeros sao do app - a ferramenta calcula com
+ * as mesmas funcoes das telas -, nunca do texto do modelo: um modelo que
+ * erra uma soma nao pode desenhar a soma errada.
+ *
+ * Sempre UMA serie: gasto por mes, por categoria ou por loja. Uma cor so,
+ * sem legenda (o titulo diz o que e), e nunca dois eixos.
+ */
+export interface ChartSpec {
+  id: string;
+  /** "colunas" para o tempo (meses); "barras" para ranking com nome longo. */
+  kind: "colunas" | "barras";
+  title: string;
+  subtitle: string;
+  points: { label: string; cents: number }[];
+}
 
 // ---------------------------------------------------------------------------
 // Propostas: o que a IA quer mudar, esperando o toque

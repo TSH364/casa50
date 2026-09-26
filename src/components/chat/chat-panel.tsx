@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useRef, useState, useTransition } from "react";
-import { ArrowUp, Trash2 } from "lucide-react";
+import { ArrowUp, FileDown, Trash2 } from "lucide-react";
 import { askHouse } from "@/actions/chat";
-import type { ChatMessage, Proposal } from "@/domain/chat";
+import type { ChartSpec, ChatMessage, Proposal } from "@/domain/chat";
+import { ChatChart } from "./chat-chart";
 import { ProposalCard } from "./proposal-card";
 import type { ProposalStatus } from "./proposal-card";
 import { Button } from "@/components/ui/button";
@@ -25,6 +26,7 @@ interface Entry extends ChatMessage {
   fellBack?: boolean;
   error?: boolean;
   proposals?: Proposal[];
+  charts?: ChartSpec[];
   /** id da proposta -> o que a casa fez com ela, e a frase do resultado. */
   resolved?: Record<string, { status: ProposalStatus; note: string }>;
 }
@@ -141,6 +143,7 @@ export function ChatPanel({ houseId }: { houseId: string }) {
             tier: r.tier,
             fellBack: r.fellBack,
             ...(r.proposals?.length ? { proposals: r.proposals } : {}),
+            ...(r.charts?.length ? { charts: r.charts } : {}),
           }
         : { role: "assistant", content: r.error ?? "A conversa falhou.", error: true };
       const nova = [...comPergunta, resposta];
@@ -158,6 +161,30 @@ export function ChatPanel({ houseId }: { houseId: string }) {
       return nova;
     });
   }
+
+  // Exportar em PDF: a resposta escolhida vai para um bloco que so aparece na
+  // impressao, e o dialogo do navegador tem "Salvar como PDF" em todo lugar -
+  // computador, iPhone e Android -, sem biblioteca nenhuma.
+  const [imprimindo, setImprimindo] = useState<number | null>(null);
+  useEffect(() => {
+    if (imprimindo === null) return;
+    const html = document.documentElement;
+    const tema = html.dataset.theme;
+    // Papel e claro: tinta escura em fundo branco, qualquer que seja o tema.
+    html.dataset.theme = "light";
+    const fim = () => {
+      if (tema === undefined) delete html.dataset.theme;
+      else html.dataset.theme = tema;
+      setImprimindo(null);
+    };
+    window.addEventListener("afterprint", fim, { once: true });
+    // Um quadro depois, para o bloco de impressao e o tema claro ja estarem na tela.
+    const t = window.setTimeout(() => window.print(), 50);
+    return () => {
+      window.clearTimeout(t);
+      window.removeEventListener("afterprint", fim);
+    };
+  }, [imprimindo]);
 
   function limpar() {
     setEntradas([]);
@@ -213,6 +240,7 @@ export function ChatPanel({ houseId }: { houseId: string }) {
               )}
             >
               <Texto texto={e.content} />
+              {e.charts?.map((c) => <ChatChart key={c.id} chart={c} />)}
               {e.proposals?.map((p) => (
                 <ProposalCard
                   key={p.id}
@@ -228,6 +256,15 @@ export function ChatPanel({ houseId }: { houseId: string }) {
                   {e.fellBack ? " (o gratuito não respondeu)" : ""}
                   {e.model ? ` · ${e.model}` : ""}
                 </p>
+              ) : null}
+              {e.role === "assistant" && !e.error ? (
+                <button
+                  type="button"
+                  onClick={() => setImprimindo(i)}
+                  className="mt-1 inline-flex min-h-9 items-center gap-1 text-[12px] text-brand underline-offset-2 hover:underline"
+                >
+                  <FileDown className="size-3.5" aria-hidden /> Exportar PDF
+                </button>
               ) : null}
             </div>
           </li>
@@ -270,6 +307,13 @@ export function ChatPanel({ houseId }: { houseId: string }) {
         </Button>
       </form>
 
+      {imprimindo !== null && entradas[imprimindo] ? (
+        <ImpressaoDaResposta
+          pergunta={entradas.slice(0, imprimindo).reverse().find((e) => e.role === "user")?.content ?? null}
+          resposta={entradas[imprimindo]!}
+        />
+      ) : null}
+
       {entradas.length > 0 ? (
         <div className="flex justify-center">
           <Button variant="ghost" size="sm" onClick={limpar} disabled={pending}>
@@ -278,5 +322,29 @@ export function ChatPanel({ houseId }: { houseId: string }) {
         </div>
       ) : null}
     </div>
+  );
+}
+
+/**
+ * O que vai para o PDF: a pergunta, a resposta e os graficos dela, com data.
+ * Invisivel na tela; na impressao, e a unica coisa na pagina (ver
+ * `.so-impressao` em globals.css).
+ */
+function ImpressaoDaResposta({ pergunta, resposta }: { pergunta: string | null; resposta: Entry }) {
+  const hoje = new Date().toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" });
+  return (
+    <section className="so-impressao" aria-hidden>
+      <p className="text-[12px] text-ink-muted">Fluxo · Conversa · {hoje}</p>
+      {pergunta ? <h1 className="mt-2 text-lg font-semibold text-ink">{pergunta}</h1> : null}
+      <div className="mt-3 whitespace-pre-wrap text-sm text-ink">
+        <Texto texto={resposta.content} />
+      </div>
+      {resposta.charts?.map((c) => <ChatChart key={c.id} chart={c} printTable />)}
+      {resposta.consulted?.length ? (
+        <p className="mt-3 text-[11px] text-ink-muted">
+          Dados consultados: {resposta.consulted.join(", ")}. Números calculados pelo app.
+        </p>
+      ) : null}
+    </section>
   );
 }

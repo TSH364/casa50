@@ -261,3 +261,25 @@ body {
 @media (min-width: 640px) {
   .fluxo-sheet-in { animation: fluxo-box-in 0.2s cubic-bezier(0.22, 1, 0.36, 1) both }
 }
+
+/* --------------------------------------------------------------------------
+   Exportar em PDF (conversa). O bloco `.so-impressao` nao aparece na tela;
+   na impressao, e a unica coisa na pagina. `visibility`, e nao `display`,
+   para esconder o resto sem desmontar a arvore da pagina.
+   -------------------------------------------------------------------------- */
+.so-impressao { display: none; }
+
+@media print {
+  body * { visibility: hidden; }
+  .so-impressao, .so-impressao * { visibility: visible; }
+  .so-impressao {
+    display: block;
+    position: absolute;
+    inset: 0 auto auto 0;
+    width: 100%;
+    padding: 24px;
+    background: var(--color-surface);
+  }
+  /* Grafico e tabela nao se partem entre duas paginas. */
+  .so-impressao figure { break-inside: avoid; }
+}
