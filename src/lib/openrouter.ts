@@ -87,7 +87,21 @@ export interface CallOptions {
   model?: string;
   maxTokens?: number;
   fetchImpl?: typeof fetch;
+  onUsage?: UsageReport;
 }
+
+/**
+ * O custo que o OpenRouter devolve em cada resposta (`usage.cost`, em dolar).
+ * Vem sempre, sem pedir. Qualquer coisa que nao seja numero valido vira zero:
+ * o registro de gasto e um extra, e nao pode derrubar a chamada.
+ */
+function custo(bruto: unknown): number {
+  const n = typeof bruto === "number" ? bruto : Number(bruto);
+  return Number.isFinite(n) && n >= 0 ? n : 0;
+}
+
+/** Avisado depois de cada chamada, para quem chamou registrar o gasto. */
+export type UsageReport = (u: { costUsd: number; model: string | null }) => void;
 
 interface PostOptions {
   apiKey: string | null;
@@ -113,7 +127,9 @@ interface RawMessage {
  * da mesma chave no cabecalho, do mesmo relogio, e de achar o erro que as
  * vezes vem DENTRO de uma resposta 200.
  */
-async function postChat(o: PostOptions): Promise<{ message: RawMessage; servedBy: string | null }> {
+async function postChat(
+  o: PostOptions,
+): Promise<{ message: RawMessage; servedBy: string | null; costUsd: number }> {
   const chave = o.apiKey?.trim();
   if (!chave) throw new OpenRouterError("A IA não está configurada.", 0);
   const fetchImpl = o.fetchImpl ?? fetch;
@@ -157,6 +173,7 @@ async function postChat(o: PostOptions): Promise<{ message: RawMessage; servedBy
   const json = (await resposta.json().catch(() => null)) as {
     model?: unknown;
     choices?: { message?: RawMessage }[];
+    usage?: { cost?: unknown };
     error?: { message?: string; code?: number };
   } | null;
 
@@ -170,6 +187,7 @@ async function postChat(o: PostOptions): Promise<{ message: RawMessage; servedBy
   return {
     message: json?.choices?.[0]?.message ?? {},
     servedBy: typeof json?.model === "string" ? json.model : null,
+    costUsd: custo(json?.usage?.cost),
   };
 }
 
@@ -182,7 +200,7 @@ export async function chatCompletion(
     throw new OpenRouterError("A leitura com IA não está configurada.", 0);
   }
   const modelo = options.model?.trim() || DEFAULT_MODEL;
-  const { message } = await postChat({
+  const { message, servedBy, costUsd } = await postChat({
     apiKey: options.apiKey,
     model: modelo,
     timeoutMs: TIMEOUT_MS,
@@ -198,6 +216,7 @@ export async function chatCompletion(
     },
   });
 
+  options.onUsage?.({ costUsd, model: servedBy ?? modelo });
   const conteudo = message.content;
   if (typeof conteudo !== "string" || conteudo.trim() === "") {
     throw new OpenRouterError("A IA respondeu vazio.", 200);
@@ -251,6 +270,8 @@ export interface TurnResult {
   toolCalls: ToolCall[];
   /** Modelo que de fato respondeu - o roteador gratuito escolhe um. */
   servedBy: string | null;
+  /** Custo desta rodada, em dolar (zero no gratuito). */
+  costUsd: number;
 }
 
 /** O que dizer quando a conversa falha, em termos de modelo gratuito. */
@@ -277,7 +298,7 @@ export async function chatTurn(
   messages: readonly TurnMessage[],
   options: TurnOptions,
 ): Promise<TurnResult> {
-  const { message, servedBy } = await postChat({
+  const { message, servedBy, costUsd } = await postChat({
     apiKey: options.apiKey,
     model: options.model,
     timeoutMs: options.timeoutMs ?? 25_000,
@@ -314,7 +335,7 @@ export async function chatTurn(
   if (content === null && toolCalls.length === 0) {
     throw new OpenRouterError("A IA respondeu vazio. Tente perguntar de outro jeito.", 200);
   }
-  return { content, toolCalls, servedBy };
+  return { content, toolCalls, servedBy, costUsd };
 }
 
 // ---------------------------------------------------------------------------
@@ -324,6 +345,13 @@ export async function chatTurn(
 export interface KeyInfo {
   /** Gasto acumulado da chave, em dolar (a moeda dos creditos do OpenRouter). */
   usageUsd: number;
+  /**
+   * Gasto de hoje, da semana e do mes, como o OpenRouter conta (em UTC).
+   * `null` quando a resposta nao traz - campo recente da API.
+   */
+  dailyUsd: number | null;
+  weeklyUsd: number | null;
+  monthlyUsd: number | null;
   /** Limite de gasto posto na chave, ou `null` se ela nao tem limite. */
   limitUsd: number | null;
 }
@@ -363,12 +391,21 @@ export async function checkKey(
   }
 
   const json = (await resposta.json().catch(() => null)) as {
-    data?: { usage?: unknown; limit?: unknown };
+    data?: {
+      usage?: unknown;
+      limit?: unknown;
+      usage_daily?: unknown;
+      usage_weekly?: unknown;
+      usage_monthly?: unknown;
+    };
   } | null;
   const usage = Number(json?.data?.usage ?? 0);
   const limit = json?.data?.limit;
   return {
     usageUsd: Number.isFinite(usage) ? usage : 0,
+    dailyUsd: talvez(json?.data?.usage_daily),
+    weeklyUsd: talvez(json?.data?.usage_weekly),
+    monthlyUsd: talvez(json?.data?.usage_monthly),
     limitUsd: typeof limit === "number" && Number.isFinite(limit) ? limit : null,
   };
 }
@@ -419,6 +456,7 @@ export interface DecideOptions {
   apiKey: string | null;
   model: string;
   fetchImpl?: typeof fetch;
+  onUsage?: UsageReport;
 }
 
 /**
@@ -473,6 +511,7 @@ export async function decide(
 
   const json = (await resposta.json().catch(() => null)) as {
     answers?: Record<string, unknown>;
+    usage?: { cost?: unknown };
     error?: { code?: number } | string;
   } | null;
 
@@ -483,6 +522,7 @@ export async function decide(
     throw new OpenRouterError(mensagemPara(codigo, options.model), codigo);
   }
 
+  options.onUsage?.({ costUsd: custo(json.usage?.cost), model: options.model });
   const resultado: Record<string, ChoiceAnswer> = {};
   for (const nome of Object.keys(questions)) {
     const lida = lerEscolha(json.answers?.[nome], questions[nome]!);
@@ -517,4 +557,9 @@ function lerEscolha(bruto: unknown, pergunta: ChoiceQuestion): ChoiceAnswer | nu
 
   const confidence = typeof r.confidence === "number" ? r.confidence : 0;
   return { choice: r.choice, probabilities, confidence };
+}
+
+/** Numero se veio numero; `null` se o campo nao veio - para a tela nao mostrar zero falso. */
+function talvez(bruto: unknown): number | null {
+  return typeof bruto === "number" && Number.isFinite(bruto) && bruto >= 0 ? bruto : null;
 }

@@ -24,7 +24,9 @@ import {
   isToolName,
   resolveRange,
 } from "@/domain/chat";
-import type { Range, ToolName } from "@/domain/chat";
+import { refOf, refPrefix } from "@/domain/chat";
+import type { ChartSpec, Proposal, Range, ToolName } from "@/domain/chat";
+import { normalizeMerchant } from "@/importers/detect";
 import { formatCents, toCents } from "@/lib/money";
 import type { Category, MonthKey, Transaction } from "@/domain/types";
 import type { MemberSummary } from "@/lib/houses";
@@ -49,6 +51,16 @@ export interface ToolContext {
   members: MemberSummary[];
   categories: Category[];
   excludeCategoryIds: string[];
+  /**
+   * Onde as ferramentas de PROPOR deixam o que propuseram. Nada aqui e
+   * gravado: a lista volta para a tela como cartoes, e so `applyProposal`,
+   * depois do toque, grava.
+   */
+  proposals: Proposal[];
+  /** Graficos pedidos nesta pergunta - vao para a tela abaixo da resposta. */
+  charts: ChartSpec[];
+  /** Hoje, AAAA-MM-DD, no fuso da casa - a data padrao de um lancamento. */
+  todayIso: string;
 }
 
 const R = (cents: number) => formatCents(cents);
@@ -255,7 +267,7 @@ async function buscarLancamentos(
       t.type !== "expense" ? t.type : null,
       t.status === "forecast" ? "previsto" : null,
     ].filter(Boolean);
-    linhas.push(`- ${t.date} · ${merchantLabel(t)} · ${R(toCents(t.amount))} · ${extra.join(" · ")}`);
+    linhas.push(`- ${refOf(t.id)} · ${t.date} · ${merchantLabel(t)} · ${R(toCents(t.amount))} · ${extra.join(" · ")}`);
   }
   return linhas.join("\n");
 }
@@ -345,6 +357,239 @@ async function orcamentosMetasProjetos(ctx: ToolContext, a: { mes?: string }): P
   return linhas.join("\n");
 }
 
+// ---------------------------------------------------------------------------
+// Classificar e lancar: so propostas
+// ---------------------------------------------------------------------------
+
+/** Despesas sem categoria, por loja, com o codigo de cada uma. */
+async function listarSemCategoria(ctx: ToolContext, a: { de?: string; ate?: string }): Promise<string> {
+  const r = resolveRange(
+    a.de || a.ate ? a : { de: addMonths(ctx.today, -11), ate: ctx.today },
+    ctx.today,
+  );
+  if ("error" in r) return r.error;
+  const txs = await listTransactions(ctx.houseId, {
+    fromMonth: r.range.from,
+    toMonth: r.range.to,
+    categoryId: "sem",
+    limit: 5000,
+  });
+  const sem = txs.filter((t) => t.type === "expense" && !t.isHidden && t.status !== "cancelled");
+  const periodo = `${monthLabel(r.range.from)} a ${monthLabel(r.range.to)}`;
+  if (sem.length === 0) return `Nenhuma despesa sem categoria de ${periodo}.`;
+
+  const porLoja = new Map<string, Transaction[]>();
+  for (const t of sem) {
+    const k = merchantLabel(t);
+    porLoja.set(k, [...(porLoja.get(k) ?? []), t]);
+  }
+  const total = sem.reduce((acc, t) => acc + spendingCents(t), 0);
+  const linhas = [`Sem categoria — ${periodo}: ${sem.length} lançamento(s), ${R(total)}, em ${porLoja.size} loja(s).`];
+  const lojas = [...porLoja].sort((x, y) => y[1].length - x[1].length);
+  for (const [loja, lista] of lojas.slice(0, 25)) {
+    const soma = lista.reduce((acc, t) => acc + spendingCents(t), 0);
+    const codigos = lista.slice(0, 10).map((t) => refOf(t.id)).join(" ");
+    linhas.push(`- ${loja}: ${lista.length}× · ${R(soma)} · ${codigos}${lista.length > 10 ? " …" : ""}`);
+  }
+  if (lojas.length > 25) linhas.push(`- e mais ${lojas.length - 25} loja(s)`);
+  return linhas.join("\n");
+}
+
+/** Categoria e subcategoria pelo nome; a sub tem de ser filha da categoria. */
+function resolverCategoria(
+  ctx: ToolContext,
+  categoria: string | undefined,
+  subcategoria: string | undefined,
+): { categoryId: string | null; subcategoryId: string | null; label: string | null } | string {
+  if (!categoria) return { categoryId: null, subcategoryId: null, label: null };
+  const c = findCategory(categoria, ctx.categories);
+  if (!c) return `Não achei a categoria "${categoria}". Categorias: ${ctx.categories.filter((x) => x.parentId === null && x.isActive).map((x) => x.name).join(", ")}.`;
+  // Pediu uma subcategoria pelo nome da categoria: a mae e a dela.
+  const mae = c.parentId === null ? c : ctx.categories.find((x) => x.id === c.parentId)!;
+  let sub = c.parentId === null ? null : c;
+  if (subcategoria) {
+    const filhas = ctx.categories.filter((x) => x.parentId === mae.id && x.isActive);
+    const achada = findCategory(subcategoria, filhas);
+    if (!achada) {
+      return `"${subcategoria}" não é subcategoria de ${mae.name}.${filhas.length ? ` As dela: ${filhas.map((x) => x.name).join(", ")}.` : " Ela não tem subcategorias."}`;
+    }
+    sub = achada;
+  }
+  return { categoryId: mae.id, subcategoryId: sub?.id ?? null, label: sub ? `${mae.name} › ${sub.name}` : mae.name };
+}
+
+function novoId(): string {
+  return globalThis.crypto.randomUUID();
+}
+
+async function proporClassificacao(
+  ctx: ToolContext,
+  a: { codigos?: string[]; loja?: string; categoria: string; subcategoria?: string },
+): Promise<string> {
+  const cat = resolverCategoria(ctx, a.categoria, a.subcategoria);
+  if (typeof cat === "string") return cat;
+
+  // Todos os lancamentos da casa (paginado): um codigo pode ser de qualquer mes.
+  const todos = await listTransactions(ctx.houseId, { limit: 20_000 });
+  let alvo: Transaction[] = [];
+
+  if (a.codigos?.length) {
+    for (const ref of a.codigos) {
+      const prefixo = refPrefix(ref);
+      const achados = todos.filter((t) => t.id.startsWith(prefixo));
+      if (achados.length === 0) return `Não achei o lançamento ${ref}. Use os códigos que as ferramentas mostraram.`;
+      if (achados.length > 1) return `O código ${ref} aponta para mais de um lançamento. Busque de novo para ver o código completo.`;
+      if (!alvo.includes(achados[0]!)) alvo.push(achados[0]!);
+    }
+  } else if (a.loja) {
+    // Pela loja: so os que estao SEM categoria. O que alguem ja classificou
+    // e decisao tomada, e proposta nao desfaz decisao.
+    const chave = normalizeMerchant(a.loja);
+    alvo = todos.filter(
+      (t) =>
+        t.categoryId === null &&
+        t.type === "expense" &&
+        (t.merchantNormalized === chave || merchantLabel(t).toLowerCase() === a.loja!.toLowerCase()),
+    );
+    if (alvo.length === 0) return `Nenhum lançamento sem categoria da loja "${a.loja}".`;
+  }
+
+  const lojas = new Set(alvo.map((t) => t.merchantNormalized).filter(Boolean));
+  const learnMerchant = lojas.size === 1 ? [...lojas][0]! : null;
+  const total = alvo.reduce((acc, t) => acc + spendingCents(t), 0);
+  ctx.proposals.push({
+    kind: "classificar",
+    id: novoId(),
+    transactionIds: alvo.map((t) => t.id),
+    categoryId: cat.categoryId!,
+    subcategoryId: cat.subcategoryId,
+    learnMerchant,
+    summary: {
+      categoryLabel: cat.label!,
+      count: alvo.length,
+      totalCents: total,
+      examples: alvo.slice(0, 4).map((t) => ({ date: t.date, label: merchantLabel(t), cents: spendingCents(t) })),
+    },
+  });
+  return `Proposta criada (ainda NÃO gravada): ${alvo.length} lançamento(s), ${R(total)}, para ${cat.label}. Peça para a casa confirmar no cartão.`;
+}
+
+function proporLancamento(
+  ctx: ToolContext,
+  a: { descricao: string; valor: number; data?: string; categoria?: string; subcategoria?: string; pessoa?: string },
+): string {
+  const cat = resolverCategoria(ctx, a.categoria, a.subcategoria);
+  if (typeof cat === "string") return cat;
+
+  let memberId: string | null = null;
+  let isJoint = false;
+  let personLabel: string | null = null;
+  if (a.pessoa) {
+    if (/^(os dois|os 2|ambos|todos|nos dois|n[oó]s)$/i.test(a.pessoa.trim())) {
+      isJoint = ctx.members.length > 1;
+      personLabel = isJoint ? (ctx.members.length === 2 ? "Os dois" : "Todos") : null;
+    } else {
+      const m = findMember(a.pessoa, ctx.members);
+      if (!m) return `Não achei a pessoa "${a.pessoa}". Pessoas: ${ctx.members.map((x) => firstName(x.fullName)).join(", ")}.`;
+      memberId = m.userId;
+      personLabel = firstName(m.fullName);
+    }
+  }
+
+  const data = a.data ?? ctx.todayIso;
+  if (Number.isNaN(new Date(`${data}T12:00:00Z`).getTime())) return `Data inválida: ${data}.`;
+  const amountCents = toCents(a.valor);
+  ctx.proposals.push({
+    kind: "lancar",
+    id: novoId(),
+    fields: {
+      description: a.descricao,
+      amountCents,
+      date: data,
+      invoiceMonth: data.slice(0, 7),
+      categoryId: cat.categoryId,
+      subcategoryId: cat.subcategoryId,
+      memberId,
+      isJoint,
+    },
+    summary: { categoryLabel: cat.label, personLabel },
+  });
+  return `Proposta criada (ainda NÃO gravada): ${a.descricao}, ${R(amountCents)}, em ${data}${cat.label ? `, ${cat.label}` : ", sem categoria"}${personLabel ? `, de ${personLabel}` : ""}. Peça para a casa confirmar no cartão.`;
+}
+
+// ---------------------------------------------------------------------------
+// Graficos
+// ---------------------------------------------------------------------------
+
+/** Nome curto do mes para o eixo: "ago/26". */
+function mesCurto(m: MonthKey): string {
+  const nomes = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
+  return `${nomes[Number(m.slice(5, 7)) - 1]}/${m.slice(2, 4)}`;
+}
+
+/** Barras demais viram uma lista ilegivel: o resto vai para "Outros". */
+const MAX_BARRAS = 10;
+
+async function grafico(
+  ctx: ToolContext,
+  a: { tipo: "por_mes" | "por_categoria" | "por_loja"; de?: string; ate?: string; categoria?: string; pessoa?: string },
+): Promise<string> {
+  // Por mes, sem intervalo: os ultimos 6. Os outros, sem intervalo: o mes.
+  const padrao = a.tipo === "por_mes" && !a.de && !a.ate ? { de: addMonths(ctx.today, -5), ate: ctx.today } : {};
+  const f = filtros(ctx, { ...a, ...padrao });
+  if (typeof f === "string") return f;
+  const txs = await lerLancamentos(ctx, f);
+  const realizado = (t: Transaction) =>
+    t.status !== "forecast" && t.status !== "cancelled" && t.status !== "missing";
+
+  let points: { label: string; cents: number }[];
+  let titulo: string;
+  if (a.tipo === "por_mes") {
+    points = monthRange(f.range.from, f.range.to).map((m) => ({
+      label: mesCurto(m),
+      // O mesmo total do Inicio.
+      cents: summarizeMonth(txs, m, { memberId: f.memberId }).spentCents,
+    }));
+    titulo = "Gasto por mês";
+  } else {
+    const soma = new Map<string, number>();
+    for (const t of txs) {
+      if (!realizado(t)) continue;
+      const v = spendingCents(t);
+      if (v <= 0) continue;
+      const k =
+        a.tipo === "por_loja"
+          ? merchantLabel(t)
+          : f.category && f.category.parentId === null
+            ? t.subcategoryId ? nomeCategoria(ctx, t.subcategoryId) : `${f.category.name} (sem subcategoria)`
+            : nomeCategoria(ctx, t.categoryId);
+      soma.set(k, (soma.get(k) ?? 0) + v);
+    }
+    const ordenados = [...soma].sort((x, y) => y[1] - x[1]);
+    points = ordenados.slice(0, MAX_BARRAS).map(([label, cents]) => ({ label, cents }));
+    const resto = ordenados.slice(MAX_BARRAS).reduce((acc, [, c]) => acc + c, 0);
+    if (resto > 0) points.push({ label: `Outros (${ordenados.length - MAX_BARRAS})`, cents: resto });
+    titulo = a.tipo === "por_loja" ? "Gasto por loja" : "Gasto por categoria";
+  }
+
+  if (points.every((p) => p.cents === 0)) return `${cabecalho(f, ctx, titulo)[0]}\nNenhum gasto no período: nada para desenhar.`;
+
+  const [linhaCabecalho, ...notas] = cabecalho(f, ctx, titulo);
+  ctx.charts.push({
+    id: novoId(),
+    kind: a.tipo === "por_mes" ? "colunas" : "barras",
+    title: titulo,
+    subtitle: linhaCabecalho!.slice(titulo.length + 3),
+    points,
+  });
+  // O modelo recebe os mesmos numeros, para comentar o grafico sem inventar.
+  return [
+    `Gráfico criado (aparece abaixo da sua resposta): ${linhaCabecalho}`,
+    ...notas,
+    ...points.map((p) => `- ${p.label}: ${R(p.cents)}`),
+  ].join("\n");
+}
+
 /**
  * Executa uma ferramenta pedida pelo modelo.
  *
@@ -369,7 +614,7 @@ export async function runTool(
     return { output: `Argumentos inválidos: ${parsed.error.issues[0]?.message ?? "confira"}.`, tool: name };
   }
 
-  const a = parsed.data as Record<string, never>;
+  const a = parsed.data as never;
   let output: string;
   switch (name) {
     case "resumo_do_mes":
@@ -389,6 +634,18 @@ export async function runTool(
       break;
     case "orcamentos_metas_projetos":
       output = await orcamentosMetasProjetos(ctx, a);
+      break;
+    case "listar_sem_categoria":
+      output = await listarSemCategoria(ctx, a);
+      break;
+    case "propor_classificacao":
+      output = await proporClassificacao(ctx, a);
+      break;
+    case "propor_lancamento":
+      output = proporLancamento(ctx, a);
+      break;
+    case "grafico":
+      output = await grafico(ctx, a);
       break;
   }
   return { output: capToolOutput(output), tool: name };

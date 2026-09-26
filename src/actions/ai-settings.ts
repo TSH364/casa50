@@ -1,10 +1,14 @@
 "use server";
 
+import type { AiFeature } from "@/lib/ai-usage";
+
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { checkKey, OpenRouterError, type KeyInfo } from "@/lib/openrouter";
 import { getAiKey } from "@/lib/ai-config";
+import { usdBrl } from "@/lib/fx";
+import type { UsdBrl } from "@/lib/fx";
 import { isQuoteModel, OPENROUTER_KEY_RE } from "@/domain/ai-models";
 import { requireHouseId } from "./shared";
 import type { FormState } from "./shared";
@@ -119,13 +123,74 @@ export async function saveQuoteModel(input: { model: string }): Promise<FormStat
  * Casa nao deve esperar o OpenRouter responder para aparecer, nem quebrar se
  * ele estiver fora do ar.
  */
-export async function aiKeyUsage(): Promise<{ info?: KeyInfo; error?: string }> {
+export interface UsageByFeature {
+  feature: AiFeature;
+  calls: number;
+  costUsd: number;
+}
+
+export interface AiUsageReport {
+  info?: KeyInfo;
+  error?: string;
+  /** Este mes, pelo registro do app: por uso, e o total. */
+  month?: { byFeature: UsageByFeature[]; totalUsd: number; calls: number };
+  /** Cotacao para mostrar em reais; `null` quando nenhuma fonte respondeu. */
+  fx?: UsdBrl | null;
+}
+
+/**
+ * O gasto de IA, para a tela da Casa: o que o OpenRouter diz da CHAVE (hoje,
+ * semana, mes, total) e o que o app anotou por USO neste mes (`ai_usage`).
+ *
+ * Os dois podem nao bater, e a tela diz por que: a chave pode ser usada fora
+ * do app, e o OpenRouter conta o mes em UTC.
+ */
+export async function aiKeyUsage(): Promise<AiUsageReport> {
   const houseId = await requireHouseId();
   const apiKey = await getAiKey(houseId);
   if (!apiKey) return {};
-  try {
-    return { info: await checkKey(apiKey) };
-  } catch (e) {
-    return { error: e instanceof OpenRouterError ? e.message : "Não consegui consultar o gasto." };
+
+  const [chave, mes, fx] = await Promise.all([
+    checkKey(apiKey).then(
+      (info) => ({ info }),
+      (e: unknown) => ({ error: e instanceof OpenRouterError ? e.message : "Não consegui consultar o gasto." }),
+    ),
+    usoDoMes(houseId),
+    usdBrl(),
+  ]);
+  return { ...chave, ...(mes ? { month: mes } : {}), fx };
+}
+
+const ORDEM: AiFeature[] = ["conversa_paga", "conversa_gratuita", "jev", "orcamento"];
+
+async function usoDoMes(houseId: string): Promise<AiUsageReport["month"] | null> {
+  // O mes de quem usa, no fuso da casa: as 22h do dia 31 em Brasilia ja e o
+  // dia 1 em UTC, e o gasto dessa noite nao pode cair no mes seguinte.
+  const hoje = new Date().toLocaleDateString("sv-SE", { timeZone: "America/Sao_Paulo" });
+  const inicio = `${hoje.slice(0, 7)}-01T00:00:00-03:00`;
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("ai_usage")
+    .select("feature, calls, cost_usd")
+    .eq("house_id", houseId)
+    .gte("created_at", inicio)
+    .limit(10_000);
+  if (error) {
+    console.error("[ia] falha ao ler o gasto", { code: error.code });
+    return null;
   }
+  const soma = new Map<AiFeature, UsageByFeature>();
+  for (const r of data ?? []) {
+    const f = r.feature as AiFeature;
+    const atual = soma.get(f) ?? { feature: f, calls: 0, costUsd: 0 };
+    atual.calls += Number(r.calls) || 0;
+    atual.costUsd += Number(r.cost_usd) || 0;
+    soma.set(f, atual);
+  }
+  const byFeature = ORDEM.filter((f) => soma.has(f)).map((f) => soma.get(f)!);
+  return {
+    byFeature,
+    totalUsd: byFeature.reduce((a, b) => a + b.costUsd, 0),
+    calls: byFeature.reduce((a, b) => a + b.calls, 0),
+  };
 }

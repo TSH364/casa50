@@ -23,6 +23,12 @@ import type { MemberSummary } from "@/lib/houses";
 
 export const metadata: Metadata = { title: "Extratos · Fluxo" };
 
+/**
+ * "Reanalisar" uma fatura pode perguntar ao Jev sobre dezenas de lojas (ate
+ * 25 s, ver `jevDecisions`). O padrao da Vercel cortaria antes.
+ */
+export const maxDuration = 60;
+
 function ListSkeleton() {
   return (
     <Card>

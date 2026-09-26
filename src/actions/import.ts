@@ -5,13 +5,7 @@ import { z } from "zod";
 import { createClient, getCurrentUser } from "@/lib/supabase/server";
 import { requireHouseId } from "./shared";
 import { RECURRENCE_COLUMNS, fromMonthKey, mapRecurrence } from "@/data/mappers";
-import {
-  categoryFromHint,
-  categoryFromMerchant,
-  duplicateKey,
-  matchCategoryNames,
-  normalizeMerchant,
-} from "@/importers/detect";
+import { duplicateKey } from "@/importers/detect";
 import { isMonthKey } from "@/domain/month";
 import { fromCents } from "@/lib/money";
 import { spendingOfCents } from "@/domain/finance";
@@ -23,6 +17,15 @@ import type {
 } from "@/importers/types";
 import type { TransactionType } from "@/domain/types";
 import { getAiKey } from "@/lib/ai-config";
+import { recordAiUsage } from "@/lib/ai-usage";
+import { JEV_MODEL } from "@/domain/ai-models";
+import {
+  loadCategoryMaps,
+  resolveCategory,
+  resolveCategoryId,
+  resolveSubcategoryId,
+} from "@/lib/category-rules";
+import type { CategoryMaps } from "@/lib/category-rules";
 import { loadJevContext } from "@/lib/jev-context";
 import { runJev } from "@/lib/jev-run";
 import {
@@ -107,171 +110,6 @@ function summarize(
 }
 
 /**
- * Tudo que a casa sabe sobre categorias, no formato em que a decisão precisa.
- *
- * Carregado uma vez por operação e passado adiante: a resolução roda por
- * lançamento, e ir ao banco a cada linha seria uma consulta por compra.
- */
-/**
- * O que uma regra aprendida manda fazer com um estabelecimento.
- *
- * Passou a carregar a subcategoria quando o app comecou a PROPOR subcategorias
- * por comportamento (secao 14): antes disso a coluna `subcategory_id` existia
- * em `learned_rules` e nao era lida por ninguem, entao a subcategoria decidida
- * numa fatura se perdia na seguinte.
- */
-interface RuleTarget {
-  categoryId: string | null;
-  subcategoryId: string | null;
-}
-
-interface CategoryMaps {
-  ruleByPattern: Map<string, RuleTarget>;
-  byName: Map<string, string>;
-  nameById: Map<string, string>;
-  /** id -> id da categoria-mãe, ou `null` para categoria-mãe. */
-  parentById: Map<string, string | null>;
-  /**
-   * Nome canônico ("Transporte") -> id da categoria da casa que o atende.
-   *
-   * Existe porque a casa pode renomear: quem chama de "Carro" o que veio como
-   * "Transporte" perdia toda sugestão daquela categoria, em silêncio.
-   */
-  byCanonical: Map<string, string>;
-}
-
-async function loadCategoryMaps(
-  supabase: Awaited<ReturnType<typeof createClient>>,
-  houseId: string,
-): Promise<CategoryMaps> {
-  const [{ data: rules }, { data: categories }] = await Promise.all([
-    supabase
-      .from("learned_rules")
-      .select("normalized_pattern, category_id, subcategory_id")
-      .eq("house_id", houseId),
-    supabase
-      .from("categories")
-      .select("id, name, parent_id")
-      .eq("house_id", houseId)
-      .eq("is_active", true),
-  ]);
-
-  const byName = new Map<string, string>(
-    (categories ?? []).map((c) => [
-      normalizeMerchant(String(c.name)),
-      c.id as string,
-    ]),
-  );
-
-  const byCanonical = new Map<string, string>();
-  for (const [canonical, realName] of matchCategoryNames(
-    (categories ?? []).map((c) => String(c.name)),
-  )) {
-    const id = byName.get(normalizeMerchant(realName));
-    if (id) byCanonical.set(canonical, id);
-  }
-
-  return {
-    ruleByPattern: new Map(
-      (rules ?? []).map((r) => [
-        String(r.normalized_pattern),
-        {
-          categoryId: r.category_id as string | null,
-          subcategoryId: r.subcategory_id as string | null,
-        },
-      ]),
-    ),
-    byName,
-    nameById: new Map(
-      (categories ?? []).map((c) => [c.id as string, String(c.name)]),
-    ),
-    parentById: new Map(
-      (categories ?? []).map((c) => [c.id as string, c.parent_id as string | null]),
-    ),
-    byCanonical,
-  };
-}
-
-/**
- * Em que categoria este lançamento cai, e por quê.
- *
- * Ordem por confiança, da maior para a menor:
- *
- * 1. regra aprendida - a casa já disse, à mão, onde isto vai;
- * 2. nome do estabelecimento - "ELETROGRAAL" é recarga de carro elétrico,
- *    independente do que o banco ache;
- * 3. categoria do arquivo, traduzida - cobre o que a tabela não conhece;
- * 4. tipo do lançamento - só serve para tarifa.
- *
- * O nome da loja vem ANTES da dica do banco de propósito: a do banco sai do
- * ramo cadastrado na maquininha e erra muito. Numa fatura real ela chamava
- * supermercado de "Associação" e restaurante de "Supermercados".
- *
- * Uma função só, usada pela importação e pela reanálise, para as duas não
- * divergirem - foi assim que o total da fatura já saiu errado antes.
- */
-type CategorySource = "regra" | "loja" | "banco" | "tipo";
-
-function resolveCategory(
-  input: {
-    merchantNormalized: string;
-    categoryHint: string | null;
-    type: string;
-  },
-  maps: CategoryMaps,
-): { id: string | null; source: CategorySource | null } {
-  /** Nome canônico da tabela -> categoria da casa, mesmo renomeada. */
-  const canonical = (name: string | null) =>
-    name ? maps.byCanonical.get(name) : undefined;
-  /** Nome cru vindo do arquivo, que pode coincidir com o da casa. */
-  const literal = (name: string | null) =>
-    name ? maps.byName.get(normalizeMerchant(name)) : undefined;
-
-  const fromRule = maps.ruleByPattern.get(input.merchantNormalized)?.categoryId;
-  if (fromRule) return { id: fromRule, source: "regra" };
-  const fromMerchant = canonical(categoryFromMerchant(input.merchantNormalized));
-  if (fromMerchant) return { id: fromMerchant, source: "loja" };
-  const fromHint = input.categoryHint
-    ? (literal(input.categoryHint) ??
-       canonical(categoryFromHint(input.categoryHint)))
-    : undefined;
-  if (fromHint) return { id: fromHint, source: "banco" };
-  const fromType = input.type === "fee" ? canonical("Tarifas") : undefined;
-  if (fromType) return { id: fromType, source: "tipo" };
-  return { id: null, source: null };
-}
-
-function resolveCategoryId(
-  input: {
-    merchantNormalized: string;
-    categoryHint: string | null;
-    type: string;
-  },
-  maps: CategoryMaps,
-): string | null {
-  return resolveCategory(input, maps).id;
-}
-
-/**
- * Subcategoria que a regra aprendida manda, se houver.
- *
- * So vale quando a regra e a linha concordam sobre a categoria-mae. Sem essa
- * checagem, uma linha que caiu em Mercado pelo nome da loja receberia a
- * subcategoria "Rotina de dia util" de Alimentacao, e a subcategoria ficaria
- * pendurada numa arvore a que nao pertence.
- */
-function resolveSubcategoryId(
-  merchantNormalized: string,
-  categoryId: string | null,
-  maps: CategoryMaps,
-): string | null {
-  if (categoryId === null) return null;
-  const rule = maps.ruleByPattern.get(merchantNormalized);
-  if (!rule || rule.categoryId !== categoryId) return null;
-  return rule.subcategoryId;
-}
-
-/**
  * A subcategoria que a revisao propos, se ela ainda faz sentido.
  *
  * Passa pelo navegador, entao e conferida aqui: tem de ser filha da
@@ -302,6 +140,111 @@ function proposedSubcategoryId(
  * Sem chave de IA, nao faz nada e nao diz nada: o Jev e um extra, e a
  * importacao funcionava antes dele.
  */
+/** Uma linha que o Jev pode classificar - da revisao ou de uma fatura ja gravada. */
+interface JevRow {
+  /** Identifica a linha para quem chamou: numero da linha, ou id do lancamento. */
+  key: string;
+  merchantNormalized: string;
+  merchantOriginal: string;
+  description: string;
+  amountCents: number;
+  date: string;
+  categoryHint: string | null;
+  /** A categoria que a linha tem agora (regra, loja, dica do banco, ou a mao). */
+  categoryId: string | null;
+  /** So nestas o Jev pode TROCAR a categoria: dica do banco, ou nenhuma. */
+  weak: boolean;
+}
+
+interface JevDecision {
+  /** Presente so quando a linha era fraca e o Jev passou do corte. */
+  categoryId?: string;
+  categoryProbability?: number;
+  /** Presente so quando e filha da categoria FINAL da linha. */
+  subcategoryId?: string;
+  subcategoryProbability?: number;
+}
+
+/**
+ * O Jev olhando o que as regras nao resolveram (secao 15).
+ *
+ * Um motor so para a importacao e para a releitura de faturas antigas: as
+ * duas tem de decidir igual, ou a mesma loja cai em categorias diferentes
+ * dependendo da porta por onde entrou.
+ *
+ * Regra aprendida e loja conhecida nunca sao trocadas: o Jev so decide a
+ * categoria de linha fraca, e a subcategoria de loja que nenhuma regra separa.
+ * Palpite NAO vira regra aprendida - regra e o que a casa disse.
+ *
+ * Sem chave, devolve vazio e nao diz nada: o Jev e um extra.
+ */
+async function jevDecisions(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  houseId: string,
+  rows: readonly JevRow[],
+  maps: CategoryMaps,
+): Promise<{ byKey: Map<string, JevDecision>; stoppedBy: string | null; merchants: number }> {
+  const vazio = { byKey: new Map<string, JevDecision>(), stoppedBy: null, merchants: 0 };
+  if (rows.length === 0) return vazio;
+  const apiKey = await getAiKey(houseId);
+  if (!apiKey) return vazio;
+
+  const ctx = await loadJevContext(supabase, houseId);
+  const asks = importAsks(
+    rows.map((r) => ({
+      ...r,
+      ruleDecidesSubcategory:
+        resolveSubcategoryId(r.merchantNormalized, r.categoryId, maps) !== null,
+    })),
+    ctx.subsByParent,
+  );
+
+  const perguntas = new Map<string, { ask: MerchantAsk; built: BuiltQuestions }>();
+  for (const ask of asks) {
+    const built = buildQuestions(ask, ctx);
+    if (built) perguntas.set(ask.merchant, { ask, built });
+  }
+  if (perguntas.size === 0) return vazio;
+
+  const run = await runJev(
+    [...perguntas.values()].map(({ ask, built }) => ({
+      key: ask.merchant,
+      state: merchantState(ask.evidence),
+      questions: built.questions,
+    })),
+    { apiKey, maxJobs: 60, deadlineMs: 25_000 },
+  );
+  await recordAiUsage(houseId, "jev", { calls: run.calls, costUsd: run.costUsd, model: JEV_MODEL });
+
+  const byKey = new Map<string, JevDecision>();
+  const lojas = new Set<string>();
+  for (const r of rows) {
+    const p = perguntas.get(r.merchantNormalized);
+    const respostas = run.answers.get(r.merchantNormalized);
+    if (!p || !respostas) continue;
+    const v = readVerdict(respostas, p.built, p.ask);
+
+    const d: JevDecision = {};
+    if (v.categoryId !== null && r.weak) {
+      d.categoryId = v.categoryId;
+      d.categoryProbability = v.categoryProbability ?? undefined;
+    }
+    // A subcategoria so vale sob a categoria que a linha vai TER - a mesma
+    // conferencia que a gravacao repete.
+    const categoriaFinal = d.categoryId ?? r.categoryId;
+    if (v.subcategoryId !== null && maps.parentById.get(v.subcategoryId) === categoriaFinal) {
+      d.subcategoryId = v.subcategoryId;
+      d.subcategoryProbability = v.subcategoryProbability ?? undefined;
+    }
+    if (d.categoryId || d.subcategoryId) {
+      byKey.set(r.key, d);
+      lojas.add(r.merchantNormalized);
+    }
+  }
+  return { byKey, stoppedBy: run.stoppedBy, merchants: lojas.size };
+}
+
+/** O Jev na revisao da importacao: marca o palpite em cada linha. */
 async function classifyWithJev(
   supabase: Awaited<ReturnType<typeof createClient>>,
   houseId: string,
@@ -312,75 +255,38 @@ async function classifyWithJev(
   const candidatas = reviewed.filter(
     (d) => d.decision === "new" && d.type === "expense",
   );
-  if (candidatas.length === 0) return { note: null };
-
-  const apiKey = await getAiKey(houseId);
-  if (!apiKey) return { note: null };
-
-  const ctx = await loadJevContext(supabase, houseId);
-  const asks = importAsks(
-    candidatas.map((d) => ({
-      ...d,
-      weak: fonteFraca.has(d.row),
-      ruleDecidesSubcategory:
-        resolveSubcategoryId(d.merchantNormalized, d.categoryId, maps) !== null,
-    })),
-    ctx.subsByParent,
+  const r = await jevDecisions(
+    supabase,
+    houseId,
+    candidatas.map((d) => ({ ...d, key: String(d.row), weak: fonteFraca.has(d.row) })),
+    maps,
   );
 
-  const perguntas = new Map<string, { ask: MerchantAsk; built: BuiltQuestions }>();
-  for (const ask of asks) {
-    const built = buildQuestions(ask, ctx);
-    if (built) perguntas.set(ask.merchant, { ask, built });
-  }
-  if (perguntas.size === 0) return { note: null };
-
-  const run = await runJev(
-    [...perguntas.values()].map(({ ask, built }) => ({
-      key: ask.merchant,
-      state: merchantState(ask.evidence),
-      questions: built.questions,
-    })),
-    { apiKey, maxJobs: 60, deadlineMs: 25_000 },
-  );
-
-  const lojas = new Set<string>();
   let linhas = 0;
-  for (const d of reviewed) {
-    const p = perguntas.get(d.merchantNormalized);
-    const respostas = run.answers.get(d.merchantNormalized);
-    if (!p || !respostas || d.decision !== "new" || d.type !== "expense") continue;
-    const v = readVerdict(respostas, p.built, p.ask);
-
-    let mudou = false;
-    if (v.categoryId !== null && fonteFraca.has(d.row)) {
-      d.categoryId = v.categoryId;
-      d.categoryName = maps.nameById.get(v.categoryId) ?? null;
+  for (const d of candidatas) {
+    const dec = r.byKey.get(String(d.row));
+    if (!dec) continue;
+    if (dec.categoryId) {
+      d.categoryId = dec.categoryId;
+      d.categoryName = maps.nameById.get(dec.categoryId) ?? null;
       d.categoryVia = "jev";
-      d.jevProbability = v.categoryProbability ?? undefined;
-      mudou = true;
+      d.jevProbability = dec.categoryProbability;
     }
-    // A subcategoria so vale se a categoria da linha e a mae dela - e a
-    // mesma conferencia que a gravacao repete.
-    if (v.subcategoryId !== null && maps.parentById.get(v.subcategoryId) === d.categoryId) {
-      d.subcategoryId = v.subcategoryId;
-      d.subcategoryName = maps.nameById.get(v.subcategoryId) ?? null;
-      d.subcategoryProbability = v.subcategoryProbability ?? undefined;
-      mudou = true;
+    if (dec.subcategoryId) {
+      d.subcategoryId = dec.subcategoryId;
+      d.subcategoryName = maps.nameById.get(dec.subcategoryId) ?? null;
+      d.subcategoryProbability = dec.subcategoryProbability;
     }
-    if (mudou) {
-      linhas += 1;
-      lojas.add(d.merchantNormalized);
-    }
+    linhas += 1;
   }
 
   const partes: string[] = [];
   if (linhas > 0) {
     partes.push(
-      `O Jev classificou ${linhas} lançamento(s) de ${lojas.size} estabelecimento(s) que as regras não resolviam. Estão marcados com "Jev" e a certeza dele — confira.`,
+      `O Jev classificou ${linhas} lançamento(s) de ${r.merchants} estabelecimento(s) que as regras não resolviam. Estão marcados com "Jev" e a certeza dele — confira.`,
     );
   }
-  if (run.stoppedBy) partes.push(run.stoppedBy);
+  if (r.stoppedBy) partes.push(r.stoppedBy);
   return { note: partes.length > 0 ? partes.join(" ") : null };
 }
 
@@ -827,6 +733,12 @@ export interface ReclassifyResult {
   cardsCreated?: number;
   /** Sem categoria E sem o final guardado - só reimportando. */
   withoutStoredCard?: number;
+  /** Lançamentos que ganharam subcategoria (já tinham categoria). */
+  subcategorized?: number;
+  /** Quantos dos preenchidos vieram do Jev, e não de regra. */
+  byJev?: number;
+  /** O Jev parou antes do fim (cota, chave, tempo). */
+  note?: string;
 }
 
 export async function reclassifyInvoice(
@@ -845,7 +757,7 @@ export async function reclassifyInvoice(
   const { data: rows, error: rowsError } = await supabase
     .from("transactions")
     .select(
-      "id, merchant_normalized, type, category_hint, category_id, card_id, card_last_four",
+      "id, merchant_normalized, merchant_original, description, amount, date, type, category_hint, category_id, subcategory_id, card_id, card_last_four",
     )
     .eq("house_id", houseId)
     .eq("invoice_id", invoiceId);
@@ -904,20 +816,50 @@ export async function reclassifyInvoice(
   ).length;
 
   // ---------------------------------------------------------- categorias
-  const semCategoria = rows.filter((r) => r.category_id === null);
-  if (semCategoria.length === 0) {
-    revalidatePath("/inicio");
-    revalidatePath("/extratos");
-    return {
-      updated: 0,
-      remaining: 0,
-      cardsLinked,
-      cardsCreated,
-      withoutStoredCard,
-    };
-  }
-
+  //
+  // Duas perguntas, as duas so onde esta VAZIO: falta categoria, ou tem
+  // categoria e falta subcategoria. A ordem de quem decide e a da
+  // importacao - regra aprendida, loja conhecida, e so entao o Jev -, pelo
+  // mesmo motor (`jevDecisions`), para a loja nao cair num lugar na
+  // importacao e em outro na releitura.
   const maps = await loadCategoryMaps(supabase, houseId);
+  const semCategoria = rows.filter((r) => r.category_id === null);
+  const semSub = rows.filter(
+    (r) => r.category_id !== null && r.subcategory_id === null && r.type === "expense",
+  );
+
+  const regra = new Map(
+    semCategoria.map((r) => [
+      r.id as string,
+      resolveCategory(
+        {
+          merchantNormalized: String(r.merchant_normalized ?? ""),
+          categoryHint: (r.category_hint as string | null) ?? null,
+          type: String(r.type),
+        },
+        maps,
+      ),
+    ]),
+  );
+
+  const paraJev: JevRow[] = [...semCategoria, ...semSub]
+    .filter((r) => r.type === "expense" && r.merchant_normalized)
+    .map((r) => {
+      const resolvida = regra.get(r.id as string);
+      return {
+        key: r.id as string,
+        merchantNormalized: String(r.merchant_normalized),
+        merchantOriginal: String(r.merchant_original ?? ""),
+        description: String(r.description ?? ""),
+        amountCents: Math.round(Number(r.amount) * 100),
+        date: String(r.date).slice(0, 10),
+        categoryHint: (r.category_hint as string | null) ?? null,
+        categoryId: resolvida ? resolvida.id : (r.category_id as string),
+        weak: resolvida !== undefined && (resolvida.source === null || resolvida.source === "banco"),
+      };
+    });
+  const jev = await jevDecisions(supabase, houseId, paraJev, maps);
+  let byJev = 0;
 
   // Agrupa por categoria para gravar em algumas chamadas, e não uma por
   // lançamento: uma fatura tem dezenas de linhas e no máximo uma dúzia de
@@ -925,19 +867,12 @@ export async function reclassifyInvoice(
   const idsByCategory = new Map<string, string[]>();
   for (const row of semCategoria) {
     const merchant = String(row.merchant_normalized ?? "");
-    const categoryId = resolveCategoryId(
-      {
-        merchantNormalized: merchant,
-        categoryHint: (row.category_hint as string | null) ?? null,
-        type: String(row.type),
-      },
-      maps,
-    );
+    const dec = jev.byKey.get(row.id as string);
+    const categoryId = dec?.categoryId ?? regra.get(row.id as string)?.id ?? null;
     if (categoryId === null) continue;
-    // A subcategoria entra na mesma chave de agrupamento: sem isso ela viraria
-    // uma segunda gravacao por lancamento, e a reanalise existe justamente
-    // para nao ir ao banco linha a linha.
-    const subcategoryId = resolveSubcategoryId(merchant, categoryId, maps);
+    const subcategoryId =
+      resolveSubcategoryId(merchant, categoryId, maps) ?? dec?.subcategoryId ?? null;
+    if (dec?.categoryId || (dec?.subcategoryId && subcategoryId === dec.subcategoryId)) byJev += 1;
     const key = `${categoryId}|${subcategoryId ?? ""}`;
     const list = idsByCategory.get(key) ?? [];
     list.push(row.id as string);
@@ -964,6 +899,40 @@ export async function reclassifyInvoice(
     updated += ids.length;
   }
 
+  // ------------------------------------------------------- subcategorias
+  const idsBySub = new Map<string, string[]>();
+  for (const row of semSub) {
+    const categoryId = row.category_id as string;
+    const merchant = String(row.merchant_normalized ?? "");
+    const dec = jev.byKey.get(row.id as string);
+    const subcategoryId =
+      resolveSubcategoryId(merchant, categoryId, maps) ?? dec?.subcategoryId ?? null;
+    if (subcategoryId === null) continue;
+    if (dec?.subcategoryId === subcategoryId) byJev += 1;
+    const key = `${categoryId}|${subcategoryId}`;
+    const list = idsBySub.get(key) ?? [];
+    list.push(row.id as string);
+    idsBySub.set(key, list);
+  }
+
+  let subcategorized = 0;
+  for (const [key, ids] of idsBySub) {
+    const [categoryId, subcategoryId] = key.split("|");
+    const { error } = await supabase
+      .from("transactions")
+      .update({ subcategory_id: subcategoryId })
+      .in("id", ids)
+      // A categoria tem de ser ainda a mesma: se alguem trocou a mao nesse
+      // meio-tempo, a subcategoria de outra arvore nao entra.
+      .eq("category_id", categoryId)
+      .is("subcategory_id", null);
+    if (error) {
+      console.error("[importacao] falha ao gravar subcategorias", { code: error.code });
+      return { error: "Não foi possível gravar a reanálise." };
+    }
+    subcategorized += ids.length;
+  }
+
   revalidatePath("/inicio");
   revalidatePath("/extratos");
 
@@ -973,6 +942,9 @@ export async function reclassifyInvoice(
     cardsLinked,
     cardsCreated,
     withoutStoredCard,
+    subcategorized,
+    byJev,
+    ...(jev.stoppedBy ? { note: jev.stoppedBy } : {}),
   };
 }
 

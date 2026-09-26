@@ -12,6 +12,7 @@ import { Select } from "@/components/ui/select";
 import { OPENROUTER_KEY_RE, QUOTE_MODELS } from "@/domain/ai-models";
 import type { AiStatus } from "@/lib/ai-config";
 import type { KeyInfo } from "@/lib/openrouter";
+import type { AiUsageReport } from "@/actions/ai-settings";
 
 /**
  * A chave do OpenRouter, na tela da Casa.
@@ -26,6 +27,43 @@ import type { KeyInfo } from "@/lib/openrouter";
  */
 
 const USD = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "USD" });
+const USD_MIUDO = new Intl.NumberFormat("pt-BR", {
+  style: "currency",
+  currency: "USD",
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 4,
+});
+
+/**
+ * Dolar com as casas que o valor pede: uma pergunta ao Jev custa US$ 0,00002,
+ * e "US$ 0,00" diria que nao custou nada.
+ */
+function dolar(v: number): string {
+  if (v > 0 && v < 0.0001) return "< US$ 0,0001";
+  return v < 1 ? USD_MIUDO.format(v) : USD.format(v);
+}
+
+const BRL = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
+
+type Cotacao = NonNullable<AiUsageReport["fx"]>;
+
+/**
+ * O valor em reais, pela cotacao do dia; em dolar quando nao ha cotacao.
+ * Centavo de centavo nao vira "R$ 0,00": o que custou algo diz que custou.
+ */
+function dinheiro(usd: number, fx: Cotacao | null): string {
+  if (!fx) return dolar(usd);
+  const reais = usd * fx.rate;
+  if (reais > 0 && reais < 0.01) return "< R$ 0,01";
+  return BRL.format(reais);
+}
+
+const USO: Record<string, string> = {
+  conversa_paga: "Conversa (pago)",
+  conversa_gratuita: "Conversa (gratuito)",
+  jev: "Jev",
+  orcamento: "Leitura de orçamento",
+};
 
 export function AiSettings({
   status,
@@ -38,6 +76,8 @@ export function AiSettings({
   const [trocando, setTrocando] = useState(false);
   const [confirmarRemocao, setConfirmarRemocao] = useState(false);
   const [gasto, setGasto] = useState<KeyInfo | null>(null);
+  const [mes, setMes] = useState<AiUsageReport["month"] | null>(null);
+  const [fx, setFx] = useState<Cotacao | null>(null);
   const [erroGasto, setErroGasto] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
@@ -53,6 +93,8 @@ export function AiSettings({
       if (!vivo) return;
       if (r.info) setGasto(r.info);
       else if (r.error) setErroGasto(r.error);
+      if (r.month) setMes(r.month);
+      if (r.fx) setFx(r.fx);
     });
     return () => {
       vivo = false;
@@ -141,10 +183,11 @@ export function AiSettings({
             )}
 
             {gasto ? (
-              <p className="tabular mt-1 text-[12px] text-ink-faint">
-                Gasto: {USD.format(gasto.usageUsd)}
+              <p className="tabular mt-1 text-[12px] text-ink-muted">
+                Total da chave: {dinheiro(gasto.usageUsd, fx)}
+                {fx ? ` (${dolar(gasto.usageUsd)})` : ""}
                 {gasto.limitUsd !== null ? (
-                  ` de ${USD.format(gasto.limitUsd)} de limite`
+                  ` de ${dinheiro(gasto.limitUsd, fx)} de limite`
                 ) : (
                   // Sem limite é o caso que pede atenção: é o único em que um
                   // erro que repita chamadas não tem teto.
@@ -156,6 +199,8 @@ export function AiSettings({
             ) : null}
           </div>
         </div>
+
+        {temChave && (gasto || mes) ? <GastoDeIa gasto={gasto} mes={mes} fx={fx} /> : null}
 
         {mostrarCampo ? (
           <div className="space-y-1.5">
@@ -279,5 +324,87 @@ export function AiSettings({
         onConfirm={remover}
       />
     </Card>
+  );
+}
+
+/**
+ * O gasto de IA acontecendo: hoje, semana e mes pela conta do OpenRouter, e
+ * o mes por uso, pelo registro do app.
+ *
+ * Os dois lados podem nao bater, e a tela diz por que em vez de esconder a
+ * diferenca: a chave pode ser usada fora do app, e o OpenRouter fecha o dia e
+ * o mes em UTC (21h em Brasilia).
+ */
+function GastoDeIa({
+  gasto,
+  mes,
+  fx,
+}: {
+  gasto: KeyInfo | null;
+  mes: AiUsageReport["month"] | null;
+  fx: Cotacao | null;
+}) {
+  const periodos = gasto
+    ? ([
+        ["Hoje", gasto.dailyUsd],
+        ["Semana", gasto.weeklyUsd],
+        ["Mês", gasto.monthlyUsd],
+      ] as const).filter(([, v]) => v !== null)
+    : [];
+
+  return (
+    <div className="space-y-2 border-t border-line pt-3">
+      <p className="text-[12px] font-medium text-ink">Gasto com IA</p>
+
+      {periodos.length > 0 ? (
+        <dl className="grid grid-cols-3 gap-2">
+          {periodos.map(([rotulo, valor]) => (
+            <div key={rotulo} className="rounded-[--radius-control] bg-surface-2 px-2.5 py-2">
+              <dt className="text-[11px] text-ink-muted">{rotulo}</dt>
+              <dd className="tabular text-sm font-semibold text-ink">{dinheiro(valor!, fx)}</dd>
+            </div>
+          ))}
+        </dl>
+      ) : null}
+
+      {mes && mes.byFeature.length > 0 ? (
+        <div>
+          <p className="text-[12px] text-ink-muted">Este mês no app, por uso</p>
+          <ul className="mt-1 divide-y divide-line">
+            {mes.byFeature.map((u) => (
+              <li key={u.feature} className="flex items-baseline gap-2 py-1.5 text-[13px]">
+                <span className="min-w-0 flex-1 text-ink">{USO[u.feature] ?? u.feature}</span>
+                <span className="tabular shrink-0 text-[12px] text-ink-muted">
+                  {u.calls} chamada{u.calls === 1 ? "" : "s"}
+                </span>
+                <span className="tabular w-24 shrink-0 text-right text-ink">{dinheiro(u.costUsd, fx)}</span>
+              </li>
+            ))}
+          </ul>
+          {mes.byFeature.some((u) => u.feature === "conversa_gratuita") ? (
+            <p className="mt-1 text-[12px] text-ink-muted">
+              O gratuito não custa, mas conta na cota de 50 chamadas por dia do OpenRouter.
+            </p>
+          ) : null}
+        </div>
+      ) : mes ? (
+        <p className="text-[12px] text-ink-muted">Nenhum uso de IA pelo app neste mês.</p>
+      ) : null}
+
+      <p className="text-[12px] text-ink-muted">
+        {fx ? (
+          <>
+            Em reais pela cotação {fx.source === "PTAX" ? "PTAX do Banco Central" : "comercial"}
+            {fx.date ? ` de ${fx.date.slice(8, 10)}/${fx.date.slice(5, 7)}` : ""} (US$ 1 ={" "}
+            {BRL.format(fx.rate)}). O OpenRouter cobra em dólar: na fatura do cartão entram
+            ainda o IOF e o câmbio do banco, alguns por cento a mais.
+          </>
+        ) : (
+          "Cotação do dólar indisponível agora: valores em dólar, a moeda dos créditos do OpenRouter."
+        )}{" "}
+        A conta do OpenRouter vira o dia em UTC (21h em Brasília) e inclui qualquer uso da chave
+        fora do app.
+      </p>
+    </div>
   );
 }

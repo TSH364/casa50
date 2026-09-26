@@ -6,11 +6,22 @@ import { createClient, getCurrentUser } from "@/lib/supabase/server";
 import { requireHouseId } from "./shared";
 import type { FormState } from "./shared";
 import { getAiKey } from "@/lib/ai-config";
+import { recordAiUsage } from "@/lib/ai-usage";
+import { JEV_MODEL } from "@/domain/ai-models";
 import { loadJevContext } from "@/lib/jev-context";
 import { runJev } from "@/lib/jev-run";
+import { listMembers } from "@/lib/houses";
+import { loadCategoryMaps, resolveCategory, resolveSubcategoryId } from "@/lib/category-rules";
+import { normalizeMerchant } from "@/importers/detect";
+import { firstName } from "@/domain/chat";
 import {
+  JEV_MIN_DONO,
   JEV_MIN_PROPOSTA,
+  OWNER_INSTRUCTIONS,
   buildQuestions,
+  cardState,
+  ownerCriteria,
+  readPick,
   medianCents,
   merchantState,
   readVerdict,
@@ -149,6 +160,7 @@ export async function suggestSubcategoriesWithJev(
     })),
     { apiKey, maxJobs: MAX_LOJAS, deadlineMs: 40_000 },
   );
+  await recordAiUsage(houseId, "jev", { calls: run.calls, costUsd: run.costUsd, model: JEV_MODEL });
 
   const suggestions: JevSuggestion[] = [];
   for (const [merchant, { ask, built }] of perguntas) {
@@ -278,4 +290,186 @@ export async function applyJevSubcategories(
   revalidatePath("/insights");
   revalidatePath("/inicio");
   return { ok: true, count: total };
+}
+
+// ---------------------------------------------------------------------------
+// De quem e o cartao
+// ---------------------------------------------------------------------------
+
+export interface OwnerSuggestion {
+  error?: string;
+  /** `null` quando o Jev nao passou do corte: melhor nao sugerir que chutar. */
+  memberId?: string | null;
+  probability?: number;
+}
+
+const donoSchema = z.object({ cardId: z.string().uuid() });
+
+/**
+ * O Jev sugere o dono de um cartao sem dono (secao 15).
+ *
+ * Para o caso que a sugestao pelos dados nao cobre: cartao em que ninguem
+ * marcou lancamento nenhum. A pergunta compara as lojas do cartao com as
+ * lojas tipicas de cada pessoa - o que esta marcado com ela e o que esta nos
+ * cartoes que ja sao dela.
+ *
+ * So SUGERE. O dono muda pelo toque em "E de Fulano?", com `setCardOwner`.
+ */
+export async function suggestCardOwnerWithJev(
+  input: z.input<typeof donoSchema>,
+): Promise<OwnerSuggestion> {
+  const parsed = donoSchema.safeParse(input);
+  if (!parsed.success) return { error: "Cartão inválido." };
+  const houseId = await requireHouseId();
+  const apiKey = await getAiKey(houseId);
+  if (!apiKey) return { error: "Guarde a chave do OpenRouter na tela da Casa para usar o Jev." };
+
+  const supabase = await createClient();
+  const [membros, { data: cartoes }] = await Promise.all([
+    listMembers(houseId),
+    supabase.from("cards").select("id, owner_id").eq("house_id", houseId),
+  ]);
+  if (membros.length < 2) return { error: "Com uma pessoa só na casa, o cartão é dela." };
+  const cartao = (cartoes ?? []).find((c) => c.id === parsed.data.cardId);
+  if (!cartao) return { error: "Cartão não encontrado." };
+
+  const dono = new Map((cartoes ?? []).map((c) => [c.id as string, (c.owner_id as string | null) ?? null]));
+
+  const noCartao = new Map<string, number>();
+  const porPessoa = new Map<string, Map<string, number>>(membros.map((m) => [m.userId, new Map()]));
+  for (let pagina = 0; pagina < 10; pagina += 1) {
+    const { data, error } = await supabase
+      .from("transactions")
+      .select("card_id, member_id, merchant_normalized")
+      .eq("house_id", houseId)
+      .eq("type", "expense")
+      .order("id")
+      .range(pagina * PAGINA, pagina * PAGINA + PAGINA - 1);
+    if (error) return { error: "Não foi possível ler os lançamentos." };
+    for (const t of data ?? []) {
+      const loja = t.merchant_normalized as string | null;
+      if (!loja) continue;
+      const cardId = t.card_id as string | null;
+      if (cardId === parsed.data.cardId) {
+        noCartao.set(loja, (noCartao.get(loja) ?? 0) + 1);
+        continue;
+      }
+      // De quem e: marcado, ou o dono do cartao - a mesma regra do filtro.
+      const pessoa = (t.member_id as string | null) ?? (cardId ? dono.get(cardId) : null) ?? null;
+      const m = pessoa ? porPessoa.get(pessoa) : undefined;
+      if (m) m.set(loja, (m.get(loja) ?? 0) + 1);
+    }
+    if ((data ?? []).length < PAGINA) break;
+  }
+
+  if (noCartao.size === 0) return { error: "Este cartão ainda não tem lançamentos para comparar." };
+  const semEvidencia = membros.filter((m) => (porPessoa.get(m.userId)?.size ?? 0) === 0);
+  if (semEvidencia.length > 0) {
+    return {
+      error: `Falta referência de ${semEvidencia.map((m) => firstName(m.fullName)).join(" e ")}: marque alguns lançamentos ou o dono de um cartão dela primeiro.`,
+    };
+  }
+
+  const ordenar = (m: Map<string, number>) => [...m].sort((a, b) => b[1] - a[1]);
+  const criteria = ownerCriteria(
+    membros.map((m) => ({
+      id: m.userId,
+      firstName: firstName(m.fullName),
+      examples: ordenar(porPessoa.get(m.userId)!).slice(0, 12).map(([loja]) => loja),
+    })),
+  );
+
+  const run = await runJev(
+    [
+      {
+        key: "dono",
+        state: cardState(ordenar(noCartao).map(([label, count]) => ({ label, count }))),
+        questions: { dono: { type: "choice", instructions: OWNER_INSTRUCTIONS, criteria: criteria.criteria } },
+      },
+    ],
+    { apiKey, maxJobs: 1, deadlineMs: 15_000 },
+  );
+  await recordAiUsage(houseId, "jev", { calls: run.calls, costUsd: run.costUsd, model: JEV_MODEL });
+  const resposta = run.answers.get("dono")?.dono;
+  if (!resposta) return { error: run.stoppedBy ?? "O Jev não respondeu. Tente de novo." };
+
+  const pick = readPick(resposta, criteria.idByKey, JEV_MIN_DONO);
+  const probabilidade = resposta.probabilities[resposta.choice] ?? 0;
+  return { memberId: pick?.id ?? null, probability: probabilidade };
+}
+
+// ---------------------------------------------------------------------------
+// Lancamento manual: sugestao pela descricao
+// ---------------------------------------------------------------------------
+
+export interface CategorySuggestion {
+  categoryId?: string | null;
+  subcategoryId?: string | null;
+  /** De onde veio: regra da casa, nome de loja conhecido, ou o Jev. */
+  via?: "regra" | "loja" | "jev";
+  probability?: number;
+}
+
+const sugestaoSchema = z.object({
+  description: z.string().trim().min(2).max(200),
+  amountCents: z.number().int().min(0).max(9_999_999_999).optional(),
+});
+
+/**
+ * A categoria de um lancamento manual, sugerida pela descricao (secao 15).
+ *
+ * A mesma ordem da importacao: regra aprendida, loja conhecida, e so entao o
+ * Jev. Descricao que a regra resolve nem sai para a rede. Devolve vazio
+ * quando ninguem sabe - o campo fica como a pessoa deixou.
+ */
+export async function suggestCategoryFromText(
+  input: z.input<typeof sugestaoSchema>,
+): Promise<CategorySuggestion> {
+  const parsed = sugestaoSchema.safeParse(input);
+  if (!parsed.success) return {};
+  const houseId = await requireHouseId();
+  const supabase = await createClient();
+  const maps = await loadCategoryMaps(supabase, houseId);
+
+  const merchant = normalizeMerchant(parsed.data.description);
+  const regra = resolveCategory({ merchantNormalized: merchant, categoryHint: null, type: "expense" }, maps);
+  if (regra.id !== null && (regra.source === "regra" || regra.source === "loja")) {
+    return {
+      categoryId: regra.id,
+      subcategoryId: resolveSubcategoryId(merchant, regra.id, maps),
+      via: regra.source,
+    };
+  }
+
+  const apiKey = await getAiKey(houseId);
+  if (!apiKey) return {};
+  const ctx = await loadJevContext(supabase, houseId);
+  const ask = {
+    merchant,
+    knownCategoryId: null,
+    evidence: {
+      label: parsed.data.description,
+      count: 1,
+      medianCents: parsed.data.amountCents ?? 0,
+      weekdayShare: 0,
+      bankHint: null,
+    },
+  };
+  const built = buildQuestions(ask, ctx);
+  if (!built) return {};
+  const run = await runJev(
+    [{ key: "x", state: merchantState(ask.evidence), questions: built.questions }],
+    { apiKey, maxJobs: 1, deadlineMs: 10_000 },
+  );
+  await recordAiUsage(houseId, "jev", { calls: run.calls, costUsd: run.costUsd, model: JEV_MODEL });
+  const respostas = run.answers.get("x");
+  if (!respostas) return {};
+  const v = readVerdict(respostas, built, ask);
+  if (v.categoryId === null) return {};
+  return {
+    categoryId: v.categoryId,
+    subcategoryId: v.subcategoryId,
+    via: "jev",
+    probability: v.categoryProbability ?? undefined,
+  };
 }

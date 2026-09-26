@@ -129,10 +129,28 @@ describe("checkKey", () => {
         status: 200,
       }),
     );
-    expect(await checkKey(CHAVE, fetchImpl)).toEqual({ usageUsd: 0.42, limitUsd: 5 });
+    // Sem os campos por periodo (resposta antiga): nulos, e nao zero - zero
+    // diria "nao gastou nada hoje", o que ninguem sabe.
+    expect(await checkKey(CHAVE, fetchImpl)).toEqual({
+      usageUsd: 0.42,
+      limitUsd: 5,
+      dailyUsd: null,
+      weeklyUsd: null,
+      monthlyUsd: null,
+    });
     expect(chamadas[0]?.url).toBe("https://openrouter.ai/api/v1/key");
     // Consulta, e nao chamada de modelo: sem corpo, sem metodo POST.
     expect(chamadas[0]?.init.method).toBeUndefined();
+  });
+
+  it("lê o gasto de hoje, da semana e do mês", async () => {
+    const { fetchImpl } = capturar(
+      new Response(
+        JSON.stringify({ data: { usage: 3.1, limit: null, usage_daily: 0.02, usage_weekly: 0.4, usage_monthly: 1.25 } }),
+        { status: 200 },
+      ),
+    );
+    expect(await checkKey(CHAVE, fetchImpl)).toMatchObject({ dailyUsd: 0.02, weeklyUsd: 0.4, monthlyUsd: 1.25 });
   });
 
   it("chave sem limite vem com limite nulo, e não zero", async () => {

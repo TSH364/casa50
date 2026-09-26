@@ -41,6 +41,11 @@ const estado = {
   casa: true,
   chave: "sk-or-da-casa" as string | null,
   roteiro: [] as TurnResult[],
+  /** O que o Jev responde sobre a rota; `null` = o Jev falha. */
+  rota: { choice: "simples", p: 0.9 } as { choice: string; p: number } | null,
+  /** Status com que o modelo gratuito falha, se falhar. */
+  gratuitoFalha: null as number | null,
+  estados: [] as string[],
   chamadas: [] as { messages: TurnMessage[]; options: TurnOptions }[],
 };
 
@@ -52,6 +57,19 @@ vi.mock("@/actions/shared", () => ({
   },
 }));
 vi.mock("@/lib/ai-config", () => ({ getAiKey: async () => estado.chave }));
+const gastos: { feature: string; calls: number; costUsd: number }[] = [];
+vi.mock("@/lib/ai-usage", () => ({
+  recordAiUsage: async (_h: string, feature: string, u: { calls: number; costUsd: number }) => {
+    if (u.calls > 0) gastos.push({ feature, calls: u.calls, costUsd: u.costUsd });
+  },
+}));
+vi.mock("next/cache", () => ({ revalidatePath: () => {} }));
+// A conversa so le por ferramentas (mockadas abaixo); o cliente do banco so
+// e usado por `applyProposal`, testado em chat-proposals.test.ts.
+vi.mock("@/lib/supabase/server", () => ({
+  getCurrentUser: async () => null,
+  createClient: async () => ({}),
+}));
 vi.mock("@/lib/houses", () => ({
   getActiveHouse: async () => ({ active: { id: "casa-1", name: "Casa 50" } }),
   listMembers: async () => [
@@ -90,8 +108,16 @@ vi.mock("@/lib/openrouter", async () => {
   }
   return {
     OpenRouterError,
+    decide: async (state: string) => {
+      estado.estados.push(state);
+      if (!estado.rota) throw new OpenRouterError("sem Jev", 500);
+      return { complexidade: { choice: estado.rota.choice, probabilities: { [estado.rota.choice]: estado.rota.p }, confidence: estado.rota.p } };
+    },
     chatTurn: async (messages: TurnMessage[], options: TurnOptions) => {
       estado.chamadas.push({ messages: structuredClone(messages), options });
+      if (estado.gratuitoFalha && options.model === "openrouter/free") {
+        throw new OpenRouterError("Acabou a cota dos modelos gratuitos por agora.", estado.gratuitoFalha);
+      }
       const proxima = estado.roteiro.shift();
       if (!proxima) throw new OpenRouterError("Acabou a cota dos modelos gratuitos por agora.", 429);
       return proxima;
@@ -105,8 +131,9 @@ const pede = (name: string, args: Record<string, unknown>, id = "c1"): TurnResul
   content: null,
   toolCalls: [{ id, type: "function", function: { name, arguments: JSON.stringify(args) } }],
   servedBy: "modelo/gratis:free",
+  costUsd: 0.001,
 });
-const responde = (content: string): TurnResult => ({ content, toolCalls: [], servedBy: "modelo/gratis:free" });
+const responde = (content: string): TurnResult => ({ content, toolCalls: [], servedBy: "modelo/gratis:free", costUsd: 0.002 });
 const PERGUNTA = { messages: [{ role: "user" as const, content: "Quanto a Larissa gastou com alimentação?" }] };
 
 describe("askHouse", () => {
@@ -115,6 +142,9 @@ describe("askHouse", () => {
     estado.chave = "sk-or-da-casa";
     estado.roteiro = [];
     estado.chamadas = [];
+    estado.rota = { choice: "simples", p: 0.9 };
+    estado.gratuitoFalha = null;
+    estado.estados = [];
   });
 
   it("sem casa, recusa antes de chamar a IA", async () => {
@@ -206,3 +236,116 @@ describe("askHouse", () => {
     expect(r.error).toMatch(/cota dos modelos gratuitos/);
   });
 });
+
+describe("askHouse — qual modelo responde", () => {
+  beforeEach(() => {
+    estado.casa = true;
+    estado.chave = "sk-or-da-casa";
+    estado.roteiro = [responde("ok"), responde("ok")];
+    estado.chamadas = [];
+    estado.rota = { choice: "simples", p: 0.9 };
+    estado.gratuitoFalha = null;
+    estado.estados = [];
+  });
+
+  const perguntar = (content: string) => askHouse({ messages: [{ role: "user", content }] });
+
+  it("o Jev acha simples: gratuito, aceitando provedor que guarda", async () => {
+    const r = await perguntar("Quanto gastamos em setembro?");
+    expect(r).toMatchObject({ tier: "gratuito", route: "jev" });
+    expect(estado.chamadas[0]!.options).toMatchObject({ model: "openrouter/free", allowDataCollection: true });
+    // O Jev leu so a pergunta.
+    expect(estado.estados[0]).toMatch(/Quanto gastamos em setembro/);
+    expect(estado.estados[0]).not.toMatch(/RETRATO|Gasto:/);
+  });
+
+  it("o Jev acha complexa: pago, com provedor que não guarda", async () => {
+    estado.rota = { choice: "complexa", p: 0.8 };
+    const r = await perguntar("Por que gastamos mais em agosto que em julho?");
+    expect(r).toMatchObject({ tier: "pago", route: "jev" });
+    expect(estado.chamadas[0]!.options).toMatchObject({ model: "google/gemini-3.6-flash", allowDataCollection: false });
+  });
+
+  it("pedido de mudar dado vai ao pago mesmo que o Jev ache simples", async () => {
+    const r = await perguntar("Classifica o UBERRIDES como transporte");
+    expect(r).toMatchObject({ tier: "pago", route: "acao" });
+  });
+
+  it("sem Jev, o pago", async () => {
+    estado.rota = null;
+    expect(await perguntar("Quanto gastamos?")).toMatchObject({ tier: "pago", route: "sem-jev" });
+  });
+
+  it("gratuito sem cota: o pago assume, e a resposta diz", async () => {
+    estado.gratuitoFalha = 429;
+    const r = await perguntar("Quanto gastamos em setembro?");
+    expect(r).toMatchObject({ answer: "ok", tier: "pago", fellBack: true });
+    expect(estado.chamadas.map((c) => c.options.model)).toEqual(["openrouter/free", "google/gemini-3.6-flash"]);
+  });
+
+  it("erro que o pago não resolve (chave recusada) não é repetido", async () => {
+    estado.gratuitoFalha = 401;
+    const r = await perguntar("Quanto gastamos em setembro?");
+    expect(r.error).toBeDefined();
+    expect(estado.chamadas).toHaveLength(1);
+  });
+});
+
+describe("askHouse — PDF", () => {
+  beforeEach(() => {
+    estado.casa = true;
+    estado.chave = "sk-or-da-casa";
+    estado.chamadas = [];
+    estado.rota = { choice: "simples", p: 0.9 };
+    estado.gratuitoFalha = null;
+  });
+
+  it("sem pedido, sem PDF", async () => {
+    estado.roteiro = [responde("R$ 320,00.")];
+    expect((await askHouse({ messages: [{ role: "user", content: "Quanto gastamos?" }] })).pdf).toBeUndefined();
+  });
+
+  it("pediu: PDF da resposta anterior", async () => {
+    estado.roteiro = [responde("Pronto.")];
+    const r = await askHouse({
+      messages: [
+        { role: "user", content: "Quanto gastamos?" },
+        { role: "assistant", content: "R$ 320,00." },
+        { role: "user", content: "exporta isso em PDF" },
+      ],
+    });
+    expect(r.pdf).toBe("anterior");
+  });
+});
+
+describe("askHouse — gasto anotado", () => {
+  beforeEach(() => {
+    estado.casa = true;
+    estado.chave = "sk-or-da-casa";
+    estado.chamadas = [];
+    estado.rota = { choice: "simples", p: 0.9 };
+    estado.gratuitoFalha = null;
+    gastos.length = 0;
+  });
+
+  it("uma consulta e a resposta: o Jev da rota e duas rodadas no gratuito", async () => {
+    estado.roteiro = [pede("resumo_do_mes", {}), responde("ok")];
+    await askHouse({ messages: [{ role: "user", content: "Quanto gastamos?" }] });
+    expect(gastos).toEqual([
+      { feature: "jev", calls: 1, costUsd: 0 },
+      { feature: "conversa_gratuita", calls: 2, costUsd: 0.003 },
+    ]);
+  });
+
+  it("o gratuito falhou e o pago assumiu: as duas tentativas são anotadas", async () => {
+    estado.gratuitoFalha = 429;
+    estado.roteiro = [responde("ok")];
+    await askHouse({ messages: [{ role: "user", content: "Quanto gastamos?" }] });
+    expect(gastos.map((g) => [g.feature, g.calls])).toEqual([
+      ["jev", 1],
+      ["conversa_gratuita", 1],
+      ["conversa_paga", 1],
+    ]);
+  });
+});
+

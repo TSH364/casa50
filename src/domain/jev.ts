@@ -439,3 +439,49 @@ export function importAsks(
   }
   return asks.sort((a, b) => b.evidence.count - a.evidence.count);
 }
+
+// ---------------------------------------------------------------------------
+// De quem e o cartao
+// ---------------------------------------------------------------------------
+
+/** A partir daqui a sugestao de dono aparece. Dono errado distorce o filtro inteiro. */
+export const JEV_MIN_DONO = 0.7;
+
+export interface OwnerProfile {
+  id: string;
+  firstName: string;
+  /** Lojas tipicas da pessoa, da mais frequente para a menos. */
+  examples: readonly string[];
+}
+
+/**
+ * As opcoes da pergunta "de quem e este cartao?".
+ *
+ * Os exemplos de cada pessoa saem do que ja e dela - marcado com ela, ou nos
+ * cartoes dela - e so as lojas que SO ela usa: loja que os dois frequentam
+ * nao ajuda a separar, so empata.
+ */
+export function ownerCriteria(profiles: readonly OwnerProfile[]): Criteria {
+  const contagem = new Map<string, number>();
+  for (const p of profiles) for (const e of new Set(p.examples)) contagem.set(e, (contagem.get(e) ?? 0) + 1);
+  return categoryCriteria(
+    profiles.map((p) => {
+      const proprias = p.examples.filter((e) => contagem.get(e) === 1);
+      return {
+        id: p.id,
+        name: p.firstName,
+        canonical: null,
+        examples: proprias.length > 0 ? proprias : p.examples,
+      };
+    }),
+  );
+}
+
+export const OWNER_INSTRUCTIONS =
+  "De qual pessoa da casa é este cartão de crédito? Compare as lojas do cartão com as lojas típicas de cada pessoa. Nomes ou apelidos dentro do nome da loja são uma pista forte.";
+
+/** A situacao: as lojas do cartao, com quantas vezes aparecem. Sem o final dele. */
+export function cardState(merchants: readonly { label: string; count: number }[]): string {
+  const lista = merchants.slice(0, 15).map((m) => `${m.label} (${m.count}x)`);
+  return `Lojas mais frequentes neste cartão:\n${lista.join("\n")}`;
+}

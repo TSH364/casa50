@@ -17,6 +17,14 @@ const estado = {
   chaves: [] as string[],
 };
 
+vi.mock("server-only", () => ({}));
+const gastos: unknown[] = [];
+vi.mock("@/lib/ai-usage", () => ({
+  recordAiUsage: async (_h: string, feature: string, u: unknown) => {
+    gastos.push({ feature, ...(u as object) });
+  },
+}));
+
 vi.mock("@/actions/shared", () => ({
   requireHouseId: async () => {
     if (!estado.casa) throw new Error("Nenhuma casa ativa.");
@@ -42,9 +50,13 @@ vi.mock("@/lib/openrouter", async () => {
   }
   return {
     OpenRouterError,
-    chatCompletion: async (messages: ChatMessage[], opcoes: { apiKey: string }) => {
+    chatCompletion: async (
+      messages: ChatMessage[],
+      opcoes: { apiKey: string; onUsage?: (u: { costUsd: number; model: string | null }) => void },
+    ) => {
       estado.chaves.push(opcoes.apiKey);
       estado.mensagens.push(messages);
+      opcoes.onUsage?.({ costUsd: 0.012, model: "anthropic/claude-sonnet-5" });
       if (estado.resposta === "ERRO") throw new OpenRouterError("A conta do OpenRouter está sem créditos.", 402);
       return estado.resposta;
     },
@@ -67,6 +79,12 @@ describe("readQuoteWithAI", () => {
   it("usa a chave da casa, decriptada no servidor", async () => {
     await readQuoteWithAI({ kind: "text", text: "Total 100,00" });
     expect(estado.chaves).toEqual(["sk-or-da-casa"]);
+  });
+
+  it("anota o gasto da leitura, como 'orcamento'", async () => {
+    gastos.length = 0;
+    await readQuoteWithAI({ kind: "text", text: "Total 100,00" });
+    expect(gastos).toEqual([{ feature: "orcamento", calls: 1, costUsd: 0.012, model: "anthropic/claude-sonnet-5" }]);
   });
 
   it("sem casa, recusa antes de chamar a IA — e antes de dizer se ela existe", async () => {

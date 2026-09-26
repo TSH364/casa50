@@ -62,3 +62,15 @@ export const JEV_MODEL = "typesafe/jev-1.13";
  * `OPENROUTER_CHAT_MODEL` troca, se um dia valer fixar um.
  */
 export const DEFAULT_CHAT_MODEL = "openrouter/free";
+
+/**
+ * O modelo PAGO da conversa: o que responde o que o Jev julga complexo, os
+ * pedidos de mudar dado, e o que o gratuito nao conseguiu.
+ *
+ * Gemini Flash, e nao o Claude da leitura de orcamento: a conversa manda
+ * muito contexto por pergunta (retrato do mes, resultados de ferramenta), e
+ * o Flash custa uma fracao por token lendo bem o suficiente. Ja conferido no
+ * catalogo (e o "mais barato" da lista de orcamento). Vai com
+ * `data_collection: deny`. `OPENROUTER_CHAT_PAID_MODEL` troca.
+ */
+export const DEFAULT_CHAT_PAID_MODEL = "google/gemini-3.6-flash";

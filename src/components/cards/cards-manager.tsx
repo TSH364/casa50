@@ -4,6 +4,8 @@ import { useState, useTransition } from "react";
 import { toast } from "sonner";
 import { Archive, CreditCard, Pencil, Plus, RotateCcw, Trash2 } from "lucide-react";
 import { archiveCard, deleteCard, restoreCard, setCardOwner } from "@/actions/cards";
+import { suggestCardOwnerWithJev } from "@/actions/jev";
+import { probabilityLabel } from "@/domain/jev";
 import { CardFormDialog } from "./card-form";
 import { Button } from "@/components/ui/button";
 import { Card as Panel, CardHeader } from "@/components/ui/card";
@@ -17,9 +19,12 @@ export function CardsManager({
   cards,
   members,
   ownerSuggestions = {},
+  aiEnabled = false,
 }: {
   cards: Card[];
   members: MemberSummary[];
+  /** A casa tem chave de IA: o Jev pode sugerir dono onde os dados nao dao. */
+  aiEnabled?: boolean;
   /** Cartao sem dono -> a unica pessoa marcada nos lancamentos dele. */
   ownerSuggestions?: Record<string, { memberId: string; count: number }>;
 }) {
@@ -28,6 +33,22 @@ export function CardsManager({
   const [deleting, setDeleting] = useState<Card | undefined>();
   const [deleteError, setDeleteError] = useState<string | undefined>();
   const [pending, startTransition] = useTransition();
+  // Palpite do Jev por cartao: `null` = perguntou e ele nao soube.
+  const [jev, setJev] = useState<Record<string, { memberId: string | null; probability: number }>>({});
+  const [perguntando, setPerguntando] = useState<string | null>(null);
+
+  function perguntarAoJev(cardId: string) {
+    setPerguntando(cardId);
+    startTransition(async () => {
+      const r = await suggestCardOwnerWithJev({ cardId });
+      setPerguntando(null);
+      if (r.error) {
+        toast.error(r.error);
+        return;
+      }
+      setJev((prev) => ({ ...prev, [cardId]: { memberId: r.memberId ?? null, probability: r.probability ?? 0 } }));
+    });
+  }
 
   const ownerName = (id: string | null) =>
     members.find((m) => m.userId === id)?.fullName ?? "sem dono definido";
@@ -141,6 +162,38 @@ export function CardsManager({
                         ({ownerSuggestions[card.id]!.count} lançamentos marcados)
                       </span>
                     </button>
+                  ) : null}
+                  {card.ownerId === null && !ownerSuggestions[card.id] && aiEnabled && members.length > 1 ? (
+                    jev[card.id] === undefined ? (
+                      <button
+                        type="button"
+                        disabled={pending}
+                        onClick={() => perguntarAoJev(card.id)}
+                        className="mt-1 inline-flex min-h-9 items-center rounded-full border border-line bg-surface-2 px-3 text-[12px] text-ink-muted hover:text-ink disabled:opacity-50"
+                      >
+                        {perguntando === card.id ? "Perguntando ao Jev…" : "De quem é? Perguntar ao Jev"}
+                      </button>
+                    ) : jev[card.id]!.memberId ? (
+                      // Sugestao, nunca decisao: o dono so muda com o toque.
+                      <button
+                        type="button"
+                        disabled={pending}
+                        className="mt-1 inline-flex min-h-9 items-center rounded-full border border-brand/50 bg-brand-soft px-3 text-[12px] text-ink disabled:opacity-50"
+                        onClick={() =>
+                          run(
+                            () => setCardOwner({ cardId: card.id, ownerId: jev[card.id]!.memberId! }),
+                            "Dono definido.",
+                          )
+                        }
+                      >
+                        É de {members.find((m) => m.userId === jev[card.id]!.memberId)?.fullName ?? "?"}?
+                        <span className="ml-1 text-ink-muted">(Jev · {probabilityLabel(jev[card.id]!.probability)})</span>
+                      </button>
+                    ) : (
+                      <p className="mt-1 text-[12px] text-ink-muted">
+                        O Jev não teve certeza ({probabilityLabel(jev[card.id]!.probability)}). Defina em Editar.
+                      </p>
+                    )
                   ) : null}
                 </div>
 

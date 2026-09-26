@@ -1,9 +1,12 @@
 "use client";
 
 import { useEffect, useRef, useState, useTransition } from "react";
-import { ArrowUp, Trash2 } from "lucide-react";
+import { ArrowUp, FileDown, Trash2 } from "lucide-react";
 import { askHouse } from "@/actions/chat";
-import type { ChatMessage } from "@/domain/chat";
+import type { ChartSpec, ChatMessage, Proposal } from "@/domain/chat";
+import { ChatChart } from "./chat-chart";
+import { ProposalCard } from "./proposal-card";
+import type { ProposalStatus } from "./proposal-card";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -19,11 +22,48 @@ import { cn } from "@/lib/utils";
 interface Entry extends ChatMessage {
   consulted?: string[];
   model?: string | null;
+  tier?: "gratuito" | "pago";
+  fellBack?: boolean;
   error?: boolean;
+  proposals?: Proposal[];
+  charts?: ChartSpec[];
+  /** So quando a pergunta pediu PDF: de qual resposta ele e. */
+  pdf?: "esta" | "anterior";
+  /** id da proposta -> o que a casa fez com ela, e a frase do resultado. */
+  resolved?: Record<string, { status: ProposalStatus; note: string }>;
+}
+
+/**
+ * O texto que volta ao modelo por uma resposta: a propria resposta, e o que
+ * a casa fez com as propostas dela. Sem isto, na pergunta seguinte a IA nao
+ * saberia se a classificacao foi feita - e poderia propor de novo, ou dizer
+ * que ja estava feita quando foi descartada.
+ */
+/**
+ * Qual entrada vai para o PDF. "anterior" e a ultima resposta de verdade
+ * antes desta - pulando erros; sem nenhuma, a propria.
+ */
+function alvoDoPdf(entradas: readonly Entry[], i: number, pdf: "esta" | "anterior"): number {
+  if (pdf === "esta") return i;
+  for (let j = i - 1; j >= 0; j -= 1) {
+    if (entradas[j]!.role === "assistant" && !entradas[j]!.error) return j;
+  }
+  return i;
+}
+
+function conteudoParaModelo(e: Entry): string {
+  const feitos = Object.values(e.resolved ?? {}).map((r) => `[${r.note}]`);
+  const pendentes = (e.proposals ?? []).filter((p) => !e.resolved?.[p.id]).length;
+  return [
+    e.content,
+    ...feitos,
+    ...(pendentes > 0 ? [`[${pendentes} proposta(s) ainda sem resposta da casa.]`] : []),
+  ].join("\n");
 }
 
 const SUGESTOES = [
   "Quanto gastamos este mês?",
+  "O que falta classificar?",
   "Onde mais gastamos com alimentação nos últimos 3 meses?",
   "Quais parcelas ainda vão cair?",
   "Como estão os orçamentos e as metas?",
@@ -101,7 +141,7 @@ export function ChatPanel({ houseId }: { houseId: string }) {
       // conversa.
       const historico = comPergunta
         .filter((e) => !e.error)
-        .map(({ role, content }) => ({ role, content }));
+        .map((e) => ({ role: e.role, content: e.role === "assistant" ? conteudoParaModelo(e) : e.content }));
       let r: Awaited<ReturnType<typeof askHouse>>;
       try {
         r = await askHouse({ messages: historico });
@@ -109,13 +149,57 @@ export function ChatPanel({ houseId }: { houseId: string }) {
         r = { error: "Não consegui falar com o servidor. Confira a internet e tente de novo." };
       }
       const resposta: Entry = r.answer
-        ? { role: "assistant", content: r.answer, consulted: r.consulted, model: r.model }
+        ? {
+            role: "assistant",
+            content: r.answer,
+            consulted: r.consulted,
+            model: r.model,
+            tier: r.tier,
+            fellBack: r.fellBack,
+            ...(r.proposals?.length ? { proposals: r.proposals } : {}),
+            ...(r.charts?.length ? { charts: r.charts } : {}),
+            ...(r.pdf ? { pdf: r.pdf } : {}),
+          }
         : { role: "assistant", content: r.error ?? "A conversa falhou.", error: true };
       const nova = [...comPergunta, resposta];
       setEntradas(nova);
       gravar(chave, nova);
     });
   }
+
+  function resolver(indice: number, proposalId: string, status: ProposalStatus, note: string) {
+    setEntradas((atual) => {
+      const nova = atual.map((e, i) =>
+        i === indice ? { ...e, resolved: { ...e.resolved, [proposalId]: { status, note } } } : e,
+      );
+      gravar(chave, nova);
+      return nova;
+    });
+  }
+
+  // Exportar em PDF: a resposta escolhida vai para um bloco que so aparece na
+  // impressao, e o dialogo do navegador tem "Salvar como PDF" em todo lugar -
+  // computador, iPhone e Android -, sem biblioteca nenhuma.
+  const [imprimindo, setImprimindo] = useState<number | null>(null);
+  useEffect(() => {
+    if (imprimindo === null) return;
+    const html = document.documentElement;
+    const tema = html.dataset.theme;
+    // Papel e claro: tinta escura em fundo branco, qualquer que seja o tema.
+    html.dataset.theme = "light";
+    const fim = () => {
+      if (tema === undefined) delete html.dataset.theme;
+      else html.dataset.theme = tema;
+      setImprimindo(null);
+    };
+    window.addEventListener("afterprint", fim, { once: true });
+    // Um quadro depois, para o bloco de impressao e o tema claro ja estarem na tela.
+    const t = window.setTimeout(() => window.print(), 50);
+    return () => {
+      window.clearTimeout(t);
+      window.removeEventListener("afterprint", fim);
+    };
+  }, [imprimindo]);
 
   function limpar() {
     setEntradas([]);
@@ -131,13 +215,14 @@ export function ChatPanel({ houseId }: { houseId: string }) {
       {entradas.length === 0 ? (
         <div className="space-y-3">
           <p className="rounded-[--radius-control] bg-attention-soft px-3.5 py-2.5 text-[13px] text-attention">
-            A conversa usa modelos <strong className="font-semibold">gratuitos</strong> do OpenRouter.
-            O provedor pode guardar e usar as perguntas e os dados enviados (lojas, valores, nomes)
-            para treinar modelos. Não vão e-mails, finais de cartão nem anotações.
+            O Jev escolhe quem responde. Perguntas simples vão a modelos{" "}
+            <strong className="font-semibold">gratuitos</strong>, e o provedor pode guardar e usar
+            o que recebe (lojas, valores, nomes) para treinar modelos. Análises e pedidos de mudar
+            dados vão a um modelo pago que não guarda. Não vão e-mails, cartões nem anotações.
           </p>
           <p className="text-[12px] text-ink-muted">
-            Limite dos gratuitos: 50 chamadas por dia na conta do OpenRouter. Uma pergunta
-            simples gasta 1; uma que precisa consultar os dados, de 2 a 5.
+            Os gratuitos têm limite de 50 chamadas por dia na conta do OpenRouter; quando acaba, o
+            pago assume sozinho.
           </p>
           <div className="flex flex-wrap gap-2">
             {SUGESTOES.map((s) => (
@@ -170,11 +255,34 @@ export function ChatPanel({ houseId }: { houseId: string }) {
               )}
             >
               <Texto texto={e.content} />
+              {e.charts?.map((c) => <ChatChart key={c.id} chart={c} />)}
+              {e.proposals?.map((p) => (
+                <ProposalCard
+                  key={p.id}
+                  proposal={p}
+                  status={e.resolved?.[p.id]?.status ?? "pendente"}
+                  onResolve={(status, note) => resolver(i, p.id, status, note)}
+                />
+              ))}
               {e.role === "assistant" && !e.error && (e.consulted?.length || e.model) ? (
                 <p className="mt-1.5 text-[11px] text-ink-muted">
                   {e.consulted?.length ? `Consultei: ${e.consulted.join(", ")}` : "Respondi com o resumo do mês"}
+                  {e.tier ? ` · ${e.tier === "pago" ? "Pago" : "Gratuito"}` : ""}
+                  {e.fellBack ? " (o gratuito não respondeu)" : ""}
                   {e.model ? ` · ${e.model}` : ""}
                 </p>
+              ) : null}
+              {/* So quando a pergunta pediu PDF (ver `isPdfRequest`). */}
+              {e.role === "assistant" && !e.error && e.pdf ? (
+                <div className="mt-2 flex flex-wrap items-center gap-2 rounded-xl border border-line bg-surface px-3 py-2">
+                  <FileDown className="size-4 shrink-0 text-ink-muted" aria-hidden />
+                  <span className="min-w-0 flex-1 text-[12px] text-ink-muted">
+                    {e.pdf === "esta" ? "PDF desta resposta" : "PDF da resposta anterior"}
+                  </span>
+                  <Button size="sm" onClick={() => setImprimindo(alvoDoPdf(entradas, i, e.pdf!))}>
+                    Baixar PDF
+                  </Button>
+                </div>
               ) : null}
             </div>
           </li>
@@ -217,6 +325,13 @@ export function ChatPanel({ houseId }: { houseId: string }) {
         </Button>
       </form>
 
+      {imprimindo !== null && entradas[imprimindo] ? (
+        <ImpressaoDaResposta
+          pergunta={entradas.slice(0, imprimindo).reverse().find((e) => e.role === "user")?.content ?? null}
+          resposta={entradas[imprimindo]!}
+        />
+      ) : null}
+
       {entradas.length > 0 ? (
         <div className="flex justify-center">
           <Button variant="ghost" size="sm" onClick={limpar} disabled={pending}>
@@ -225,5 +340,29 @@ export function ChatPanel({ houseId }: { houseId: string }) {
         </div>
       ) : null}
     </div>
+  );
+}
+
+/**
+ * O que vai para o PDF: a pergunta, a resposta e os graficos dela, com data.
+ * Invisivel na tela; na impressao, e a unica coisa na pagina (ver
+ * `.so-impressao` em globals.css).
+ */
+function ImpressaoDaResposta({ pergunta, resposta }: { pergunta: string | null; resposta: Entry }) {
+  const hoje = new Date().toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" });
+  return (
+    <section className="so-impressao" aria-hidden>
+      <p className="text-[12px] text-ink-muted">Fluxo · Conversa · {hoje}</p>
+      {pergunta ? <h1 className="mt-2 text-lg font-semibold text-ink">{pergunta}</h1> : null}
+      <div className="mt-3 whitespace-pre-wrap text-sm text-ink">
+        <Texto texto={resposta.content} />
+      </div>
+      {resposta.charts?.map((c) => <ChatChart key={c.id} chart={c} printTable />)}
+      {resposta.consulted?.length ? (
+        <p className="mt-3 text-[11px] text-ink-muted">
+          Dados consultados: {resposta.consulted.join(", ")}. Números calculados pelo app.
+        </p>
+      ) : null}
+    </section>
   );
 }

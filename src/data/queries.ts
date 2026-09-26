@@ -1,5 +1,8 @@
 import "server-only";
-import { withoutExcludedCategories } from "@/domain/finance";
+import { spendingCents, withoutExcludedCategories } from "@/domain/finance";
+import { buildBoard } from "@/domain/tasks";
+import { merchantLabel } from "@/domain/merchants";
+import type { BoardColumn, LinkedTransaction, Task, TaskList } from "@/domain/tasks";
 import { createClient } from "@/lib/supabase/server";
 import type { ProjectItem } from "@/domain/project";
 import type {
@@ -726,4 +729,73 @@ export async function listProjectItems(
     porItem.get(p.itemId)?.purchases.push(p);
   }
   return [...porItem.values()];
+}
+
+// --------------------------------------------------------------------------
+// Tarefas (secao 17)
+// --------------------------------------------------------------------------
+
+/**
+ * O quadro de tarefas: colunas, tarefas e os lancamentos ligados a cada uma.
+ *
+ * Tres leituras e a juncao em memoria, como os projetos. O gasto de cada
+ * tarefa sai dos lancamentos ligados, com a mesma regra de sinal das telas
+ * (`spendingCents`: estorno desconta).
+ */
+export async function getTaskBoard(houseId: string): Promise<BoardColumn[]> {
+  const supabase = await createClient();
+  const [listas, tarefas, elos] = await Promise.all([
+    supabase.from("task_lists").select("id, name, position").eq("house_id", houseId),
+    supabase
+      .from("tasks")
+      .select("id, list_id, title, notes, position, member_id, is_joint, due_date, expected_amount, done")
+      .eq("house_id", houseId),
+    supabase.from("task_transactions").select("task_id, transaction_id").eq("house_id", houseId),
+  ]);
+  if (listas.error) fail("as colunas", listas.error);
+  if (tarefas.error) fail("as tarefas", tarefas.error);
+  if (elos.error) fail("os lançamentos das tarefas", elos.error);
+
+  const ids = [...new Set((elos.data ?? []).map((e) => e.transaction_id as string))];
+  const lancamentos = new Map<string, LinkedTransaction>();
+  if (ids.length > 0) {
+    const { data, error } = await supabase
+      .from("transactions")
+      .select(TRANSACTION_COLUMNS)
+      .eq("house_id", houseId)
+      .in("id", ids);
+    if (error) fail("os lançamentos das tarefas", error);
+    for (const row of data ?? []) {
+      const t = mapTransaction(row);
+      lancamentos.set(t.id, { id: t.id, date: t.date, label: merchantLabel(t), cents: spendingCents(t) });
+    }
+  }
+
+  const porTarefa = new Map<string, LinkedTransaction[]>();
+  for (const e of elos.data ?? []) {
+    const l = lancamentos.get(e.transaction_id as string);
+    if (!l) continue;
+    const k = e.task_id as string;
+    porTarefa.set(k, [...(porTarefa.get(k) ?? []), l]);
+  }
+
+  const tasks: Task[] = (tarefas.data ?? []).map((r) => ({
+    id: r.id as string,
+    listId: r.list_id as string,
+    title: String(r.title),
+    notes: (r.notes as string | null) ?? null,
+    position: Number(r.position),
+    memberId: (r.member_id as string | null) ?? null,
+    isJoint: r.is_joint === true,
+    dueDate: (r.due_date as string | null) ?? null,
+    expectedCents: r.expected_amount === null ? null : Math.round(Number(r.expected_amount) * 100),
+    done: r.done === true,
+    linked: (porTarefa.get(r.id as string) ?? []).sort((a, b) => a.date.localeCompare(b.date)),
+  }));
+  const lists: TaskList[] = (listas.data ?? []).map((l) => ({
+    id: l.id as string,
+    name: String(l.name),
+    position: Number(l.position),
+  }));
+  return buildBoard(lists, tasks);
 }

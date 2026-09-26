@@ -29,9 +29,10 @@ describe("ChatPanel", () => {
     Element.prototype.scrollIntoView = vi.fn();
   });
 
-  it("avisa do gratuito antes da primeira pergunta", () => {
+  it("avisa, antes da primeira pergunta, o que vai para o gratuito e o que vai para o pago", () => {
     render(<ChatPanel houseId="casa-1" />);
-    expect(screen.getByText(/pode guardar e usar as perguntas/)).toBeTruthy();
+    expect(screen.getByText(/pode guardar e usar\s+o que recebe/)).toBeTruthy();
+    expect(screen.getByText(/modelo pago que não guarda/)).toBeTruthy();
   });
 
   it("pergunta, mostra a resposta com o que consultou, e guarda no aparelho", async () => {

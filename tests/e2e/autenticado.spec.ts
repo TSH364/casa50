@@ -51,11 +51,15 @@ test("a navegação principal alcança todas as áreas", async ({ page }) => {
     { link: /previsão/i, url: /\/previsao/ },
     { link: /insights/i, url: /\/insights/ },
     { link: /metas/i, url: /\/metas/ },
-    { link: /casa/i, url: /\/casa/ },
+    { link: /tarefas/i, url: /\/tarefas/ },
   ]) {
     await nav.getByRole("link", { name: rota.link }).first().click();
     await expect(page).toHaveURL(rota.url);
   }
+
+  // A casa: na coluna do computador, ou no icone da barra de cima no celular.
+  await page.locator('a[href="/casa"]:visible').first().click();
+  await expect(page).toHaveURL(/\/casa/);
 });
 
 test("a troca de mês muda a URL e mantém a página", async ({ page }) => {
