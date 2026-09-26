@@ -1,6 +1,6 @@
 import { listRecurrences, listTransactions } from "@/data/queries";
 import { spendingCents } from "@/domain/finance";
-import { forecastMonths } from "@/domain/forecast";
+import { forecastMonths, recurrencesFor } from "@/domain/forecast";
 import { addMonths, monthRange } from "@/domain/month";
 import { Card, CardHeader } from "@/components/ui/card";
 import { Skeleton } from "@/components/states";
@@ -29,23 +29,35 @@ export async function FlowMap({
   houseId,
   month,
   excludeCategoryIds,
+  memberId = null,
+  memberName = null,
 }: {
   houseId: string;
   month: MonthKey;
   /** Categorias fora dos totais da casa. Vem de `houseView`. */
   excludeCategoryIds: string[];
+  /**
+   * O filtro por pessoa do Inicio. O realizado usa a mesma regra dos outros
+   * cards (`belongsToMember`, aplicada por `listTransactions`), e a previsao
+   * sai dos lancamentos DELA e das contas fixas dela e da casa - o mapa nao
+   * pode mostrar o gasto da casa inteira sob o nome de uma pessoa.
+   */
+  memberId?: string | null;
+  memberName?: string | null;
 }) {
   const pastFrom = addMonths(month, -5);
 
-  const [transactions, recurrences] = await Promise.all([
+  const [transactions, todasRecorrencias] = await Promise.all([
     listTransactions(houseId, {
       fromMonth: addMonths(month, -12),
       toMonth: month,
+      memberId,
       excludeCategoryIds,
       limit: 3000,
     }),
     listRecurrences(houseId),
   ]);
+  const recurrences = recurrencesFor(todasRecorrencias, memberId);
 
   const realized = monthRange(pastFrom, month).map((m) => ({
     month: m,
@@ -74,7 +86,11 @@ export async function FlowMap({
     <Card>
       <CardHeader
         title="Mapa de fluxo"
-        description="Meses passados como realizado, próximos como previsão."
+        description={
+          memberName
+            ? `Só de ${memberName}: meses passados como realizado, próximos como previsão (com as contas da casa).`
+            : "Meses passados como realizado, próximos como previsão."
+        }
       />
 
       {!hasAnyData ? (

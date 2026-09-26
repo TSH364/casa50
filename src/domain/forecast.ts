@@ -614,3 +614,21 @@ export function goalProgress(
     onTrack,
   };
 }
+
+/**
+ * As contas fixas que entram na previsao de uma pessoa.
+ *
+ * As dela, e as "da casa" - sem dono, que e como a tela de Previsao chama o
+ * aluguel e a luz. A conta da casa entra com o valor cheio no filtro de cada
+ * um, pela mesma razao que o gasto "dos dois": e dela tambem, e dividir ao
+ * meio seria inventar uma divisao que ninguem cadastrou.
+ *
+ * `null` = todos: a lista volta como veio.
+ */
+export function recurrencesFor(
+  recurrences: readonly Recurrence[],
+  memberId: string | null,
+): Recurrence[] {
+  if (memberId === null) return [...recurrences];
+  return recurrences.filter((r) => r.ownerId === null || r.ownerId === memberId);
+}

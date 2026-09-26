@@ -9,9 +9,10 @@ import type { Card } from "@/domain/types";
  *   - cartao sem dono: o lancamento que ninguem marcou segue o dono do
  *     cartao; sem dono, ele so aparece em "Todos". Sem este aviso, o filtro
  *     de cada um parece simplesmente incompleto.
- *   - paineis da casa toda (fluxo, contas fixas, acerto): o acerto e ENTRE as
- *     pessoas, e cortado por uma delas deixaria de fazer sentido. Ficam como
- *     estao, e a tela diz isso em vez de ignorar o filtro calada.
+ *   - paineis da casa toda (contas fixas e orcamentos): orcamento e limite da
+ *     casa, e cortado por pessoa deixaria de ser comparavel com o limite.
+ *     Ficam como estao, e a tela diz isso em vez de ignorar o filtro calada.
+ *     O mapa de fluxo SEGUE o filtro (a pedido de quem usa).
  */
 export function PersonFilterNote({
   cards,
@@ -35,7 +36,7 @@ export function PersonFilterNote({
           {houseWidePanels ? ". " : "."}
         </>
       ) : null}
-      {houseWidePanels ? "Fluxo, contas fixas e acerto são sempre da casa toda." : null}
+      {houseWidePanels ? "Contas fixas e orçamentos são sempre da casa toda." : null}
     </p>
   );
 }
