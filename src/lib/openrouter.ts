@@ -88,6 +88,8 @@ export interface CallOptions {
   maxTokens?: number;
   fetchImpl?: typeof fetch;
   onUsage?: UsageReport;
+  /** Frase quando o relogio estoura; o padrao fala da leitura de orcamento. */
+  timeoutMessage?: string;
 }
 
 /**
@@ -204,7 +206,8 @@ export async function chatCompletion(
     apiKey: options.apiKey,
     model: modelo,
     timeoutMs: TIMEOUT_MS,
-    timeoutMessage: "A leitura com IA demorou demais. Tente de novo, ou preencha à mão.",
+    timeoutMessage:
+      options.timeoutMessage ?? "A leitura com IA demorou demais. Tente de novo, ou preencha à mão.",
     fetchImpl: options.fetchImpl,
     body: {
       messages,

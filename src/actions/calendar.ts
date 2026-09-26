@@ -280,7 +280,7 @@ export async function addCalendarSource(input: unknown): Promise<SyncResult> {
 
   const result = await syncOne(data.id as string, houseId);
   revalidatePath("/casa");
-  revalidatePath("/previsao");
+  revalidatePath("/analise");
   revalidatePath("/orcamentos");
 
   if ("error" in result) return { ok: true, error: result.error };
@@ -323,9 +323,8 @@ export async function syncCalendars(): Promise<SyncResult> {
   }
 
   revalidatePath("/casa");
-  revalidatePath("/previsao");
+  revalidatePath("/analise");
   revalidatePath("/orcamentos");
-  revalidatePath("/insights");
 
   return { ok: true, events, costly, failed: failed.length > 0 ? failed : undefined };
 }
@@ -344,7 +343,7 @@ export async function removeCalendarSource(sourceId: string): Promise<FormState>
   }
 
   revalidatePath("/casa");
-  revalidatePath("/previsao");
+  revalidatePath("/analise");
   revalidatePath("/orcamentos");
   return { ok: true };
 }
@@ -415,9 +414,8 @@ export async function syncStaleCalendars(): Promise<void> {
     }
 
     if (changed) {
-      revalidatePath("/previsao");
+      revalidatePath("/analise");
       revalidatePath("/orcamentos");
-      revalidatePath("/insights");
       revalidatePath("/casa");
     }
   } catch {
@@ -456,8 +454,7 @@ export async function setTransactionEventLink(
     return { error: "Não foi possível registrar o vínculo." };
   }
 
-  revalidatePath("/previsao");
-  revalidatePath("/insights");
+  revalidatePath("/analise");
   return { ok: true };
 }
 
@@ -480,7 +477,6 @@ export async function clearTransactionEventLink(
     return { error: "Não foi possível desfazer o vínculo." };
   }
 
-  revalidatePath("/previsao");
-  revalidatePath("/insights");
+  revalidatePath("/analise");
   return { ok: true };
 }

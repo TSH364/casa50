@@ -181,7 +181,7 @@ export async function RebalancePanel({
       <p className="mt-2 text-[12px] text-ink-faint">
         Parcelas e contas recorrentes do mês não entram no corte, e nenhum
         limite cai abaixo do que já foi gasto.{" "}
-        <Link href="/previsao" className="text-brand underline-offset-4 hover:underline">
+        <Link href="/analise#recorrencias" className="text-brand underline-offset-4 hover:underline">
           Ver os compromissos
         </Link>
         .

@@ -413,5 +413,5 @@ export async function applyProposal(input: unknown): Promise<ApplyProposalResult
 function revalidarLancamentos() {
   revalidatePath("/inicio");
   revalidatePath("/extratos");
-  revalidatePath("/insights");
+  revalidatePath("/analise");
 }
