@@ -37,7 +37,7 @@ export function InvoiceList({
 
   /**
    * Reanalisa sem confirmação: a ação não apaga nada, só preenche categoria
-   * vazia. Pedir "tem certeza?" para algo reversível e inofensivo é ruído.
+   * e subcategoria vazias (por regra, e pelo Jev onde a regra não resolve). Pedir "tem certeza?" para algo reversível e inofensivo é ruído.
    */
   function reclassify(invoice: InvoiceSummary) {
     startTransition(async () => {
@@ -50,6 +50,7 @@ export function InvoiceList({
       // reanalisar que só ligou cartão não é "nada a fazer".
       const feito: string[] = [];
       if (result.updated) feito.push(`${result.updated} categorizados`);
+      if (result.subcategorized) feito.push(`${result.subcategorized} com subcategoria`);
       if (result.cardsLinked) {
         feito.push(
           `${result.cardsLinked} ligados ao cartão` +
@@ -77,8 +78,12 @@ export function InvoiceList({
       }
       toast.success(
         `${feito.join(" · ")}.` +
+          // Palpite dito como palpite: quem le precisa saber que parte veio
+          // da IA, para conferir no extrato.
+          (result.byJev ? ` ${result.byJev} pelo Jev — confira no extrato.` : "") +
           (pendencias.length > 0 ? ` Restam: ${pendencias.join("; ")}.` : ""),
       );
+      if (result.note) toast.warning(result.note);
     });
   }
 

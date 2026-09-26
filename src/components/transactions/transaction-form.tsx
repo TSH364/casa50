@@ -1,9 +1,13 @@
 "use client";
 
-import { useActionState, useEffect, useState } from "react";
+import { useActionState, useEffect, useState, useTransition } from "react";
 import { useFormStatus } from "react-dom";
 import { toast } from "sonner";
 import { createTransaction, updateTransaction } from "@/actions/transactions";
+import { suggestCategoryFromText } from "@/actions/jev";
+import type { CategorySuggestion } from "@/actions/jev";
+import { probabilityLabel } from "@/domain/jev";
+import { parseAmountCents } from "@/lib/money";
 import type { FormState } from "@/actions/shared";
 import { Dialog, DialogClose, DialogContent } from "@/components/ui/dialog";
 import { Field, Input, Textarea } from "@/components/ui/field";
@@ -91,6 +95,35 @@ export function TransactionFormDialog({
   );
   const [visibility, setVisibility] = useState(transaction?.visibility ?? "shared");
   const [date, setDate] = useState(transaction?.date ?? todayIso());
+  // Sugestao de categoria pela descricao. So em lancamento NOVO e com a
+  // categoria vazia: editar um lancamento nao pode trocar o que alguem ja
+  // escolheu.
+  const [sugestao, setSugestao] = useState<(CategorySuggestion & { aplicada?: boolean }) | null>(null);
+  const [sugerindo, startSugestao] = useTransition();
+
+  function sugerir(descricao: string, amountRaw: string) {
+    if (isEdit || categoryId !== "" || descricao.trim().length < 3) return;
+    const cents = parseAmountCents(amountRaw);
+    startSugestao(async () => {
+      const r = await suggestCategoryFromText({
+        description: descricao,
+        ...(cents !== null && cents > 0 ? { amountCents: cents } : {}),
+      }).catch(() => ({}) as CategorySuggestion);
+      if (!r.categoryId) {
+        setSugestao(null);
+        return;
+      }
+      // Regra da casa e loja conhecida sao decisoes ja tomadas: entram
+      // direto. Palpite do Jev espera o toque em "Usar".
+      if (r.via !== "jev") {
+        setCategoryId(r.categoryId);
+        setSubcategoryId(r.subcategoryId ?? "");
+        setSugestao({ ...r, aplicada: true });
+      } else {
+        setSugestao(r);
+      }
+    });
+  }
 
   useEffect(() => {
     if (state.ok) {
@@ -132,6 +165,11 @@ export function TransactionFormDialog({
               defaultValue={transaction?.description ?? ""}
               placeholder="Mercado, aluguel, jantar…"
               aria-invalid={err.description ? true : undefined}
+              onBlur={(e) => {
+                const form = e.currentTarget.form;
+                const valor = form?.elements.namedItem("amount") as HTMLInputElement | null;
+                sugerir(e.currentTarget.value, valor?.value ?? "");
+              }}
             />
           </Field>
 
@@ -204,6 +242,35 @@ export function TransactionFormDialog({
                 }}
                 options={parents.map((c) => ({ value: c.id, label: c.name }))}
               />
+              {sugerindo ? (
+                <p className="mt-1 text-[12px] text-ink-muted">Procurando a categoria…</p>
+              ) : sugestao?.categoryId ? (
+                sugestao.aplicada ? (
+                  sugestao.categoryId === categoryId ? (
+                    <p className="mt-1 text-[12px] text-ink-muted">
+                      {sugestao.via === "regra" ? "Pela regra da casa." : "Pelo nome da loja."}
+                    </p>
+                  ) : null
+                ) : (
+                  <button
+                    type="button"
+                    className="mt-1 inline-flex min-h-9 items-center rounded-full border border-brand/50 bg-brand-soft px-3 text-left text-[12px] text-ink"
+                    onClick={() => {
+                      setCategoryId(sugestao.categoryId!);
+                      setSubcategoryId(sugestao.subcategoryId ?? "");
+                      setSugestao({ ...sugestao, aplicada: true });
+                    }}
+                  >
+                    Usar {categories.find((c) => c.id === sugestao.categoryId)?.name}
+                    {sugestao.subcategoryId
+                      ? ` › ${categories.find((c) => c.id === sugestao.subcategoryId)?.name ?? ""}`
+                      : ""}
+                    <span className="ml-1 text-ink-muted">
+                      (Jev{sugestao.probability ? ` · ${probabilityLabel(sugestao.probability)}` : ""})
+                    </span>
+                  </button>
+                )
+              ) : null}
             </Field>
             {children.length > 0 ? (
               <Field
