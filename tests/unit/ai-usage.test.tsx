@@ -170,4 +170,33 @@ describe("tela", () => {
     expect(screen.getByText(/40 chamadas/)).toBeTruthy();
     expect(screen.getByText(/conta na cota de 50 chamadas/)).toBeTruthy();
   });
+
+  it("com cotação: tudo em reais, e diz de onde veio a cotação", async () => {
+    vi.doMock("@/actions/ai-settings", () => ({
+      aiKeyUsage: async () => ({
+        info: { usageUsd: 2, limitUsd: 10, dailyUsd: 0.1, weeklyUsd: 0.5, monthlyUsd: 1.2 },
+        month: { byFeature: [{ feature: "jev", calls: 40, costUsd: 0.0008 }, { feature: "conversa_paga", calls: 5, costUsd: 0.4 }], totalUsd: 0.4008, calls: 45 },
+        fx: { rate: 5.35, date: "2026-09-25", source: "PTAX" },
+      }),
+      saveAiKey: async () => ({}),
+      removeAiKey: async () => ({}),
+      saveQuoteModel: async () => ({}),
+    }));
+    vi.resetModules();
+    const { AiSettings } = await import("@/components/house/ai-settings");
+    render(
+      <AiSettings
+        status={{ source: "casa", keyHint: "…a1b2", quoteModel: "anthropic/claude-sonnet-5", quoteModelLocked: false }}
+        canManage
+      />,
+    );
+    await waitFor(() => expect(screen.getByText(/PTAX do Banco Central/)).toBeTruthy());
+    // US$ 1,20 no mes = R$ 6,42; US$ 0,40 = R$ 2,14; US$ 0,0008 = menos de um centavo.
+    expect(screen.getByText(/R\$\s?6,42/)).toBeTruthy();
+    expect(screen.getByText(/R\$\s?2,14/)).toBeTruthy();
+    expect(screen.getByText("< R$ 0,01")).toBeTruthy();
+    // O total da chave em reais, com o dolar ao lado, e o limite em reais.
+    expect(screen.getByText(/Total da chave: R\$\s?10,70 \(US\$\s?2,00\) de R\$\s?53,50 de limite/)).toBeTruthy();
+    expect(screen.getByText(/IOF/)).toBeTruthy();
+  });
 });

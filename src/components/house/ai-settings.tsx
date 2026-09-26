@@ -43,6 +43,21 @@ function dolar(v: number): string {
   return v < 1 ? USD_MIUDO.format(v) : USD.format(v);
 }
 
+const BRL = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
+
+type Cotacao = NonNullable<AiUsageReport["fx"]>;
+
+/**
+ * O valor em reais, pela cotacao do dia; em dolar quando nao ha cotacao.
+ * Centavo de centavo nao vira "R$ 0,00": o que custou algo diz que custou.
+ */
+function dinheiro(usd: number, fx: Cotacao | null): string {
+  if (!fx) return dolar(usd);
+  const reais = usd * fx.rate;
+  if (reais > 0 && reais < 0.01) return "< R$ 0,01";
+  return BRL.format(reais);
+}
+
 const USO: Record<string, string> = {
   conversa_paga: "Conversa (pago)",
   conversa_gratuita: "Conversa (gratuito)",
@@ -62,6 +77,7 @@ export function AiSettings({
   const [confirmarRemocao, setConfirmarRemocao] = useState(false);
   const [gasto, setGasto] = useState<KeyInfo | null>(null);
   const [mes, setMes] = useState<AiUsageReport["month"] | null>(null);
+  const [fx, setFx] = useState<Cotacao | null>(null);
   const [erroGasto, setErroGasto] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
@@ -78,6 +94,7 @@ export function AiSettings({
       if (r.info) setGasto(r.info);
       else if (r.error) setErroGasto(r.error);
       if (r.month) setMes(r.month);
+      if (r.fx) setFx(r.fx);
     });
     return () => {
       vivo = false;
@@ -167,9 +184,10 @@ export function AiSettings({
 
             {gasto ? (
               <p className="tabular mt-1 text-[12px] text-ink-muted">
-                Total da chave: {dolar(gasto.usageUsd)}
+                Total da chave: {dinheiro(gasto.usageUsd, fx)}
+                {fx ? ` (${dolar(gasto.usageUsd)})` : ""}
                 {gasto.limitUsd !== null ? (
-                  ` de ${USD.format(gasto.limitUsd)} de limite`
+                  ` de ${dinheiro(gasto.limitUsd, fx)} de limite`
                 ) : (
                   // Sem limite é o caso que pede atenção: é o único em que um
                   // erro que repita chamadas não tem teto.
@@ -182,7 +200,7 @@ export function AiSettings({
           </div>
         </div>
 
-        {temChave && (gasto || mes) ? <GastoDeIa gasto={gasto} mes={mes} /> : null}
+        {temChave && (gasto || mes) ? <GastoDeIa gasto={gasto} mes={mes} fx={fx} /> : null}
 
         {mostrarCampo ? (
           <div className="space-y-1.5">
@@ -317,7 +335,15 @@ export function AiSettings({
  * diferenca: a chave pode ser usada fora do app, e o OpenRouter fecha o dia e
  * o mes em UTC (21h em Brasilia).
  */
-function GastoDeIa({ gasto, mes }: { gasto: KeyInfo | null; mes: AiUsageReport["month"] | null }) {
+function GastoDeIa({
+  gasto,
+  mes,
+  fx,
+}: {
+  gasto: KeyInfo | null;
+  mes: AiUsageReport["month"] | null;
+  fx: Cotacao | null;
+}) {
   const periodos = gasto
     ? ([
         ["Hoje", gasto.dailyUsd],
@@ -335,7 +361,7 @@ function GastoDeIa({ gasto, mes }: { gasto: KeyInfo | null; mes: AiUsageReport["
           {periodos.map(([rotulo, valor]) => (
             <div key={rotulo} className="rounded-[--radius-control] bg-surface-2 px-2.5 py-2">
               <dt className="text-[11px] text-ink-muted">{rotulo}</dt>
-              <dd className="tabular text-sm font-semibold text-ink">{dolar(valor!)}</dd>
+              <dd className="tabular text-sm font-semibold text-ink">{dinheiro(valor!, fx)}</dd>
             </div>
           ))}
         </dl>
@@ -351,7 +377,7 @@ function GastoDeIa({ gasto, mes }: { gasto: KeyInfo | null; mes: AiUsageReport["
                 <span className="tabular shrink-0 text-[12px] text-ink-muted">
                   {u.calls} chamada{u.calls === 1 ? "" : "s"}
                 </span>
-                <span className="tabular w-24 shrink-0 text-right text-ink">{dolar(u.costUsd)}</span>
+                <span className="tabular w-24 shrink-0 text-right text-ink">{dinheiro(u.costUsd, fx)}</span>
               </li>
             ))}
           </ul>
@@ -366,8 +392,18 @@ function GastoDeIa({ gasto, mes }: { gasto: KeyInfo | null; mes: AiUsageReport["
       ) : null}
 
       <p className="text-[12px] text-ink-muted">
-        Valores em dólar, a moeda dos créditos do OpenRouter. A conta do OpenRouter vira o dia em
-        UTC (21h em Brasília) e inclui qualquer uso da chave fora do app.
+        {fx ? (
+          <>
+            Em reais pela cotação {fx.source === "PTAX" ? "PTAX do Banco Central" : "comercial"}
+            {fx.date ? ` de ${fx.date.slice(8, 10)}/${fx.date.slice(5, 7)}` : ""} (US$ 1 ={" "}
+            {BRL.format(fx.rate)}). O OpenRouter cobra em dólar: na fatura do cartão entram
+            ainda o IOF e o câmbio do banco, alguns por cento a mais.
+          </>
+        ) : (
+          "Cotação do dólar indisponível agora: valores em dólar, a moeda dos créditos do OpenRouter."
+        )}{" "}
+        A conta do OpenRouter vira o dia em UTC (21h em Brasília) e inclui qualquer uso da chave
+        fora do app.
       </p>
     </div>
   );

@@ -7,6 +7,8 @@ import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { checkKey, OpenRouterError, type KeyInfo } from "@/lib/openrouter";
 import { getAiKey } from "@/lib/ai-config";
+import { usdBrl } from "@/lib/fx";
+import type { UsdBrl } from "@/lib/fx";
 import { isQuoteModel, OPENROUTER_KEY_RE } from "@/domain/ai-models";
 import { requireHouseId } from "./shared";
 import type { FormState } from "./shared";
@@ -132,6 +134,8 @@ export interface AiUsageReport {
   error?: string;
   /** Este mes, pelo registro do app: por uso, e o total. */
   month?: { byFeature: UsageByFeature[]; totalUsd: number; calls: number };
+  /** Cotacao para mostrar em reais; `null` quando nenhuma fonte respondeu. */
+  fx?: UsdBrl | null;
 }
 
 /**
@@ -146,14 +150,15 @@ export async function aiKeyUsage(): Promise<AiUsageReport> {
   const apiKey = await getAiKey(houseId);
   if (!apiKey) return {};
 
-  const [chave, mes] = await Promise.all([
+  const [chave, mes, fx] = await Promise.all([
     checkKey(apiKey).then(
       (info) => ({ info }),
       (e: unknown) => ({ error: e instanceof OpenRouterError ? e.message : "Não consegui consultar o gasto." }),
     ),
     usoDoMes(houseId),
+    usdBrl(),
   ]);
-  return { ...chave, ...(mes ? { month: mes } : {}) };
+  return { ...chave, ...(mes ? { month: mes } : {}), fx };
 }
 
 const ORDEM: AiFeature[] = ["conversa_paga", "conversa_gratuita", "jev", "orcamento"];
