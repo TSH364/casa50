@@ -11,7 +11,7 @@ import { buildInfo, buildLabel, versionLabel } from "@/lib/version";
 import { cookies } from "next/headers";
 import { ThemeToggle } from "@/components/theme-toggle";
 import Link from "next/link";
-import { MessageCircle } from "lucide-react";
+import { MessageCircle, Users } from "lucide-react";
 import { THEME_COOKIE, parseTheme } from "@/lib/theme";
 
 export default async function AppLayout({
@@ -73,13 +73,20 @@ export default async function AppLayout({
             >
               {versionLabel(build)}
             </span>
-            {/* A conversa, no celular: a barra de baixo ja esta cheia. */}
+            {/* Conversa e casa, no celular: a barra de baixo ja esta cheia. */}
             <Link
               href="/conversa"
               aria-label="Conversa com a IA"
               className="inline-flex size-11 items-center justify-center rounded-full text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink md:hidden"
             >
               <MessageCircle className="size-[18px]" aria-hidden />
+            </Link>
+            <Link
+              href="/casa"
+              aria-label="Casa: pessoas, cartões e configurações"
+              className="inline-flex size-11 items-center justify-center rounded-full text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink md:hidden"
+            >
+              <Users className="size-[18px]" aria-hidden />
             </Link>
             <ThemeToggle initial={tema} />
             <form action={signOut}>

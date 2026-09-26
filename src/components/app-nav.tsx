@@ -8,6 +8,7 @@ import {
   ReceiptText,
   TrendingUp,
   Hammer,
+  KanbanSquare,
   Sparkles,
   Target,
   Users,
@@ -21,10 +22,12 @@ const ITEMS = [
   { href: "/insights", label: "Insights", Icon: Sparkles },
   { href: "/metas", label: "Metas", Icon: Target },
   { href: "/projetos", label: "Projetos", Icon: Hammer },
+  { href: "/tarefas", label: "Tarefas", Icon: KanbanSquare },
   // So no computador: a barra do celular ja tem sete, e uma oitava espremia
-  // os rotulos. No celular a conversa fica no icone da barra de cima.
+  // os rotulos. No celular, conversa e casa ficam em icones da barra de cima
+  // - a casa se abre pouco (convites, cartoes, chave), tarefas todo dia.
   { href: "/conversa", label: "Conversa", Icon: MessageCircle, desktopOnly: true },
-  { href: "/casa", label: "Casa", Icon: Users },
+  { href: "/casa", label: "Casa", Icon: Users, desktopOnly: true },
 ] as const;
 
 /**
