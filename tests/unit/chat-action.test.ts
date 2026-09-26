@@ -57,6 +57,13 @@ vi.mock("@/actions/shared", () => ({
   },
 }));
 vi.mock("@/lib/ai-config", () => ({ getAiKey: async () => estado.chave }));
+vi.mock("next/cache", () => ({ revalidatePath: () => {} }));
+// A conversa so le por ferramentas (mockadas abaixo); o cliente do banco so
+// e usado por `applyProposal`, testado em chat-proposals.test.ts.
+vi.mock("@/lib/supabase/server", () => ({
+  getCurrentUser: async () => null,
+  createClient: async () => ({}),
+}));
 vi.mock("@/lib/houses", () => ({
   getActiveHouse: async () => ({ active: { id: "casa-1", name: "Casa 50" } }),
   listMembers: async () => [

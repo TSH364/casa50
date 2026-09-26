@@ -1,6 +1,10 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
 import { z } from "zod";
+import { createClient, getCurrentUser } from "@/lib/supabase/server";
+import { fromMonthKey } from "@/data/mappers";
+import { fromCents } from "@/lib/money";
 import { requireHouseId } from "./shared";
 import { getAiKey } from "@/lib/ai-config";
 import { getActiveHouse, listMembers } from "@/lib/houses";
@@ -22,7 +26,7 @@ import {
   firstName,
   trimHistory,
 } from "@/domain/chat";
-import type { ToolName } from "@/domain/chat";
+import type { Proposal, ToolName } from "@/domain/chat";
 import { currentMonth } from "@/domain/month";
 
 /**
@@ -64,6 +68,8 @@ export interface ChatReply {
   route?: Route["reason"];
   /** O gratuito falhou e o pago assumiu. */
   fellBack?: boolean;
+  /** Mudancas propostas - NAO gravadas; a tela mostra como cartoes. */
+  proposals?: Proposal[];
 }
 
 /** Tempo total da pergunta, abaixo do `maxDuration` da pagina. */
@@ -98,6 +104,9 @@ export async function askHouse(input: z.input<typeof schema>): Promise<ChatReply
     members,
     categories: view.categories,
     excludeCategoryIds: view.excludeCategoryIds,
+    proposals: [],
+    // AAAA-MM-DD no fuso da casa: "gastei ontem" as 23h nao pode cair amanha.
+    todayIso: new Date().toLocaleDateString("sv-SE", { timeZone: "America/Sao_Paulo" }),
   };
 
   // O mes do retrato: o atual, ou o mais recente com dados que nao seja
@@ -190,6 +199,8 @@ async function runConversation(
 ): Promise<ChatReply> {
   const conversa: TurnMessage[] = [{ role: "system", content: system }, ...historico];
   const consultadas = new Set<ToolName>();
+  // Uma tentativa que falhou no gratuito nao deixa proposta para tras.
+  ctx.proposals.length = 0;
   const inicio = Date.now();
 
   for (let rodada = 0; rodada <= MAX_TOOL_ROUNDS; rodada += 1) {
@@ -211,6 +222,7 @@ async function runConversation(
         answer: turn.content.trim(),
         consulted: [...consultadas].map((t) => TOOL_LABEL[t]),
         model: turn.servedBy,
+        ...(ctx.proposals.length > 0 ? { proposals: [...ctx.proposals] } : {}),
       };
     }
 
@@ -223,4 +235,139 @@ async function runConversation(
     }
   }
   return { error: "A IA não chegou a uma resposta. Tente perguntar de um jeito mais direto." };
+}
+
+// ---------------------------------------------------------------------------
+// Confirmar uma proposta
+// ---------------------------------------------------------------------------
+
+const uuid = z.string().uuid();
+const proposalSchema = z.discriminatedUnion("kind", [
+  z.object({
+    kind: z.literal("classificar"),
+    transactionIds: z.array(uuid).min(1).max(1000),
+    categoryId: uuid,
+    subcategoryId: uuid.nullable(),
+    learnMerchant: z.string().trim().min(1).max(300).nullable(),
+    /** A pessoa pode desmarcar "aprender" no cartao. */
+    learn: z.boolean(),
+  }),
+  z.object({
+    kind: z.literal("lancar"),
+    fields: z.object({
+      description: z.string().trim().min(2).max(200),
+      amountCents: z.number().int().positive().max(1_000_000_000),
+      date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+      invoiceMonth: z.string().regex(/^\d{4}-\d{2}$/),
+      categoryId: uuid.nullable(),
+      subcategoryId: uuid.nullable(),
+      memberId: uuid.nullable(),
+      isJoint: z.boolean(),
+    }),
+  }),
+]);
+
+export interface ApplyProposalResult {
+  error?: string;
+  ok?: boolean;
+  /** Quantos lancamentos mudaram (classificar) ou 1 (lancar). */
+  count?: number;
+}
+
+/**
+ * Grava uma proposta da conversa - so depois do toque em "Confirmar".
+ *
+ * TUDO e conferido de novo aqui, porque a proposta passou pelo navegador:
+ * os lancamentos sao desta casa, a categoria e desta casa e e categoria-mae,
+ * a subcategoria e filha dela, a pessoa e da casa. Uma proposta adulterada
+ * no navegador so consegue o que a pessoa ja conseguiria pelas telas.
+ */
+export async function applyProposal(input: unknown): Promise<ApplyProposalResult> {
+  const houseId = await requireHouseId();
+  const parsed = proposalSchema.safeParse(input);
+  if (!parsed.success) return { error: "Proposta inválida." };
+  const p = parsed.data;
+  const [supabase, user] = await Promise.all([createClient(), getCurrentUser()]);
+
+  const categoriaOk = async (categoryId: string | null, subcategoryId: string | null) => {
+    if (categoryId === null) return subcategoryId === null;
+    const ids = subcategoryId ? [categoryId, subcategoryId] : [categoryId];
+    const { data } = await supabase
+      .from("categories")
+      .select("id, parent_id")
+      .eq("house_id", houseId)
+      .in("id", ids);
+    const mae = (data ?? []).find((c) => c.id === categoryId);
+    if (!mae || mae.parent_id !== null) return false;
+    if (subcategoryId === null) return true;
+    return (data ?? []).some((c) => c.id === subcategoryId && c.parent_id === categoryId);
+  };
+
+  if (p.kind === "classificar") {
+    if (!(await categoriaOk(p.categoryId, p.subcategoryId))) return { error: "Categoria não encontrada." };
+    const { data: marcados, error } = await supabase
+      .from("transactions")
+      .update({ category_id: p.categoryId, subcategory_id: p.subcategoryId })
+      .eq("house_id", houseId)
+      .in("id", p.transactionIds)
+      .select("id");
+    if (error) {
+      console.error("[conversa] falha ao classificar", { code: error.code });
+      return { error: "Não foi possível classificar." };
+    }
+    if (p.learn && p.learnMerchant) {
+      // A casa confirmou: agora e decisao dela, e vira regra para as proximas
+      // faturas - como qualquer correcao feita a mao no extrato.
+      const { error: erroRegra } = await supabase.from("learned_rules").upsert(
+        {
+          house_id: houseId,
+          pattern: p.learnMerchant,
+          category_id: p.categoryId,
+          subcategory_id: p.subcategoryId,
+          created_by: user?.id ?? null,
+        },
+        { onConflict: "house_id,normalized_pattern" },
+      );
+      if (erroRegra) console.error("[conversa] falha ao aprender a regra", { code: erroRegra.code });
+    }
+    revalidarLancamentos();
+    return { ok: true, count: marcados?.length ?? 0 };
+  }
+
+  const f = p.fields;
+  if (!(await categoriaOk(f.categoryId, f.subcategoryId))) return { error: "Categoria não encontrada." };
+  if (f.isJoint && f.memberId !== null) return { error: "Gasto dos dois não tem uma pessoa só." };
+  if (f.memberId !== null) {
+    const membros = await listMembers(houseId);
+    if (!membros.some((m) => m.userId === f.memberId)) return { error: "Essa pessoa não é da casa." };
+  }
+  const { error } = await supabase.from("transactions").insert({
+    house_id: houseId,
+    origin: "manual",
+    status: "confirmed",
+    type: "expense",
+    visibility: "shared",
+    description: f.description,
+    merchant_original: f.description,
+    amount: fromCents(f.amountCents),
+    date: f.date,
+    invoice_month: fromMonthKey(f.invoiceMonth),
+    category_id: f.categoryId,
+    subcategory_id: f.subcategoryId,
+    member_id: f.memberId,
+    is_joint: f.isJoint,
+    created_by: user?.id ?? null,
+  });
+  if (error) {
+    console.error("[conversa] falha ao lançar", { code: error.code });
+    return { error: "Não foi possível lançar." };
+  }
+  revalidarLancamentos();
+  return { ok: true, count: 1 };
+}
+
+function revalidarLancamentos() {
+  revalidatePath("/inicio");
+  revalidatePath("/extratos");
+  revalidatePath("/insights");
 }

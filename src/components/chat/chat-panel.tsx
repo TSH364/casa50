@@ -3,7 +3,9 @@
 import { useEffect, useRef, useState, useTransition } from "react";
 import { ArrowUp, Trash2 } from "lucide-react";
 import { askHouse } from "@/actions/chat";
-import type { ChatMessage } from "@/domain/chat";
+import type { ChatMessage, Proposal } from "@/domain/chat";
+import { ProposalCard } from "./proposal-card";
+import type { ProposalStatus } from "./proposal-card";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -22,10 +24,30 @@ interface Entry extends ChatMessage {
   tier?: "gratuito" | "pago";
   fellBack?: boolean;
   error?: boolean;
+  proposals?: Proposal[];
+  /** id da proposta -> o que a casa fez com ela, e a frase do resultado. */
+  resolved?: Record<string, { status: ProposalStatus; note: string }>;
+}
+
+/**
+ * O texto que volta ao modelo por uma resposta: a propria resposta, e o que
+ * a casa fez com as propostas dela. Sem isto, na pergunta seguinte a IA nao
+ * saberia se a classificacao foi feita - e poderia propor de novo, ou dizer
+ * que ja estava feita quando foi descartada.
+ */
+function conteudoParaModelo(e: Entry): string {
+  const feitos = Object.values(e.resolved ?? {}).map((r) => `[${r.note}]`);
+  const pendentes = (e.proposals ?? []).filter((p) => !e.resolved?.[p.id]).length;
+  return [
+    e.content,
+    ...feitos,
+    ...(pendentes > 0 ? [`[${pendentes} proposta(s) ainda sem resposta da casa.]`] : []),
+  ].join("\n");
 }
 
 const SUGESTOES = [
   "Quanto gastamos este mês?",
+  "O que falta classificar?",
   "Onde mais gastamos com alimentação nos últimos 3 meses?",
   "Quais parcelas ainda vão cair?",
   "Como estão os orçamentos e as metas?",
@@ -103,7 +125,7 @@ export function ChatPanel({ houseId }: { houseId: string }) {
       // conversa.
       const historico = comPergunta
         .filter((e) => !e.error)
-        .map(({ role, content }) => ({ role, content }));
+        .map((e) => ({ role: e.role, content: e.role === "assistant" ? conteudoParaModelo(e) : e.content }));
       let r: Awaited<ReturnType<typeof askHouse>>;
       try {
         r = await askHouse({ messages: historico });
@@ -118,11 +140,22 @@ export function ChatPanel({ houseId }: { houseId: string }) {
             model: r.model,
             tier: r.tier,
             fellBack: r.fellBack,
+            ...(r.proposals?.length ? { proposals: r.proposals } : {}),
           }
         : { role: "assistant", content: r.error ?? "A conversa falhou.", error: true };
       const nova = [...comPergunta, resposta];
       setEntradas(nova);
       gravar(chave, nova);
+    });
+  }
+
+  function resolver(indice: number, proposalId: string, status: ProposalStatus, note: string) {
+    setEntradas((atual) => {
+      const nova = atual.map((e, i) =>
+        i === indice ? { ...e, resolved: { ...e.resolved, [proposalId]: { status, note } } } : e,
+      );
+      gravar(chave, nova);
+      return nova;
     });
   }
 
@@ -180,6 +213,14 @@ export function ChatPanel({ houseId }: { houseId: string }) {
               )}
             >
               <Texto texto={e.content} />
+              {e.proposals?.map((p) => (
+                <ProposalCard
+                  key={p.id}
+                  proposal={p}
+                  status={e.resolved?.[p.id]?.status ?? "pendente"}
+                  onResolve={(status, note) => resolver(i, p.id, status, note)}
+                />
+              ))}
               {e.role === "assistant" && !e.error && (e.consulted?.length || e.model) ? (
                 <p className="mt-1.5 text-[11px] text-ink-muted">
                   {e.consulted?.length ? `Consultei: ${e.consulted.join(", ")}` : "Respondi com o resumo do mês"}
