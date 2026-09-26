@@ -95,7 +95,7 @@ export function buildFacts(input: FactInput): Fact[] {
     const m = media(anteriores.map((x) => summarizeMonth(transactions, x).spentCents));
     add(`Média de gasto dos ${anteriores.length} meses anteriores`, brl(m));
     if (m > 0) {
-      add(`Diferença de ${rotuloMes} para a média`, `${sinal(atual.spentCents - m)} (${pct((atual.spentCents - m) / m)})`);
+      add(`Diferença de ${rotuloMes} para a média`, `${sinal(atual.spentCents - m)} (${atual.spentCents >= m ? "+" : ""}${pct((atual.spentCents - m) / m)})`);
     }
   }
   if (atual.incomeCents > 0) {
@@ -126,7 +126,12 @@ export function buildFacts(input: FactInput): Fact[] {
   for (const c of doMes.slice(0, 10)) {
     const m = mediaDe(c.categoryId);
     const partes = [`${brl(c.totalCents)} em ${c.count} lançamento(s), ${pct(c.share)} do gasto`];
-    if (m !== null && anteriores.length >= 2) partes.push(`média anterior ${brl(m)}, diferença ${sinal(c.totalCents - m)}`);
+    if (m !== null && anteriores.length >= 2) {
+      // A variacao vai pronta: sem ela, a IA calcula a porcentagem sozinha - e
+      // a conferencia descarta, porque o numero nao estaria nos fatos.
+      const variacao = m > 0 ? ` (${c.totalCents >= m ? "+" : ""}${pct((c.totalCents - m) / m)})` : "";
+      partes.push(`média anterior ${brl(m)}, diferença ${sinal(c.totalCents - m)}${variacao}`);
+    }
     add(`Categoria ${nomeCategoria(c.categoryId)} no mês`, partes.join("; "));
   }
   // O que costumava pesar e sumiu tambem e noticia.
@@ -226,7 +231,8 @@ O que vale uma análise: ligar fatos entre si (uma categoria que subiu e a loja 
 REGRAS DE NÚMERO, obrigatórias:
 - Use só números que aparecem nos fatos, escritos como estão (ex.: "R$ 1.234,56", "32%").
 - Não faça conta nova: não some, não subtraia, não calcule porcentagem. Se precisar de uma diferença, use a que já está num fato.
-- Cada análise cita de 1 a 4 fatos pelo id (ex.: ["F3","F12"]), e todo número do texto tem de estar num fato citado.
+- Cada análise cita de 1 a 4 fatos pelo id no campo "fatos" (ex.: ["F3","F12"]), e todo número do texto tem de estar num fato citado.
+- Não escreva os ids (F3, F12) dentro do título, do texto ou da sugestão.
 - Datas, dias e anos: não escreva.
 
 Tom: direto, sem julgamento moral, sem "vocês deveriam se envergonhar". A sugestão é opcional, prática e sem número novo.
@@ -254,6 +260,8 @@ export interface CheckedAnalyses {
   items: AiAnalysis[];
   /** Quantas a IA escreveu e a conferencia jogou fora. */
   dropped: number;
+  /** Os numeros que derrubaram analises - para a tela dizer o motivo. */
+  unmatched: number[];
 }
 
 /**
@@ -285,18 +293,22 @@ function bate(n: number, f: number): boolean {
 
 const TOM: Record<string, InsightTone> = { atencao: "attention", positivo: "positive", neutro: "neutral" };
 
-const respostaSchema = z.object({
-  analises: z
-    .array(
-      z.object({
-        titulo: z.string().trim().min(1).max(120),
-        texto: z.string().trim().min(1).max(600),
-        tom: z.string().optional(),
-        fatos: z.array(z.string()).min(1).max(6),
-        sugestao: z.string().trim().max(300).nullish(),
-      }),
-    )
-    .max(8),
+const corta = (max: number) => z.string().trim().min(1).transform((v) => (v.length > max ? `${v.slice(0, max - 1)}…` : v));
+
+/**
+ * Uma analise por vez: um campo fora do formato derruba SO aquela analise,
+ * e nao a resposta inteira. Texto longo demais e cortado, nao recusado.
+ */
+const analiseSchema = z.object({
+  titulo: corta(120),
+  texto: corta(600),
+  tom: z.string().optional(),
+  // "F3", mas tambem 3 ou "3": o que importa e qual fato, nao a grafia.
+  fatos: z
+    .array(z.union([z.string(), z.number()]))
+    .min(1)
+    .transform((ids) => ids.map((id) => String(id).trim().toUpperCase()).map((id) => (/^\d+$/.test(id) ? `F${id}` : id))),
+  sugestao: z.string().trim().max(1000).nullish().transform((v) => (v ? v.slice(0, 300) : null)),
 });
 
 /** Tira cerca de codigo e texto em volta: o JSON e do primeiro "{" ao ultimo "}". */
@@ -311,48 +323,64 @@ function jsonDe(raw: string): unknown {
   }
 }
 
+/** "(F3)", "F12, F13": referencias que escapam para o texto. Saem da tela e da conta. */
+const REF_FATO = /\s*\(?\b(?:F\d{1,3})(?:\s*[,e]\s*F\d{1,3})*\b\)?/g;
+const semRefs = (t: string) => t.replace(REF_FATO, "").replace(/\s+([.,;:])/g, "$1").trim();
+
+/**
+ * Confere a resposta da IA contra os fatos.
+ *
+ * Nulo quando a resposta nao tem o formato pedido (nem JSON, ou JSON sem a
+ * lista) - a acao diz isso com outras palavras que "numero errado".
+ */
 export function checkAnalyses(raw: string, facts: readonly Fact[]): CheckedAnalyses | null {
-  const parsed = respostaSchema.safeParse(jsonDe(raw));
-  if (!parsed.success) return null;
+  const json = jsonDe(raw) as { analises?: unknown } | null;
+  if (!json || !Array.isArray(json.analises)) return null;
 
   const porId = new Map(facts.map((f) => [f.id.toUpperCase(), f]));
   const numerosDe = new Map(facts.map((f) => [f.id, numbersIn(`${f.label} ${f.value}`)]));
   const items: AiAnalysis[] = [];
+  const unmatched: number[] = [];
   let dropped = 0;
 
-  for (const a of parsed.data.analises.slice(0, 5)) {
-    const citados = [...new Set(a.fatos.map((id) => porId.get(id.trim().toUpperCase())).filter((f): f is Fact => !!f))];
-    const numeros = numbersIn(`${a.titulo} ${a.texto} ${a.sugestao ?? ""}`);
+  for (const bruto of json.analises) {
+    const parsed = analiseSchema.safeParse(bruto);
+    if (!parsed.success || items.length >= 5) {
+      dropped += 1;
+      continue;
+    }
+    const a = parsed.data;
+    const titulo = semRefs(a.titulo);
+    const texto = semRefs(a.texto);
+    const sugestao = a.sugestao ? semRefs(a.sugestao) : null;
+    const citados = [...new Set(a.fatos.map((id) => porId.get(id)).filter((f): f is Fact => !!f))];
     if (citados.length === 0) {
       dropped += 1;
       continue;
     }
     // Numero achado num fato que a IA esqueceu de citar: vale, e o fato entra
     // na evidencia - quem le precisa ver de onde ele veio.
-    let ok = true;
-    for (const n of numeros) {
+    const soltos: number[] = [];
+    for (const n of numbersIn(`${titulo} ${texto} ${sugestao ?? ""}`)) {
       if (citados.some((f) => numerosDe.get(f.id)!.some((x) => bate(n, x)))) continue;
       const outro = facts.find((f) => numerosDe.get(f.id)!.some((x) => bate(n, x)));
-      if (outro && citados.length < 6) citados.push(outro);
-      else {
-        ok = false;
-        break;
-      }
+      if (outro) citados.push(outro);
+      else soltos.push(n);
     }
-    if (!ok) {
+    if (soltos.length > 0) {
       dropped += 1;
+      unmatched.push(...soltos);
       continue;
     }
     items.push({
-      title: a.titulo,
-      text: a.texto,
-      tone: TOM[(a.tom ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase()] ?? "neutral",
-      suggestion: a.sugestao?.trim() || null,
-      evidence: citados.map((f) => ({ label: f.label, value: f.value })),
+      title: titulo,
+      text: texto,
+      tone: TOM[(a.tom ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase()] ?? "neutral",
+      suggestion: sugestao || null,
+      evidence: citados.slice(0, 6).map((f) => ({ label: f.label, value: f.value })),
     });
   }
-  dropped += Math.max(0, parsed.data.analises.length - 5);
-  return { items, dropped };
+  return { items, dropped, unmatched };
 }
 
 /** O que fica guardado em `ai_insights.content`, lido de volta com a mesma forma. */

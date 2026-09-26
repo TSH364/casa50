@@ -95,7 +95,7 @@ describe("buildFacts", () => {
     expect(fs.map((f) => f.id).slice(0, 3)).toEqual(["F1", "F2", "F3"]);
     expect(valor(fs, "Gasto de")).toMatch(/1\.950,00/);
     expect(valor(fs, "Média de gasto dos 3 meses")).toMatch(/1\.200,00/);
-    expect(valor(fs, "Categoria Delivery")).toMatch(/600,00.*média anterior R\$\s*200,00, diferença \+R\$\s*400,00/);
+    expect(valor(fs, "Categoria Delivery")).toMatch(/600,00.*média anterior R\$\s*200,00, diferença \+R\$\s*400,00 \(\+200%\)/);
     expect(fs.some((f) => f.label.includes("Loja nova") && f.label.includes("EMPORIO NOVO"))).toBe(true);
     expect(valor(fs, "Gasto por pessoa: os dois")).toMatch(/600,00/);
     expect(valor(fs, "Gasto por pessoa: Vinicius")).toMatch(/350,00/);
@@ -143,6 +143,40 @@ describe("checkAnalyses", () => {
     expect(r.dropped).toBe(2);
     expect(r.items).toHaveLength(1);
     expect(r.items[0]!.evidence.map((e) => e.value)).toEqual([fs[2]!.value, fs[0]!.value]);
+  });
+
+  it("id de fato escrito no texto sai do texto e não conta como número", () => {
+    const r = checkAnalyses(
+      resposta([{ titulo: "Delivery (F2)", texto: "Foram R$ 600,00 (F2, F3), no IFOOD F3.", tom: "atencao", fatos: ["F2"] }]),
+      fs,
+    )!;
+    expect(r.dropped).toBe(0);
+    expect(r.items[0]!.title).toBe("Delivery");
+    expect(r.items[0]!.text).toBe("Foram R$ 600,00, no IFOOD.");
+  });
+
+  it("uma análise fora do formato não derruba as outras; texto longo é cortado, não recusado", () => {
+    const r = checkAnalyses(
+      resposta([
+        { titulo: "Sem fatos", texto: "x" },
+        { titulo: "Longa", texto: "Delivery foi R$ 600,00. " + "blá ".repeat(300), tom: "neutro", fatos: ["F2"] },
+      ]),
+      fs,
+    )!;
+    expect(r.dropped).toBe(1);
+    expect(r.items).toHaveLength(1);
+    expect(r.items[0]!.text.length).toBeLessThanOrEqual(600);
+  });
+
+  it("fato citado como número (3) ou texto ('3') também vale", () => {
+    const r = checkAnalyses(resposta([{ titulo: "Loja", texto: "IFOOD: R$ 600,00.", tom: "neutro", fatos: [3, "2"] }]), fs)!;
+    expect(r.items[0]!.evidence.map((e) => e.label)).toEqual([fs[2]!.label, fs[1]!.label]);
+  });
+
+  it("guarda os números sem fonte, para a tela dizer o motivo", () => {
+    const r = checkAnalyses(resposta([{ titulo: "x", texto: "Subiu 47%.", tom: "neutro", fatos: ["F2"] }]), fs)!;
+    expect(r.items).toHaveLength(0);
+    expect(r.unmatched).toEqual([47]);
   });
 
   it("resposta que não é JSON: nulo", () => {
@@ -232,7 +266,7 @@ describe("analyzeMonth", () => {
     estado.resposta = JSON.stringify({ analises: [{ titulo: "x", texto: "R$ 9.999,00 sumiram.", tom: "neutro", fatos: ["F1"] }] });
     const r = await analyzeMonth({ month: "2026-09", scope: "casa" });
     globalThis.fetch = fetchOriginal;
-    expect(r.error).toMatch(/nenhuma análise/);
+    expect(r.error).toMatch(/números que não estão nos dados do app \(9\.999\)/);
     expect(estado.gravado).toHaveLength(0);
     expect(estado.usos).toHaveLength(1);
   });

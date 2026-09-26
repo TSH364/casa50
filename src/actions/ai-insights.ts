@@ -30,6 +30,8 @@ import { requireHouseId } from "./shared";
  * mesma leitura sem pagar outra chamada.
  */
 
+const numeroBr = (n: number) => n.toLocaleString("pt-BR", { maximumFractionDigits: 2 });
+
 const entrada = z.object({
   month: z.string().refine(isMonthKey, "Mês inválido."),
   scope: z.enum(["casa", "tudo"]),
@@ -91,7 +93,9 @@ export async function analyzeMonth(input: {
       {
         apiKey,
         model: DEFAULT_CHAT_PAID_MODEL,
-        maxTokens: 1500,
+        // Folga larga: modelo que "pensa" antes gasta parte do teto nisso, e
+        // resposta cortada no meio do JSON se perde inteira.
+        maxTokens: 4000,
         timeoutMessage: "A análise demorou demais. Tente de novo.",
         onUsage: (u) => {
           custo = u.costUsd;
@@ -106,17 +110,26 @@ export async function analyzeMonth(input: {
   await recordAiUsage(houseId, "insights", { calls: 1, costUsd: custo, model: modelo });
 
   const checked = checkAnalyses(resposta, facts);
-  if (!checked || checked.items.length === 0) {
+  if (!checked) {
+    // So a forma vai para o log: o texto traz os numeros da casa.
+    console.error("[ia] análise fora do formato", { tamanho: resposta.length, fim: resposta.trim().slice(-1) });
+    return { error: "A resposta da IA veio num formato inesperado (talvez cortada no meio). Tente de novo." };
+  }
+  if (checked.items.length === 0) {
+    console.error("[ia] nenhuma análise conferiu", { descartadas: checked.dropped, soltos: checked.unmatched.length });
+    const exemplos = [...new Set(checked.unmatched)].slice(0, 3).map(numeroBr);
     return {
       error:
-        "A IA não devolveu nenhuma análise que batesse com os números do app, então nada foi mostrado. Tente de novo.",
+        exemplos.length > 0
+          ? `A IA usou números que não estão nos dados do app (${exemplos.join("; ")}), então nada foi mostrado. Tente de novo.`
+          : "A IA não devolveu nenhuma análise no formato pedido, então nada foi mostrado. Tente de novo.",
     };
   }
 
   const [supabase, user] = await Promise.all([createClient(), getCurrentUser()]);
   const { data, error } = await supabase
     .from("ai_insights")
-    .insert({ house_id: houseId, month, scope, content: checked, model: modelo, created_by: user?.id ?? null })
+    .insert({ house_id: houseId, month, scope, content: { items: checked.items, dropped: checked.dropped }, model: modelo, created_by: user?.id ?? null })
     .select("created_at")
     .single();
   if (error) {
@@ -126,7 +139,8 @@ export async function analyzeMonth(input: {
   revalidatePath("/analise");
   return {
     analysis: {
-      ...checked,
+      items: checked.items,
+      dropped: checked.dropped,
       model: modelo,
       createdAt: data ? String(data.created_at) : new Date().toISOString(),
     },
