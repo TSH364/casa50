@@ -57,6 +57,12 @@ vi.mock("@/actions/shared", () => ({
   },
 }));
 vi.mock("@/lib/ai-config", () => ({ getAiKey: async () => estado.chave }));
+const gastos: { feature: string; calls: number; costUsd: number }[] = [];
+vi.mock("@/lib/ai-usage", () => ({
+  recordAiUsage: async (_h: string, feature: string, u: { calls: number; costUsd: number }) => {
+    if (u.calls > 0) gastos.push({ feature, calls: u.calls, costUsd: u.costUsd });
+  },
+}));
 vi.mock("next/cache", () => ({ revalidatePath: () => {} }));
 // A conversa so le por ferramentas (mockadas abaixo); o cliente do banco so
 // e usado por `applyProposal`, testado em chat-proposals.test.ts.
@@ -125,8 +131,9 @@ const pede = (name: string, args: Record<string, unknown>, id = "c1"): TurnResul
   content: null,
   toolCalls: [{ id, type: "function", function: { name, arguments: JSON.stringify(args) } }],
   servedBy: "modelo/gratis:free",
+  costUsd: 0.001,
 });
-const responde = (content: string): TurnResult => ({ content, toolCalls: [], servedBy: "modelo/gratis:free" });
+const responde = (content: string): TurnResult => ({ content, toolCalls: [], servedBy: "modelo/gratis:free", costUsd: 0.002 });
 const PERGUNTA = { messages: [{ role: "user" as const, content: "Quanto a Larissa gastou com alimentação?" }] };
 
 describe("askHouse", () => {
@@ -308,6 +315,37 @@ describe("askHouse — PDF", () => {
       ],
     });
     expect(r.pdf).toBe("anterior");
+  });
+});
+
+describe("askHouse — gasto anotado", () => {
+  beforeEach(() => {
+    estado.casa = true;
+    estado.chave = "sk-or-da-casa";
+    estado.chamadas = [];
+    estado.rota = { choice: "simples", p: 0.9 };
+    estado.gratuitoFalha = null;
+    gastos.length = 0;
+  });
+
+  it("uma consulta e a resposta: o Jev da rota e duas rodadas no gratuito", async () => {
+    estado.roteiro = [pede("resumo_do_mes", {}), responde("ok")];
+    await askHouse({ messages: [{ role: "user", content: "Quanto gastamos?" }] });
+    expect(gastos).toEqual([
+      { feature: "jev", calls: 1, costUsd: 0 },
+      { feature: "conversa_gratuita", calls: 2, costUsd: 0.003 },
+    ]);
+  });
+
+  it("o gratuito falhou e o pago assumiu: as duas tentativas são anotadas", async () => {
+    estado.gratuitoFalha = 429;
+    estado.roteiro = [responde("ok")];
+    await askHouse({ messages: [{ role: "user", content: "Quanto gastamos?" }] });
+    expect(gastos.map((g) => [g.feature, g.calls])).toEqual([
+      ["jev", 1],
+      ["conversa_gratuita", 1],
+      ["conversa_paga", 1],
+    ]);
   });
 });
 

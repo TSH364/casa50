@@ -6,6 +6,8 @@ import { createClient, getCurrentUser } from "@/lib/supabase/server";
 import { requireHouseId } from "./shared";
 import type { FormState } from "./shared";
 import { getAiKey } from "@/lib/ai-config";
+import { recordAiUsage } from "@/lib/ai-usage";
+import { JEV_MODEL } from "@/domain/ai-models";
 import { loadJevContext } from "@/lib/jev-context";
 import { runJev } from "@/lib/jev-run";
 import { listMembers } from "@/lib/houses";
@@ -158,6 +160,7 @@ export async function suggestSubcategoriesWithJev(
     })),
     { apiKey, maxJobs: MAX_LOJAS, deadlineMs: 40_000 },
   );
+  await recordAiUsage(houseId, "jev", { calls: run.calls, costUsd: run.costUsd, model: JEV_MODEL });
 
   const suggestions: JevSuggestion[] = [];
   for (const [merchant, { ask, built }] of perguntas) {
@@ -386,6 +389,7 @@ export async function suggestCardOwnerWithJev(
     ],
     { apiKey, maxJobs: 1, deadlineMs: 15_000 },
   );
+  await recordAiUsage(houseId, "jev", { calls: run.calls, costUsd: run.costUsd, model: JEV_MODEL });
   const resposta = run.answers.get("dono")?.dono;
   if (!resposta) return { error: run.stoppedBy ?? "O Jev não respondeu. Tente de novo." };
 
@@ -457,6 +461,7 @@ export async function suggestCategoryFromText(
     [{ key: "x", state: merchantState(ask.evidence), questions: built.questions }],
     { apiKey, maxJobs: 1, deadlineMs: 10_000 },
   );
+  await recordAiUsage(houseId, "jev", { calls: run.calls, costUsd: run.costUsd, model: JEV_MODEL });
   const respostas = run.answers.get("x");
   if (!respostas) return {};
   const v = readVerdict(respostas, built, ask);

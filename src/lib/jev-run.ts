@@ -39,6 +39,9 @@ export interface JevRun {
   failed: number;
   /** Frase para a tela quando o Jev parou antes do fim. */
   stoppedBy: string | null;
+  /** Chamadas feitas ao OpenRouter e o custo delas, para o registro de gasto. */
+  calls: number;
+  costUsd: number;
 }
 
 export interface JevRunOptions {
@@ -73,6 +76,8 @@ export async function runJev(
   let failed = 0;
   let stoppedBy: string | null = null;
   let proximo = 0;
+  let calls = 0;
+  let costUsd = 0;
 
   async function trabalhador() {
     while (proximo < fila.length) {
@@ -82,10 +87,14 @@ export async function runJev(
         continue;
       }
       try {
+        calls += 1;
         const r = await decide(job.state, job.questions, {
           apiKey: options.apiKey,
           model: JEV_MODEL,
           fetchImpl: options.fetchImpl,
+          onUsage: (u) => {
+            costUsd += u.costUsd;
+          },
         });
         answers.set(job.key, r);
       } catch (e) {
@@ -107,5 +116,5 @@ export async function runJev(
   if (stoppedBy === null && skipped > 0) {
     stoppedBy = "O Jev não chegou a ver todos os estabelecimentos desta vez.";
   }
-  return { answers, skipped, failed, stoppedBy };
+  return { answers, skipped, failed, stoppedBy, calls, costUsd };
 }

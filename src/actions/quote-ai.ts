@@ -3,6 +3,7 @@
 import { z } from "zod";
 import { requireHouseId } from "./shared";
 import { chatCompletion, OpenRouterError, type ContentPart } from "@/lib/openrouter";
+import { recordAiUsage } from "@/lib/ai-usage";
 import { getAiKey, getAiStatus } from "@/lib/ai-config";
 import { parseQuoteAnswer, QUOTE_PROMPT } from "@/domain/quote-ai";
 import type { QuoteProposal } from "@/domain/quote-pdf";
@@ -98,7 +99,11 @@ export async function readQuoteWithAI(input: unknown): Promise<QuoteAiResult> {
         { role: "system", content: QUOTE_PROMPT },
         { role: "user", content: conteudo },
       ],
-      { apiKey, model: quoteModel },
+      {
+        apiKey,
+        model: quoteModel,
+        onUsage: (u) => void recordAiUsage(houseId, "orcamento", { calls: 1, ...u }),
+      },
     );
 
     const proposal = parseQuoteAnswer(

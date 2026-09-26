@@ -17,6 +17,8 @@ import type {
 } from "@/importers/types";
 import type { TransactionType } from "@/domain/types";
 import { getAiKey } from "@/lib/ai-config";
+import { recordAiUsage } from "@/lib/ai-usage";
+import { JEV_MODEL } from "@/domain/ai-models";
 import {
   loadCategoryMaps,
   resolveCategory,
@@ -212,6 +214,7 @@ async function jevDecisions(
     })),
     { apiKey, maxJobs: 60, deadlineMs: 25_000 },
   );
+  await recordAiUsage(houseId, "jev", { calls: run.calls, costUsd: run.costUsd, model: JEV_MODEL });
 
   const byKey = new Map<string, JevDecision>();
   const lojas = new Set<string>();

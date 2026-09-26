@@ -16,6 +16,8 @@ import { OpenRouterError, chatTurn } from "@/lib/openrouter";
 import type { TurnMessage } from "@/lib/openrouter";
 import { DEFAULT_CHAT_MODEL, DEFAULT_CHAT_PAID_MODEL } from "@/domain/ai-models";
 import { runJev } from "@/lib/jev-run";
+import { recordAiUsage } from "@/lib/ai-usage";
+import { JEV_MODEL } from "@/domain/ai-models";
 import {
   ROUTE_QUESTION,
   decideRoute,
@@ -158,6 +160,7 @@ export async function askHouse(input: z.input<typeof schema>): Promise<ChatReply
     [{ key: "rota", state: routeState(pergunta, anterior), questions: { complexidade: ROUTE_QUESTION } }],
     { apiKey, maxJobs: 1, deadlineMs: 6_000 },
   ).catch(() => null);
+  if (jev) await recordAiUsage(houseId, "jev", { calls: jev.calls, costUsd: jev.costUsd, model: JEV_MODEL });
   const route = decideRoute(pergunta, jev?.answers.get("rota")?.complexidade ?? null);
 
   const modelos: Record<Tier, { model: string; allowDataCollection: boolean }> = {
@@ -167,8 +170,16 @@ export async function askHouse(input: z.input<typeof schema>): Promise<ChatReply
   };
 
   const inicio = Date.now();
-  const conversar = (tier: Tier) =>
-    runConversation(ctx, apiKey, system, historico, modelos[tier], PRAZO_MS - (Date.now() - inicio));
+  // O gasto de cada tentativa e anotado mesmo quando ela falha no meio: as
+  // chamadas feitas ate ali ja contaram na cota e no credito.
+  const conversar = async (tier: Tier) => {
+    const gasto: Gasto = { calls: 0, costUsd: 0, model: null };
+    try {
+      return await runConversation(ctx, apiKey, system, historico, modelos[tier], PRAZO_MS - (Date.now() - inicio), gasto);
+    } finally {
+      await recordAiUsage(houseId, tier === "pago" ? "conversa_paga" : "conversa_gratuita", gasto);
+    }
+  };
 
   const comPdf = (r: ChatReply): ChatReply =>
     r.answer && isPdfRequest(pergunta)
@@ -209,6 +220,12 @@ function erroDaConversa(e: unknown): ChatReply {
  * `MAX_TOOL_ROUNDS` vezes, e a ultima rodada vai sem ferramentas, para fechar.
  * Erro do OpenRouter sobe para quem chamou decidir se tenta no outro modelo.
  */
+interface Gasto {
+  calls: number;
+  costUsd: number;
+  model: string | null;
+}
+
 async function runConversation(
   ctx: ToolContext,
   apiKey: string,
@@ -216,6 +233,7 @@ async function runConversation(
   historico: ReturnType<typeof trimHistory>,
   alvo: { model: string; allowDataCollection: boolean },
   prazoMs: number,
+  gasto: Gasto,
 ): Promise<ChatReply> {
   const conversa: TurnMessage[] = [{ role: "system", content: system }, ...historico];
   const consultadas = new Set<ToolName>();
@@ -229,6 +247,8 @@ async function runConversation(
     if (resta < 3_000) break;
     const ultima = rodada === MAX_TOOL_ROUNDS || resta < 15_000;
 
+    gasto.calls += 1;
+    gasto.model ??= alvo.model;
     const turn = await chatTurn(conversa, {
       apiKey,
       model: alvo.model,
@@ -236,6 +256,8 @@ async function runConversation(
       allowDataCollection: alvo.allowDataCollection,
       timeoutMs: Math.min(25_000, resta),
     });
+    gasto.costUsd += turn.costUsd;
+    if (turn.servedBy) gasto.model = turn.servedBy;
 
     if (turn.toolCalls.length === 0 || ultima) {
       if (!turn.content) break;
