@@ -123,36 +123,74 @@ describe("ChatChart", () => {
   });
 });
 
-describe("Exportar PDF", () => {
-  it("imprime só a resposta, no tema claro, e devolve o tema", async () => {
+describe("PDF só quando pedem", () => {
+  let respostas: Record<string, unknown>[] = [];
+
+  async function montar() {
     vi.doMock("@/actions/chat", () => ({
-      askHouse: async () => ({
-        answer: "Setembro ficou abaixo de agosto.",
-        charts: [{ id: "g", kind: "colunas", title: "Gasto por mês", subtitle: "x", points: [{ label: "set/26", cents: 100 }] }],
-      }),
+      askHouse: async () => respostas.shift() ?? { answer: "ok" },
       applyProposal: async () => ({}),
     }));
     vi.resetModules();
     const { ChatPanel } = await import("@/components/chat/chat-panel");
     Element.prototype.scrollIntoView = vi.fn();
     window.localStorage.clear();
+    return render(<ChatPanel houseId="c" />);
+  }
+
+  async function perguntar(texto: string, espera: RegExp) {
+    fireEvent.change(screen.getByLabelText("Pergunta"), { target: { value: texto } });
+    fireEvent.keyDown(screen.getByLabelText("Pergunta"), { key: "Enter" });
+    await screen.findByText(espera);
+  }
+
+  it("resposta comum não traz botão de PDF", async () => {
+    respostas = [{ answer: "Setembro: R$ 150,00." }];
+    await montar();
+    await perguntar("quanto gastamos?", /Setembro: R\$ 150,00\./);
+    expect(screen.queryByRole("button", { name: /PDF/ })).toBeNull();
+  });
+
+  it("pediu PDF da anterior: imprime a resposta anterior, no tema claro, e devolve o tema", async () => {
+    respostas = [
+      { answer: "Setembro ficou abaixo de agosto." },
+      { answer: "Pronto, é só tocar em Baixar PDF.", pdf: "anterior" },
+    ];
+    const { container } = await montar();
     const print = vi.fn();
     window.print = print;
     document.documentElement.dataset.theme = "dark";
 
-    const { container } = render(<ChatPanel houseId="c" />);
-    fireEvent.change(screen.getByLabelText("Pergunta"), { target: { value: "compara os meses" } });
-    fireEvent.keyDown(screen.getByLabelText("Pergunta"), { key: "Enter" });
-    fireEvent.click(await screen.findByRole("button", { name: /Exportar PDF/ }));
+    await perguntar("compara os meses", /Setembro ficou abaixo/);
+    await perguntar("exporta isso em PDF", /Pronto, é só tocar/);
+    expect(screen.getByText("PDF da resposta anterior")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Baixar PDF" }));
 
     await waitFor(() => expect(print).toHaveBeenCalled());
     expect(document.documentElement.dataset.theme).toBe("light");
     const bloco = container.querySelector(".so-impressao")!;
     expect(bloco.textContent).toMatch(/compara os meses/);
     expect(bloco.textContent).toMatch(/Setembro ficou abaixo de agosto/);
+    expect(bloco.textContent).not.toMatch(/Baixar PDF/);
 
     window.dispatchEvent(new Event("afterprint"));
     await waitFor(() => expect(document.documentElement.dataset.theme).toBe("dark"));
     expect(container.querySelector(".so-impressao")).toBeNull();
+  });
+
+  it("pediu o gráfico já em PDF: imprime a própria resposta, com o gráfico", async () => {
+    respostas = [
+      {
+        answer: "Aqui está.",
+        pdf: "esta",
+        charts: [{ id: "g", kind: "colunas", title: "Gasto por mês", subtitle: "x", points: [{ label: "set/26", cents: 100 }] }],
+      },
+    ];
+    const { container } = await montar();
+    window.print = vi.fn();
+    await perguntar("gráfico dos meses em PDF", /Aqui está\./);
+    fireEvent.click(screen.getByRole("button", { name: "Baixar PDF" }));
+    await waitFor(() => expect(container.querySelector(".so-impressao")).not.toBeNull());
+    expect(container.querySelector(".so-impressao")!.textContent).toMatch(/Gasto por mês/);
   });
 });

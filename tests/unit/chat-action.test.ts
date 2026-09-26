@@ -284,3 +284,30 @@ describe("askHouse — qual modelo responde", () => {
   });
 });
 
+describe("askHouse — PDF", () => {
+  beforeEach(() => {
+    estado.casa = true;
+    estado.chave = "sk-or-da-casa";
+    estado.chamadas = [];
+    estado.rota = { choice: "simples", p: 0.9 };
+    estado.gratuitoFalha = null;
+  });
+
+  it("sem pedido, sem PDF", async () => {
+    estado.roteiro = [responde("R$ 320,00.")];
+    expect((await askHouse({ messages: [{ role: "user", content: "Quanto gastamos?" }] })).pdf).toBeUndefined();
+  });
+
+  it("pediu: PDF da resposta anterior", async () => {
+    estado.roteiro = [responde("Pronto.")];
+    const r = await askHouse({
+      messages: [
+        { role: "user", content: "Quanto gastamos?" },
+        { role: "assistant", content: "R$ 320,00." },
+        { role: "user", content: "exporta isso em PDF" },
+      ],
+    });
+    expect(r.pdf).toBe("anterior");
+  });
+});
+

@@ -90,3 +90,28 @@ export function decideRoute(
 export function shouldFallBack(status: number): boolean {
   return status === 0 || status === 402 || status === 404 || status === 408 || status === 429 || status >= 500;
 }
+
+/**
+ * A pergunta pede um PDF?
+ *
+ * O botao de PDF so aparece quando pedem - em toda resposta, ele era ruido
+ * (pedido da casa). A decisao e do app, por palavra, e nao do modelo: assim
+ * vale igual no gratuito e no pago, e o modelo nao oferece PDF por conta
+ * propria.
+ */
+const PDF = /\b(pdf|imprim\w*|impress[aã]o)\b|\bexport\w*/i;
+
+export function isPdfRequest(text: string): boolean {
+  return PDF.test(text.normalize("NFC"));
+}
+
+/**
+ * De qual resposta e o PDF.
+ *
+ * "Um grafico dos ultimos meses em PDF": a propria resposta, que traz o
+ * grafico. "Exporta isso em PDF": a anterior - a resposta a um pedido de
+ * exportar nao tem conteudo proprio que valha um PDF.
+ */
+export function pdfTarget(currentHasCharts: boolean, hasPreviousAnswer: boolean): "esta" | "anterior" {
+  return currentHasCharts || !hasPreviousAnswer ? "esta" : "anterior";
+}

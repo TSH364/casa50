@@ -27,6 +27,8 @@ interface Entry extends ChatMessage {
   error?: boolean;
   proposals?: Proposal[];
   charts?: ChartSpec[];
+  /** So quando a pergunta pediu PDF: de qual resposta ele e. */
+  pdf?: "esta" | "anterior";
   /** id da proposta -> o que a casa fez com ela, e a frase do resultado. */
   resolved?: Record<string, { status: ProposalStatus; note: string }>;
 }
@@ -37,6 +39,18 @@ interface Entry extends ChatMessage {
  * saberia se a classificacao foi feita - e poderia propor de novo, ou dizer
  * que ja estava feita quando foi descartada.
  */
+/**
+ * Qual entrada vai para o PDF. "anterior" e a ultima resposta de verdade
+ * antes desta - pulando erros; sem nenhuma, a propria.
+ */
+function alvoDoPdf(entradas: readonly Entry[], i: number, pdf: "esta" | "anterior"): number {
+  if (pdf === "esta") return i;
+  for (let j = i - 1; j >= 0; j -= 1) {
+    if (entradas[j]!.role === "assistant" && !entradas[j]!.error) return j;
+  }
+  return i;
+}
+
 function conteudoParaModelo(e: Entry): string {
   const feitos = Object.values(e.resolved ?? {}).map((r) => `[${r.note}]`);
   const pendentes = (e.proposals ?? []).filter((p) => !e.resolved?.[p.id]).length;
@@ -144,6 +158,7 @@ export function ChatPanel({ houseId }: { houseId: string }) {
             fellBack: r.fellBack,
             ...(r.proposals?.length ? { proposals: r.proposals } : {}),
             ...(r.charts?.length ? { charts: r.charts } : {}),
+            ...(r.pdf ? { pdf: r.pdf } : {}),
           }
         : { role: "assistant", content: r.error ?? "A conversa falhou.", error: true };
       const nova = [...comPergunta, resposta];
@@ -257,14 +272,17 @@ export function ChatPanel({ houseId }: { houseId: string }) {
                   {e.model ? ` · ${e.model}` : ""}
                 </p>
               ) : null}
-              {e.role === "assistant" && !e.error ? (
-                <button
-                  type="button"
-                  onClick={() => setImprimindo(i)}
-                  className="mt-1 inline-flex min-h-9 items-center gap-1 text-[12px] text-brand underline-offset-2 hover:underline"
-                >
-                  <FileDown className="size-3.5" aria-hidden /> Exportar PDF
-                </button>
+              {/* So quando a pergunta pediu PDF (ver `isPdfRequest`). */}
+              {e.role === "assistant" && !e.error && e.pdf ? (
+                <div className="mt-2 flex flex-wrap items-center gap-2 rounded-xl border border-line bg-surface px-3 py-2">
+                  <FileDown className="size-4 shrink-0 text-ink-muted" aria-hidden />
+                  <span className="min-w-0 flex-1 text-[12px] text-ink-muted">
+                    {e.pdf === "esta" ? "PDF desta resposta" : "PDF da resposta anterior"}
+                  </span>
+                  <Button size="sm" onClick={() => setImprimindo(alvoDoPdf(entradas, i, e.pdf!))}>
+                    Baixar PDF
+                  </Button>
+                </div>
               ) : null}
             </div>
           </li>

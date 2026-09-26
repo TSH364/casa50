@@ -16,7 +16,14 @@ import { OpenRouterError, chatTurn } from "@/lib/openrouter";
 import type { TurnMessage } from "@/lib/openrouter";
 import { DEFAULT_CHAT_MODEL, DEFAULT_CHAT_PAID_MODEL } from "@/domain/ai-models";
 import { runJev } from "@/lib/jev-run";
-import { ROUTE_QUESTION, decideRoute, routeState, shouldFallBack } from "@/domain/chat-router";
+import {
+  ROUTE_QUESTION,
+  decideRoute,
+  isPdfRequest,
+  pdfTarget,
+  routeState,
+  shouldFallBack,
+} from "@/domain/chat-router";
 import type { Route, Tier } from "@/domain/chat-router";
 import {
   MAX_TOOL_ROUNDS,
@@ -72,6 +79,11 @@ export interface ChatReply {
   proposals?: Proposal[];
   /** Graficos com numeros do app, para desenhar abaixo da resposta. */
   charts?: ChartSpec[];
+  /**
+   * So quando a pergunta pediu PDF: de qual resposta ele e. Sem pedido, sem
+   * botao - ver `isPdfRequest`.
+   */
+  pdf?: "esta" | "anterior";
 }
 
 /** Tempo total da pergunta, abaixo do `maxDuration` da pagina. */
@@ -158,9 +170,14 @@ export async function askHouse(input: z.input<typeof schema>): Promise<ChatReply
   const conversar = (tier: Tier) =>
     runConversation(ctx, apiKey, system, historico, modelos[tier], PRAZO_MS - (Date.now() - inicio));
 
+  const comPdf = (r: ChatReply): ChatReply =>
+    r.answer && isPdfRequest(pergunta)
+      ? { ...r, pdf: pdfTarget((r.charts?.length ?? 0) > 0, anterior !== null) }
+      : r;
+
   try {
     const r = await conversar(route.tier);
-    return { ...r, tier: route.tier, route: route.reason };
+    return comPdf({ ...r, tier: route.tier, route: route.reason });
   } catch (e) {
     // O gratuito falhou de um jeito que o pago resolve (cota, privacidade,
     // provedor fora): tenta de novo no pago, se ainda houver tempo.
@@ -172,7 +189,7 @@ export async function askHouse(input: z.input<typeof schema>): Promise<ChatReply
     ) {
       try {
         const r = await conversar("pago");
-        return { ...r, tier: "pago", route: route.reason, fellBack: true };
+        return comPdf({ ...r, tier: "pago", route: route.reason, fellBack: true });
       } catch (e2) {
         return erroDaConversa(e2);
       }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { decideRoute, isActionRequest, routeState, shouldFallBack } from "@/domain/chat-router";
+import { decideRoute, isActionRequest, isPdfRequest, pdfTarget, routeState, shouldFallBack } from "@/domain/chat-router";
 
 /**
  * O roteador da conversa.
@@ -63,5 +63,19 @@ describe("routeState e fallback", () => {
   it("cota, privacidade e provedor fora: tenta no pago; chave recusada, não", () => {
     for (const s of [0, 404, 429, 500, 503]) expect(shouldFallBack(s)).toBe(true);
     for (const s of [400, 401, 403]) expect(shouldFallBack(s)).toBe(false);
+  });
+});
+
+describe("PDF", () => {
+  it.each(["exporta em PDF", "gera um pdf disso", "manda pra imprimir", "quero exportar"])("pedido: %s", (t) =>
+    expect(isPdfRequest(t)).toBe(true),
+  );
+  it.each(["quanto gastamos?", "me mostra um gráfico", "o que falta classificar?"])("sem pedido: %s", (t) =>
+    expect(isPdfRequest(t)).toBe(false),
+  );
+  it("com gráfico nesta resposta, é esta; sem, é a anterior", () => {
+    expect(pdfTarget(true, true)).toBe("esta");
+    expect(pdfTarget(false, true)).toBe("anterior");
+    expect(pdfTarget(false, false)).toBe("esta");
   });
 });
