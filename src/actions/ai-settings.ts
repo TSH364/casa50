@@ -161,7 +161,7 @@ export async function aiKeyUsage(): Promise<AiUsageReport> {
   return { ...chave, ...(mes ? { month: mes } : {}), fx };
 }
 
-const ORDEM: AiFeature[] = ["conversa_paga", "conversa_gratuita", "jev", "orcamento"];
+const ORDEM: AiFeature[] = ["conversa_paga", "conversa_gratuita", "insights", "jev", "orcamento"];
 
 async function usoDoMes(houseId: string): Promise<AiUsageReport["month"] | null> {
   // O mes de quem usa, no fuso da casa: as 22h do dia 31 em Brasilia ja e o

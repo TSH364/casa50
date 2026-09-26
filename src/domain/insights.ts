@@ -237,7 +237,7 @@ function recurrenceChanges(input: InsightInput): Insight[] {
         { label: "Cobrado", value: brl(m.actualCents ?? 0) },
         { label: "Diferença", value: `+${brl(m.differenceCents)}` },
       ],
-      href: "/previsao",
+      href: "#recorrencias",
       weight: 200_000 + m.differenceCents,
     }));
 }
@@ -274,7 +274,7 @@ function endingInstallments(input: InsightInput): Insight[] {
         })),
         { label: "Total liberado por mês", value: brl(freed) },
       ],
-      href: "/previsao",
+      href: "#parcelas",
       weight: 100_000 + freed,
     },
   ];
@@ -319,7 +319,7 @@ function agendaPressure(input: InsightInput): Insight[] {
         detail:
           "Ainda não há histórico de um compromisso parecido para dizer quanto isso pesa.",
         evidence,
-        href: "/previsao",
+        href: "#agenda",
         weight: 300_000,
       },
     ];

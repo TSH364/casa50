@@ -117,7 +117,7 @@ export async function createRecurrence(
     return { error: "Não foi possível criar a recorrência." };
   }
 
-  revalidatePath("/previsao");
+  revalidatePath("/analise");
   revalidatePath("/inicio");
   return { ok: true };
 }
@@ -153,7 +153,7 @@ export async function updateRecurrence(
     return { error: "Não foi possível salvar a recorrência." };
   }
 
-  revalidatePath("/previsao");
+  revalidatePath("/analise");
   revalidatePath("/inicio");
   return { ok: true };
 }
@@ -206,7 +206,7 @@ export async function acceptDetectedRecurrence(
     return { error: "Não foi possível cadastrar a recorrência." };
   }
 
-  revalidatePath("/previsao");
+  revalidatePath("/analise");
   return { ok: true };
 }
 
@@ -225,7 +225,7 @@ export async function setRecurrenceActive(
     return { error: "Não foi possível alterar a recorrência." };
   }
 
-  revalidatePath("/previsao");
+  revalidatePath("/analise");
   revalidatePath("/inicio");
   return { ok: true };
 }
@@ -239,7 +239,7 @@ export async function deleteRecurrence(id: string): Promise<FormState> {
     return { error: "Não foi possível excluir a recorrência." };
   }
 
-  revalidatePath("/previsao");
+  revalidatePath("/analise");
   revalidatePath("/inicio");
   return { ok: true };
 }
@@ -346,7 +346,7 @@ export async function confirmRecurrencePayment(
     return { error: "Não foi possível lançar o pagamento." };
   }
 
-  revalidatePath("/previsao");
+  revalidatePath("/analise");
   revalidatePath("/inicio");
   revalidatePath("/extratos");
   return { ok: true };

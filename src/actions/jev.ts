@@ -287,7 +287,7 @@ export async function applyJevSubcategories(
 
   revalidatePath("/categorias");
   revalidatePath("/extratos");
-  revalidatePath("/insights");
+  revalidatePath("/analise");
   revalidatePath("/inicio");
   return { ok: true, count: total };
 }

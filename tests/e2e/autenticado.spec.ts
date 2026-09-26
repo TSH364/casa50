@@ -48,10 +48,10 @@ test("a navegação principal alcança todas as áreas", async ({ page }) => {
 
   for (const rota of [
     { link: /extratos/i, url: /\/extratos/ },
-    { link: /previsão/i, url: /\/previsao/ },
-    { link: /insights/i, url: /\/insights/ },
+    { link: /análise/i, url: /\/analise/ },
     { link: /metas/i, url: /\/metas/ },
     { link: /tarefas/i, url: /\/tarefas/ },
+    { link: /conversa/i, url: /\/conversa/ },
   ]) {
     await nav.getByRole("link", { name: rota.link }).first().click();
     await expect(page).toHaveURL(rota.url);
@@ -82,8 +82,10 @@ test("o histórico abre e mostra os filtros", async ({ page }) => {
   await expect(page.getByRole("heading", { name: /histórico/i })).toBeVisible();
 });
 
-test("insights fica calado quando não há base para comparar", async ({ page }) => {
+test("a análise fica calada quando não há base para comparar", async ({ page }) => {
+  // O endereço antigo de Insights leva para a Análise.
   await page.goto("/insights");
+  await expect(page).toHaveURL(/\/analise/);
   // Ou lista observações, ou explica por que não tem nenhuma. O que não pode
   // é ficar em branco sem dizer nada.
   const temConteudo = await page

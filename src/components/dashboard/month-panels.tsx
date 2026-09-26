@@ -46,7 +46,7 @@ function SeeAll({ href, label }: { href: string; label: string }) {
  * Painéis do mês no Início (secao 7).
  *
  * Tudo aqui é leitura resumida do que tem tela própria: recorrências e
- * parcelas vivem em Previsão, orçamentos em Orçamentos.
+ * parcelas vivem em Análise, orçamentos em Orçamentos.
  * O Início mostra o suficiente para decidir se vale entrar, e leva para lá.
  */
 export async function MonthPanels({
@@ -132,12 +132,12 @@ export async function MonthPanels({
               ? `${formatCents(recurringTotal)} previstos por mês.`
               : undefined
           }
-          action={<SeeAll href="/previsao" label="Ver todas" />}
+          action={<SeeAll href="/analise#proximos-meses" label="Ver todas" />}
         />
         {matches.length === 0 ? (
           <p className="text-[13px] text-ink-faint">
             Nenhuma recorrência cadastrada. Aluguel, assinaturas e mensalidades
-            entram em Previsão.
+            entram em Análise.
           </p>
         ) : (
           <ul className="space-y-1.5">
@@ -182,7 +182,7 @@ export async function MonthPanels({
         <CardHeader
           title="Parcelas comprometidas"
           description="Próximos três meses."
-          action={<SeeAll href="/previsao" label="Detalhes" />}
+          action={<SeeAll href="/analise#parcelas" label="Detalhes" />}
         />
         {committedTotal === 0 ? (
           <p className="text-[13px] text-ink-faint">
