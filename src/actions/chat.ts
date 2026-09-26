@@ -10,7 +10,10 @@ import { runTool, snapshotFor } from "@/lib/chat-tools";
 import type { ToolContext } from "@/lib/chat-tools";
 import { OpenRouterError, chatTurn } from "@/lib/openrouter";
 import type { TurnMessage } from "@/lib/openrouter";
-import { DEFAULT_CHAT_MODEL } from "@/domain/ai-models";
+import { DEFAULT_CHAT_MODEL, DEFAULT_CHAT_PAID_MODEL } from "@/domain/ai-models";
+import { runJev } from "@/lib/jev-run";
+import { ROUTE_QUESTION, decideRoute, routeState, shouldFallBack } from "@/domain/chat-router";
+import type { Route, Tier } from "@/domain/chat-router";
 import {
   MAX_TOOL_ROUNDS,
   TOOL_DEFINITIONS,
@@ -56,6 +59,11 @@ export interface ChatReply {
   consulted?: string[];
   /** Modelo que respondeu - o roteador gratuito escolhe um a cada vez. */
   model?: string | null;
+  /** Qual dos dois respondeu, e por que (ver `domain/chat-router.ts`). */
+  tier?: Tier;
+  route?: Route["reason"];
+  /** O gratuito falhou e o pago assumiu. */
+  fellBack?: boolean;
 }
 
 /** Tempo total da pergunta, abaixo do `maxDuration` da pagina. */
@@ -116,50 +124,103 @@ export async function askHouse(input: z.input<typeof schema>): Promise<ChatReply
     snapshot,
   });
 
-  const conversa: TurnMessage[] = [
-    { role: "system", content: system },
-    ...trimHistory(parsed.data.messages),
-  ];
-  const model = process.env.OPENROUTER_CHAT_MODEL?.trim() || DEFAULT_CHAT_MODEL;
+  const historico = trimHistory(parsed.data.messages);
+  const pergunta = historico[historico.length - 1]!.content;
+  const anterior = historico.length >= 2 ? historico[historico.length - 2]!.content : null;
+
+  // O Jev decide a rota. Uma chamada curta (so a pergunta), com prazo curto:
+  // se ele nao responder a tempo, a pergunta vai ao pago e a conversa segue.
+  const jev = await runJev(
+    [{ key: "rota", state: routeState(pergunta, anterior), questions: { complexidade: ROUTE_QUESTION } }],
+    { apiKey, maxJobs: 1, deadlineMs: 6_000 },
+  ).catch(() => null);
+  const route = decideRoute(pergunta, jev?.answers.get("rota")?.complexidade ?? null);
+
+  const modelos: Record<Tier, { model: string; allowDataCollection: boolean }> = {
+    // O gratuito aceita provedor que guarda: sem isso, nenhum gratuito atende.
+    gratuito: { model: process.env.OPENROUTER_CHAT_MODEL?.trim() || DEFAULT_CHAT_MODEL, allowDataCollection: true },
+    pago: { model: process.env.OPENROUTER_CHAT_PAID_MODEL?.trim() || DEFAULT_CHAT_PAID_MODEL, allowDataCollection: false },
+  };
+
+  const inicio = Date.now();
+  const conversar = (tier: Tier) =>
+    runConversation(ctx, apiKey, system, historico, modelos[tier], PRAZO_MS - (Date.now() - inicio));
+
+  try {
+    const r = await conversar(route.tier);
+    return { ...r, tier: route.tier, route: route.reason };
+  } catch (e) {
+    // O gratuito falhou de um jeito que o pago resolve (cota, privacidade,
+    // provedor fora): tenta de novo no pago, se ainda houver tempo.
+    if (
+      route.tier === "gratuito" &&
+      e instanceof OpenRouterError &&
+      shouldFallBack(e.status) &&
+      PRAZO_MS - (Date.now() - inicio) > 15_000
+    ) {
+      try {
+        const r = await conversar("pago");
+        return { ...r, tier: "pago", route: route.reason, fellBack: true };
+      } catch (e2) {
+        return erroDaConversa(e2);
+      }
+    }
+    return erroDaConversa(e);
+  }
+}
+
+function erroDaConversa(e: unknown): ChatReply {
+  if (e instanceof OpenRouterError) return { error: e.message };
+  console.error("[conversa] falha", { erro: e instanceof Error ? e.name : "desconhecido" });
+  return { error: "A conversa falhou. Tente de novo." };
+}
+
+/**
+ * O laco de uma pergunta, num modelo: responde, ou pede ferramentas; ate
+ * `MAX_TOOL_ROUNDS` vezes, e a ultima rodada vai sem ferramentas, para fechar.
+ * Erro do OpenRouter sobe para quem chamou decidir se tenta no outro modelo.
+ */
+async function runConversation(
+  ctx: ToolContext,
+  apiKey: string,
+  system: string,
+  historico: ReturnType<typeof trimHistory>,
+  alvo: { model: string; allowDataCollection: boolean },
+  prazoMs: number,
+): Promise<ChatReply> {
+  const conversa: TurnMessage[] = [{ role: "system", content: system }, ...historico];
   const consultadas = new Set<ToolName>();
   const inicio = Date.now();
 
-  try {
-    for (let rodada = 0; rodada <= MAX_TOOL_ROUNDS; rodada += 1) {
-      const resta = PRAZO_MS - (Date.now() - inicio);
-      if (resta < 3_000) break;
-      const ultima = rodada === MAX_TOOL_ROUNDS || resta < 15_000;
+  for (let rodada = 0; rodada <= MAX_TOOL_ROUNDS; rodada += 1) {
+    const resta = prazoMs - (Date.now() - inicio);
+    if (resta < 3_000) break;
+    const ultima = rodada === MAX_TOOL_ROUNDS || resta < 15_000;
 
-      const turn = await chatTurn(conversa, {
-        apiKey,
-        model,
-        tools: ultima ? [] : TOOL_DEFINITIONS,
-        allowDataCollection: true,
-        timeoutMs: Math.min(25_000, resta),
-      });
+    const turn = await chatTurn(conversa, {
+      apiKey,
+      model: alvo.model,
+      tools: ultima ? [] : TOOL_DEFINITIONS,
+      allowDataCollection: alvo.allowDataCollection,
+      timeoutMs: Math.min(25_000, resta),
+    });
 
-      if (turn.toolCalls.length === 0 || ultima) {
-        if (!turn.content) break;
-        return {
-          answer: turn.content.trim(),
-          consulted: [...consultadas].map((t) => TOOL_LABEL[t]),
-          model: turn.servedBy,
-        };
-      }
-
-      const chamadas = turn.toolCalls.slice(0, MAX_CALLS_PER_ROUND);
-      conversa.push({ role: "assistant", content: turn.content, tool_calls: chamadas });
-      for (const c of chamadas) {
-        const r = await runTool(ctx, c.function.name, c.function.arguments);
-        if (r.tool) consultadas.add(r.tool);
-        conversa.push({ role: "tool", tool_call_id: c.id, content: r.output });
-      }
+    if (turn.toolCalls.length === 0 || ultima) {
+      if (!turn.content) break;
+      return {
+        answer: turn.content.trim(),
+        consulted: [...consultadas].map((t) => TOOL_LABEL[t]),
+        model: turn.servedBy,
+      };
     }
-  } catch (e) {
-    if (e instanceof OpenRouterError) return { error: e.message };
-    console.error("[conversa] falha", { erro: e instanceof Error ? e.name : "desconhecido" });
-    return { error: "A conversa falhou. Tente de novo." };
-  }
 
+    const chamadas = turn.toolCalls.slice(0, MAX_CALLS_PER_ROUND);
+    conversa.push({ role: "assistant", content: turn.content, tool_calls: chamadas });
+    for (const c of chamadas) {
+      const r = await runTool(ctx, c.function.name, c.function.arguments);
+      if (r.tool) consultadas.add(r.tool);
+      conversa.push({ role: "tool", tool_call_id: c.id, content: r.output });
+    }
+  }
   return { error: "A IA não chegou a uma resposta. Tente perguntar de um jeito mais direto." };
 }

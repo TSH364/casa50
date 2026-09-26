@@ -19,6 +19,8 @@ import { cn } from "@/lib/utils";
 interface Entry extends ChatMessage {
   consulted?: string[];
   model?: string | null;
+  tier?: "gratuito" | "pago";
+  fellBack?: boolean;
   error?: boolean;
 }
 
@@ -109,7 +111,14 @@ export function ChatPanel({ houseId }: { houseId: string }) {
         r = { error: "Não consegui falar com o servidor. Confira a internet e tente de novo." };
       }
       const resposta: Entry = r.answer
-        ? { role: "assistant", content: r.answer, consulted: r.consulted, model: r.model }
+        ? {
+            role: "assistant",
+            content: r.answer,
+            consulted: r.consulted,
+            model: r.model,
+            tier: r.tier,
+            fellBack: r.fellBack,
+          }
         : { role: "assistant", content: r.error ?? "A conversa falhou.", error: true };
       const nova = [...comPergunta, resposta];
       setEntradas(nova);
@@ -131,13 +140,14 @@ export function ChatPanel({ houseId }: { houseId: string }) {
       {entradas.length === 0 ? (
         <div className="space-y-3">
           <p className="rounded-[--radius-control] bg-attention-soft px-3.5 py-2.5 text-[13px] text-attention">
-            A conversa usa modelos <strong className="font-semibold">gratuitos</strong> do OpenRouter.
-            O provedor pode guardar e usar as perguntas e os dados enviados (lojas, valores, nomes)
-            para treinar modelos. Não vão e-mails, finais de cartão nem anotações.
+            O Jev escolhe quem responde. Perguntas simples vão a modelos{" "}
+            <strong className="font-semibold">gratuitos</strong>, e o provedor pode guardar e usar
+            o que recebe (lojas, valores, nomes) para treinar modelos. Análises e pedidos de mudar
+            dados vão a um modelo pago que não guarda. Não vão e-mails, cartões nem anotações.
           </p>
           <p className="text-[12px] text-ink-muted">
-            Limite dos gratuitos: 50 chamadas por dia na conta do OpenRouter. Uma pergunta
-            simples gasta 1; uma que precisa consultar os dados, de 2 a 5.
+            Os gratuitos têm limite de 50 chamadas por dia na conta do OpenRouter; quando acaba, o
+            pago assume sozinho.
           </p>
           <div className="flex flex-wrap gap-2">
             {SUGESTOES.map((s) => (
@@ -173,6 +183,8 @@ export function ChatPanel({ houseId }: { houseId: string }) {
               {e.role === "assistant" && !e.error && (e.consulted?.length || e.model) ? (
                 <p className="mt-1.5 text-[11px] text-ink-muted">
                   {e.consulted?.length ? `Consultei: ${e.consulted.join(", ")}` : "Respondi com o resumo do mês"}
+                  {e.tier ? ` · ${e.tier === "pago" ? "Pago" : "Gratuito"}` : ""}
+                  {e.fellBack ? " (o gratuito não respondeu)" : ""}
                   {e.model ? ` · ${e.model}` : ""}
                 </p>
               ) : null}

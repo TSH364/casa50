@@ -41,6 +41,11 @@ const estado = {
   casa: true,
   chave: "sk-or-da-casa" as string | null,
   roteiro: [] as TurnResult[],
+  /** O que o Jev responde sobre a rota; `null` = o Jev falha. */
+  rota: { choice: "simples", p: 0.9 } as { choice: string; p: number } | null,
+  /** Status com que o modelo gratuito falha, se falhar. */
+  gratuitoFalha: null as number | null,
+  estados: [] as string[],
   chamadas: [] as { messages: TurnMessage[]; options: TurnOptions }[],
 };
 
@@ -90,8 +95,16 @@ vi.mock("@/lib/openrouter", async () => {
   }
   return {
     OpenRouterError,
+    decide: async (state: string) => {
+      estado.estados.push(state);
+      if (!estado.rota) throw new OpenRouterError("sem Jev", 500);
+      return { complexidade: { choice: estado.rota.choice, probabilities: { [estado.rota.choice]: estado.rota.p }, confidence: estado.rota.p } };
+    },
     chatTurn: async (messages: TurnMessage[], options: TurnOptions) => {
       estado.chamadas.push({ messages: structuredClone(messages), options });
+      if (estado.gratuitoFalha && options.model === "openrouter/free") {
+        throw new OpenRouterError("Acabou a cota dos modelos gratuitos por agora.", estado.gratuitoFalha);
+      }
       const proxima = estado.roteiro.shift();
       if (!proxima) throw new OpenRouterError("Acabou a cota dos modelos gratuitos por agora.", 429);
       return proxima;
@@ -115,6 +128,9 @@ describe("askHouse", () => {
     estado.chave = "sk-or-da-casa";
     estado.roteiro = [];
     estado.chamadas = [];
+    estado.rota = { choice: "simples", p: 0.9 };
+    estado.gratuitoFalha = null;
+    estado.estados = [];
   });
 
   it("sem casa, recusa antes de chamar a IA", async () => {
@@ -206,3 +222,58 @@ describe("askHouse", () => {
     expect(r.error).toMatch(/cota dos modelos gratuitos/);
   });
 });
+
+describe("askHouse — qual modelo responde", () => {
+  beforeEach(() => {
+    estado.casa = true;
+    estado.chave = "sk-or-da-casa";
+    estado.roteiro = [responde("ok"), responde("ok")];
+    estado.chamadas = [];
+    estado.rota = { choice: "simples", p: 0.9 };
+    estado.gratuitoFalha = null;
+    estado.estados = [];
+  });
+
+  const perguntar = (content: string) => askHouse({ messages: [{ role: "user", content }] });
+
+  it("o Jev acha simples: gratuito, aceitando provedor que guarda", async () => {
+    const r = await perguntar("Quanto gastamos em setembro?");
+    expect(r).toMatchObject({ tier: "gratuito", route: "jev" });
+    expect(estado.chamadas[0]!.options).toMatchObject({ model: "openrouter/free", allowDataCollection: true });
+    // O Jev leu so a pergunta.
+    expect(estado.estados[0]).toMatch(/Quanto gastamos em setembro/);
+    expect(estado.estados[0]).not.toMatch(/RETRATO|Gasto:/);
+  });
+
+  it("o Jev acha complexa: pago, com provedor que não guarda", async () => {
+    estado.rota = { choice: "complexa", p: 0.8 };
+    const r = await perguntar("Por que gastamos mais em agosto que em julho?");
+    expect(r).toMatchObject({ tier: "pago", route: "jev" });
+    expect(estado.chamadas[0]!.options).toMatchObject({ model: "google/gemini-3.6-flash", allowDataCollection: false });
+  });
+
+  it("pedido de mudar dado vai ao pago mesmo que o Jev ache simples", async () => {
+    const r = await perguntar("Classifica o UBERRIDES como transporte");
+    expect(r).toMatchObject({ tier: "pago", route: "acao" });
+  });
+
+  it("sem Jev, o pago", async () => {
+    estado.rota = null;
+    expect(await perguntar("Quanto gastamos?")).toMatchObject({ tier: "pago", route: "sem-jev" });
+  });
+
+  it("gratuito sem cota: o pago assume, e a resposta diz", async () => {
+    estado.gratuitoFalha = 429;
+    const r = await perguntar("Quanto gastamos em setembro?");
+    expect(r).toMatchObject({ answer: "ok", tier: "pago", fellBack: true });
+    expect(estado.chamadas.map((c) => c.options.model)).toEqual(["openrouter/free", "google/gemini-3.6-flash"]);
+  });
+
+  it("erro que o pago não resolve (chave recusada) não é repetido", async () => {
+    estado.gratuitoFalha = 401;
+    const r = await perguntar("Quanto gastamos em setembro?");
+    expect(r.error).toBeDefined();
+    expect(estado.chamadas).toHaveLength(1);
+  });
+});
+
