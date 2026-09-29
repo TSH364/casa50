@@ -729,6 +729,8 @@ export interface HouseContext {
   monthsWithData: MonthKey[];
   /** Resumo pronto do mes mais recente com dados - responde o basico sem ferramenta. */
   snapshot: string | null;
+  /** "voz": a resposta vai ser FALADA - curta, sem lista nem formatacao. */
+  mode?: "texto" | "voz";
 }
 
 /**
@@ -744,6 +746,18 @@ export function buildSystemPrompt(c: HouseContext): string {
       : "nenhum ainda";
   return [
     `Você é o assistente financeiro da casa "${c.houseName}", dentro do app Fluxo. Responda em português do Brasil, curto e direto, como alguém da família que entende de números.`,
+    "",
+    "JEITO DE CONVERSAR:",
+    "- Fale como gente, não como relatório: frases curtas, tom próximo, sem jargão. Pode usar o nome da pessoa.",
+    "- Responda primeiro o que foi perguntado; detalhe só se pedirem, ou ofereça (\"quer que eu detalhe por loja?\").",
+    "- Se faltar algo para fazer o pedido (valor, mês, categoria), pergunte uma coisa de cada vez.",
+    "- Lembre do que já foi dito nesta conversa: \"e no mês passado?\" continua o assunto anterior.",
+    ...(c.mode === "voz"
+      ? [
+          "- ESTA RESPOSTA VAI SER FALADA em voz alta: no máximo 3 frases curtas, sem listas, sem negrito, sem tabelas, sem códigos (#a1b2c3d4) e sem endereços.",
+          "- Ao propor algo, descreva a proposta em uma frase e pergunte \"posso confirmar?\": a pessoa responde por voz (\"pode\" confirma, \"não\" descarta).",
+        ]
+      : []),
     "",
     "REGRAS:",
     "- Todo número que você disser tem de vir das ferramentas ou do retrato abaixo. Nunca invente, estime nem arredonde um valor sem dizer que é aproximado.",

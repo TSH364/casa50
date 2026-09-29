@@ -6,6 +6,7 @@ import { applyProposal } from "@/actions/chat";
 import type { Proposal } from "@/domain/chat";
 import { Button } from "@/components/ui/button";
 import { formatCents } from "@/lib/money";
+import { descrever, proposalDoneNote, proposalPayload, proposalTitle } from "./proposal-apply";
 
 /**
  * Uma mudanca que a IA propos, esperando o toque (secao 16).
@@ -19,86 +20,6 @@ import { formatCents } from "@/lib/money";
 export type ProposalStatus = "pendente" | "feito" | "descartado";
 
 const dia = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`;
-const diaAno = (iso: string) => `${dia(iso)}/${iso.slice(0, 4)}`;
-const mesAno = (m: string) => `${m.slice(5, 7)}/${m.slice(0, 4)}`;
-const INTERVALO = { weekly: "toda semana", monthly: "todo mês", yearly: "todo ano" } as const;
-
-type Simples = Exclude<Proposal, { kind: "classificar" } | { kind: "lancar" }>;
-
-/** Titulo, linhas e a frase de "feito" das propostas sem controle extra no cartao. */
-function descrever(p: Simples): { titulo: string; linhas: string[]; feito: string } {
-  switch (p.kind) {
-    case "tarefa":
-      return {
-        titulo: `Nova tarefa: ${p.fields.title}`,
-        linhas: [
-          [
-            p.fields.expectedCents !== null ? `Previsto ${formatCents(p.fields.expectedCents)}` : null,
-            "na primeira coluna do quadro de Tarefas",
-            p.fields.notes,
-          ]
-            .filter(Boolean)
-            .join(" · "),
-        ],
-        feito: `Tarefa criada: ${p.fields.title}.`,
-      };
-    case "meta":
-      return {
-        titulo: `Nova meta: ${p.fields.name}`,
-        linhas: [
-          `Juntar ${formatCents(p.fields.targetCents)}${p.fields.targetDate ? ` até ${diaAno(p.fields.targetDate)}` : ""}`,
-          [
-            p.fields.monthlyCents !== null ? `guardar ${formatCents(p.fields.monthlyCents)} por mês` : null,
-            p.summary.ownerLabel ? `de ${p.summary.ownerLabel}` : "da casa",
-          ]
-            .filter(Boolean)
-            .join(" · "),
-        ],
-        feito: `Meta criada: ${p.fields.name}.`,
-      };
-    case "orcamento":
-      return {
-        titulo:
-          p.fields.limitCents === 0
-            ? `Remover o orçamento de ${p.summary.categoryLabel} (${mesAno(p.fields.month)})`
-            : `Orçamento de ${p.summary.categoryLabel}: ${formatCents(p.fields.limitCents)} (${mesAno(p.fields.month)})`,
-        linhas: [
-          [
-            p.summary.currentCents !== null ? `hoje ${formatCents(p.summary.currentCents)}` : "hoje sem limite",
-            p.summary.averageCents !== null ? `média de gasto ${formatCents(p.summary.averageCents)}` : null,
-          ]
-            .filter(Boolean)
-            .join(" · "),
-        ],
-        feito:
-          p.fields.limitCents === 0
-            ? `Orçamento de ${p.summary.categoryLabel} removido.`
-            : `Orçamento de ${p.summary.categoryLabel} definido em ${formatCents(p.fields.limitCents)}.`,
-      };
-    case "conta_fixa":
-      return {
-        titulo: `Nova conta fixa: ${p.fields.description}`,
-        linhas: [
-          [
-            formatCents(p.fields.amountCents),
-            p.fields.expectedDay ? `todo dia ${p.fields.expectedDay}` : INTERVALO[p.fields.interval],
-            p.summary.categoryLabel ?? "sem categoria",
-            p.fields.merchant ? `na fatura: ${p.fields.merchant}` : null,
-          ]
-            .filter(Boolean)
-            .join(" · "),
-          "Entra na previsão; não cria lançamento.",
-        ],
-        feito: `Conta fixa criada: ${p.fields.description}.`,
-      };
-    case "mudar_tarefa":
-      return {
-        titulo: `Tarefa: ${p.summary.title}`,
-        linhas: [p.summary.changes.join(" · ")],
-        feito: `Tarefa atualizada: ${p.summary.title} (${p.summary.changes.join(", ")}).`,
-      };
-  }
-}
 
 export function ProposalCard({
   proposal,
@@ -118,39 +39,17 @@ export function ProposalCard({
   function confirmar() {
     setErro(null);
     startTransition(async () => {
-      const r =
-        proposal.kind === "classificar"
-          ? await applyProposal({
-              kind: "classificar",
-              transactionIds: proposal.transactionIds,
-              categoryId: proposal.categoryId,
-              subcategoryId: proposal.subcategoryId,
-              learnMerchant: proposal.learnMerchant,
-              learn: aprender,
-            })
-          : await applyProposal({ kind: proposal.kind, fields: proposal.fields });
+      const r = await applyProposal(proposalPayload(proposal, aprender));
       if (r.error) {
         setErro(r.error);
         return;
       }
-      onResolve(
-        "feito",
-        proposal.kind === "classificar"
-          ? `${r.count ?? 0} lançamento(s) classificados em ${proposal.summary.categoryLabel}.`
-          : proposal.kind === "lancar"
-            ? `Lançado: ${proposal.fields.description}, ${formatCents(proposal.fields.amountCents)}.`
-            : descrever(proposal).feito,
-      );
+      onResolve("feito", proposalDoneNote(proposal, r.count));
     });
   }
 
   const simples = proposal.kind === "classificar" || proposal.kind === "lancar" ? null : descrever(proposal);
-  const titulo =
-    proposal.kind === "classificar"
-      ? `Classificar ${proposal.summary.count} lançamento(s) em ${proposal.summary.categoryLabel}`
-      : proposal.kind === "lancar"
-        ? `Lançar ${proposal.fields.description}`
-        : simples!.titulo;
+  const titulo = proposalTitle(proposal);
 
   return (
     <div className="mt-2 rounded-xl border border-line bg-surface px-3 py-2.5 text-[13px] text-ink">

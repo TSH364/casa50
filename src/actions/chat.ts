@@ -44,7 +44,11 @@ import { createGoal } from "./goals";
 import { setBudget } from "./budgets";
 import { createRecurrence } from "./recurrences";
 import { moveTask, updateTask } from "./tasks";
-import { currentMonth } from "@/domain/month";
+import { addMonths, currentMonth, monthLabel, monthRange } from "@/domain/month";
+import { buildGreeting } from "@/domain/greeting";
+import type { Greeting } from "@/domain/greeting";
+import { getTaskBoard, listBudgets, listTransactions } from "@/data/queries";
+import { projectMonthEnd, summarizeMonth, spendingCents, totalsByCategory } from "@/domain/finance";
 
 /**
  * Uma pergunta a conversa (secao 16).
@@ -69,6 +73,8 @@ const schema = z.object({
     .min(1)
     .max(60)
     .refine((m) => m[m.length - 1]?.role === "user", "A última mensagem tem de ser a pergunta."),
+  /** "voz": a resposta vai ser falada (ver `buildSystemPrompt`). */
+  modo: z.enum(["texto", "voz"]).optional(),
 });
 
 export interface ChatReply {
@@ -160,6 +166,7 @@ export async function askHouse(input: z.input<typeof schema>): Promise<ChatReply
     // nao mandar.
     monthsWithData: months,
     snapshot,
+    mode: parsed.data.modo ?? "texto",
   });
 
   const historico = trimHistory(parsed.data.messages);
@@ -608,4 +615,79 @@ function revalidarLancamentos() {
   revalidatePath("/inicio");
   revalidatePath("/extratos");
   revalidatePath("/analise");
+}
+
+// ---------------------------------------------------------------------------
+// O resumo do dia, ao abrir a Conversa
+// ---------------------------------------------------------------------------
+
+/**
+ * A Conversa puxa assunto: o resumo do dia, calculado pelo app (ver
+ * `domain/greeting.ts`). Sem IA e sem chave - sai para qualquer pessoa da
+ * casa, na hora, com os mesmos numeros das telas.
+ */
+export async function chatGreeting(): Promise<Greeting | null> {
+  const houseId = await requireHouseId();
+  try {
+    const hoje = currentMonth();
+    const [user, members, view] = await Promise.all([getCurrentUser(), listMembers(houseId), houseView(houseId)]);
+    const [txs, budgets, quadro] = await Promise.all([
+      listTransactions(houseId, {
+        fromMonth: addMonths(hoje, -3),
+        toMonth: hoje,
+        excludeCategoryIds: view.excludeCategoryIds,
+        limit: 8000,
+      }),
+      listBudgets(houseId, hoje),
+      getTaskBoard(houseId),
+    ]);
+
+    const agora = new Date();
+    const fuso = { timeZone: "America/Sao_Paulo" } as const;
+    const hojeIso = agora.toLocaleDateString("sv-SE", fuso);
+    const ontemIso = new Date(agora.getTime() - 86_400_000).toLocaleDateString("sv-SE", fuso);
+    const hora = Number(agora.toLocaleString("en-US", { ...fuso, hour: "numeric", hourCycle: "h23" }));
+
+    const gastos = txs.filter(
+      (t) => t.type === "expense" && !t.isHidden && (t.status === "confirmed" || t.status === "divergent"),
+    );
+    const deOntem = gastos.filter((t) => t.date === ontemIso);
+    const fechados = monthRange(addMonths(hoje, -3), addMonths(hoje, -1)).filter((m) => txs.some((t) => t.invoiceMonth === m));
+    const media =
+      fechados.length > 0
+        ? Math.round(fechados.reduce((s, m) => s + summarizeMonth(txs, m).spentCents, 0) / fechados.length)
+        : null;
+    const gastoMes = summarizeMonth(txs, hoje).spentCents;
+    const porCategoria = new Map(totalsByCategory(txs, hoje).map((c) => [c.categoryId, c.totalCents]));
+    const dias = (iso: string) =>
+      Math.round((new Date(`${iso}T12:00:00Z`).getTime() - new Date(`${hojeIso}T12:00:00Z`).getTime()) / 86_400_000);
+    const eu = members.find((m) => m.userId === user?.id);
+
+    return buildGreeting({
+      firstName: eu ? firstName(eu.fullName) : null,
+      hour: Number.isFinite(hora) ? hora : 12,
+      yesterday: { cents: deOntem.reduce((s, t) => s + spendingCents(t), 0), count: deOntem.length },
+      month: {
+        label: monthLabel(hoje).split(" ")[0]!,
+        spentCents: gastoMes,
+        projectionCents: gastoMes > 0 ? projectMonthEnd(gastoMes, hoje, agora) : null,
+        averageCents: media,
+      },
+      budgets: budgets
+        .filter((b) => b.limitAmount > 0)
+        .map((b) => ({
+          name: view.categories.find((c) => c.id === b.categoryId)?.name ?? "Categoria",
+          ratio: (porCategoria.get(b.categoryId) ?? 0) / Math.round(b.limitAmount * 100),
+        })),
+      tasks: quadro
+        .flatMap((c) => c.tasks)
+        .filter((t) => !t.done && t.dueDate !== null)
+        .map((t) => ({ title: t.title, daysLeft: dias(t.dueDate!) })),
+      uncategorized: gastos.filter((t) => t.categoryId === null).length,
+    });
+  } catch (e) {
+    // O resumo e um extra: falhou, a Conversa abre sem ele.
+    console.error("[conversa] falha no resumo do dia", { erro: e instanceof Error ? e.name : "?" });
+    return null;
+  }
 }

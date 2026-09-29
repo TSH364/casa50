@@ -10,6 +10,7 @@ import { speakable } from "@/lib/voice";
 
 const perguntas: { messages: { role: string; content: string }[] }[] = [];
 vi.mock("@/actions/chat", () => ({
+  chatGreeting: async () => null,
   askHouse: async (input: { messages: { role: string; content: string }[] }) => {
     perguntas.push(input);
     return { answer: "Vocês gastaram **R$ 1.234,56** com #abcd1234 Mercado.", tier: "pago" };

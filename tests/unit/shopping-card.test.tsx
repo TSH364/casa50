@@ -9,6 +9,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 
 const pedidos: unknown[] = [];
 vi.mock("@/actions/chat", () => ({
+  chatGreeting: async () => null,
   applyProposal: async (p: unknown) => {
     pedidos.push(p);
     return { ok: true, count: 1 };

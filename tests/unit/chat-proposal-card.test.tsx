@@ -29,6 +29,7 @@ const PROPOSTA = {
 };
 
 vi.mock("@/actions/chat", () => ({
+  chatGreeting: async () => null,
   askHouse: async (input: { messages: { role: string; content: string }[] }) => {
     perguntas.push(input);
     return respostas.shift() ?? { answer: "ok" };

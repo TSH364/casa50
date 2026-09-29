@@ -129,6 +129,7 @@ describe("PDF só quando pedem", () => {
 
   async function montar() {
     vi.doMock("@/actions/chat", () => ({
+      chatGreeting: async () => null,
       askHouse: async () => respostas.shift() ?? { answer: "ok" },
       applyProposal: async () => ({}),
     }));

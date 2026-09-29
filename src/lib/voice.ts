@@ -53,7 +53,7 @@ const ERROS: Record<string, string> = {
  * Ditado: `start` abre o microfone; o texto parcial aparece em `interim`
  * enquanto a pessoa fala; ao parar de falar, `onFinal` recebe a frase.
  */
-export function useDictation(onFinal: (text: string) => void) {
+export function useDictation(onFinal: (text: string) => void, onEmpty?: (reason: string | null) => void) {
   const [supported, setSupported] = useState(false);
   const [listening, setListening] = useState(false);
   const [interim, setInterim] = useState("");
@@ -62,6 +62,9 @@ export function useDictation(onFinal: (text: string) => void) {
   const final = useRef("");
   const aoTerminar = useRef(onFinal);
   aoTerminar.current = onFinal;
+  const aoSilencio = useRef(onEmpty);
+  aoSilencio.current = onEmpty;
+  const ultimoErro = useRef<string | null>(null);
 
   // Depois de montar: no servidor nao ha `window`, e decidir la geraria uma
   // tela diferente da do navegador.
@@ -74,6 +77,7 @@ export function useDictation(onFinal: (text: string) => void) {
     setError(null);
     setInterim("");
     final.current = "";
+    ultimoErro.current = null;
     const r = new C();
     r.lang = "pt-BR";
     r.interimResults = true;
@@ -89,8 +93,11 @@ export function useDictation(onFinal: (text: string) => void) {
       setInterim(`${final.current}${parcial}`.trim());
     };
     r.onerror = (e) => {
-      // "aborted" e o proprio botao de parar: nao e erro para a pessoa.
-      if (e.error !== "aborted") setError(ERROS[e.error] ?? "O reconhecimento de voz falhou. Tente de novo.");
+      ultimoErro.current = e.error;
+      // "aborted" e o proprio botao de parar: nao e erro para a pessoa. E
+      // "no-speech" no modo conversa e so silencio - quem decide e ele.
+      if (e.error === "aborted" || (e.error === "no-speech" && aoSilencio.current)) return;
+      setError(ERROS[e.error] ?? "O reconhecimento de voz falhou. Tente de novo.");
     };
     r.onend = () => {
       rec.current = null;
@@ -98,6 +105,7 @@ export function useDictation(onFinal: (text: string) => void) {
       const texto = final.current.trim();
       setInterim("");
       if (texto) aoTerminar.current(texto);
+      else aoSilencio.current?.(ultimoErro.current);
     };
     rec.current = r;
     setListening(true);
@@ -112,8 +120,20 @@ export function useDictation(onFinal: (text: string) => void) {
 
   /** Para de ouvir e envia o que ja foi entendido. */
   const stop = useCallback(() => rec.current?.stop(), []);
+  /** Para de ouvir e descarta - sair do modo conversa no meio de uma frase. */
+  const cancel = useCallback(() => {
+    const r = rec.current;
+    if (!r) return;
+    r.onend = null;
+    r.onresult = null;
+    r.onerror = null;
+    rec.current = null;
+    r.abort();
+    setListening(false);
+    setInterim("");
+  }, []);
 
-  return { supported, listening, interim, error, start, stop };
+  return { supported, listening, interim, error, start, stop, cancel };
 }
 
 /**
@@ -141,18 +161,28 @@ export function useSpeech() {
     if (typeof window !== "undefined" && "speechSynthesis" in window) window.speechSynthesis.cancel();
   }, []);
 
-  const speak = useCallback((text: string) => {
-    if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
+  /** Fala e resolve quando termina (ou e interrompida) - o modo conversa espera. */
+  const speak = useCallback((text: string): Promise<void> => {
+    if (typeof window === "undefined" || !("speechSynthesis" in window)) return Promise.resolve();
     const s = window.speechSynthesis;
     s.cancel();
-    const u = new SpeechSynthesisUtterance(speakable(text));
-    u.lang = "pt-BR";
-    const voz = s.getVoices().find((v) => v.lang.toLowerCase().startsWith("pt-br")) ?? s.getVoices().find((v) => v.lang.toLowerCase().startsWith("pt"));
-    if (voz) u.voice = voz;
-    u.onend = () => setSpeaking(false);
-    u.onerror = () => setSpeaking(false);
-    setSpeaking(true);
-    s.speak(u);
+    const falar = speakable(text);
+    if (!falar) return Promise.resolve();
+    return new Promise((resolve) => {
+      const u = new SpeechSynthesisUtterance(falar);
+      u.lang = "pt-BR";
+      const vozes = s.getVoices();
+      const voz = vozes.find((v) => v.lang.toLowerCase().startsWith("pt-br")) ?? vozes.find((v) => v.lang.toLowerCase().startsWith("pt"));
+      if (voz) u.voice = voz;
+      const fim = () => {
+        setSpeaking(false);
+        resolve();
+      };
+      u.onend = fim;
+      u.onerror = fim;
+      setSpeaking(true);
+      s.speak(u);
+    });
   }, []);
 
   const stop = useCallback(() => {
