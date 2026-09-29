@@ -26,6 +26,19 @@ import {
 } from "@/domain/chat";
 import { refOf, refPrefix } from "@/domain/chat";
 import type { ChartSpec, Proposal, Range, ToolName } from "@/domain/chat";
+import {
+  SEARCH_PROMPT,
+  checkOffers,
+  offersFromCitations,
+  offersPrompt,
+  purchaseImpact,
+  searchDiagnostics,
+  unverifiedOffers,
+} from "@/domain/shopping";
+import type { ShoppingSearch } from "@/domain/shopping";
+import { webSearch } from "@/lib/openrouter";
+import { recordAiUsage } from "@/lib/ai-usage";
+import { DEFAULT_CHAT_PAID_MODEL } from "@/domain/ai-models";
 import { normalizeMerchant } from "@/importers/detect";
 import { formatCents, toCents } from "@/lib/money";
 import type { Category, MonthKey, Transaction } from "@/domain/types";
@@ -61,7 +74,20 @@ export interface ToolContext {
   charts: ChartSpec[];
   /** Hoje, AAAA-MM-DD, no fuso da casa - a data padrao de um lancamento. */
   todayIso: string;
+  /** A chave da casa: a pesquisa de compra faz a propria chamada. */
+  apiKey?: string;
+  /** Pesquisas de compra desta pergunta - vao para a tela como cartoes. */
+  searches: ShoppingSearch[];
+  /**
+   * Quando a pergunta inteira tem de terminar (epoch ms). A pesquisa tem de
+   * caber antes disso, com folga para a resposta: passar do prazo da funcao
+   * na Vercel derruba a pergunta toda, e a tela so ve "sem servidor".
+   */
+  deadline?: number;
 }
+
+/** Pesquisas por pergunta: cada uma custa uma chamada paga com busca na web. */
+const MAX_PESQUISAS = 2;
 
 const R = (cents: number) => formatCents(cents);
 
@@ -590,6 +616,151 @@ async function grafico(
   ].join("\n");
 }
 
+// ---------------------------------------------------------------------------
+// Compras: pesquisar, simular, propor tarefa
+// ---------------------------------------------------------------------------
+
+/**
+ * A busca na web e uma chamada SEPARADA da conversa, e so com o produto: o
+ * buscador (e a pagina da loja) nunca recebe nada da casa. O resultado volta
+ * ao modelo da conversa ja conferido (ver `checkOffers`).
+ */
+async function pesquisarCompra(ctx: ToolContext, a: { produto: string; preco_maximo?: number }): Promise<string> {
+  if (!ctx.apiKey) return "A pesquisa na web não está disponível.";
+  if (ctx.searches.length >= MAX_PESQUISAS) return `Já foram ${MAX_PESQUISAS} pesquisas nesta pergunta. Responda com o que já encontrou.`;
+  const teto = a.preco_maximo ? toCents(a.preco_maximo) : null;
+  // Folga de 12 s para o modelo escrever a resposta depois da pesquisa.
+  const tempo = Math.min(25_000, (ctx.deadline ?? Number.POSITIVE_INFINITY) - Date.now() - 12_000);
+  if (tempo < 8_000) return "Não há tempo para pesquisar nesta pergunta. Diga para pedir a pesquisa de novo, sozinha.";
+
+  let custo = 0;
+  let modelo: string | null = DEFAULT_CHAT_PAID_MODEL;
+  let detalhes: Record<string, unknown> | null = null;
+  try {
+    const r = await webSearch([{ role: "user", content: offersPrompt(a.produto, teto) }], {
+      apiKey: ctx.apiKey,
+      model: DEFAULT_CHAT_PAID_MODEL,
+      timeoutMs: tempo,
+      searchPrompt: SEARCH_PROMPT,
+    });
+    custo = r.costUsd;
+    modelo = r.servedBy ?? modelo;
+    // Tres niveis, do mais ao menos conferido: o anuncio que a IA citou e a
+    // busca abriu; o anuncio direto das paginas de loja citadas; e, por
+    // ultimo, a busca na loja pelo nome do que a IA viu.
+    const conferidas = checkOffers(r.content, r.citations, teto);
+    const planoB = conferidas.offers.length > 0 ? [] : offersFromCitations(r.citations, teto);
+    const planoC = conferidas.offers.length > 0 || planoB.length > 0 ? [] : unverifiedOffers(r.content, teto);
+    const offers = conferidas.offers.length > 0 ? conferidas.offers : planoB.length > 0 ? planoB : planoC;
+    detalhes = searchDiagnostics(a.produto, r.content, r.citations, {
+      conferidas: conferidas.offers.length,
+      descartadas: conferidas.dropped,
+      planoB: planoB.length,
+      planoC: planoC.length,
+    });
+    ctx.searches.push({
+      id: novoId(),
+      query: a.produto,
+      maxPriceCents: teto,
+      offers,
+      searchedAt: new Date().toISOString(),
+    });
+    if (offers.length === 0) {
+      return `A pesquisa por "${a.produto}" não trouxe ofertas com preço. Diga isso, e sugira descrever o produto de outro jeito.`;
+    }
+    return [
+      `Pesquisa na web por "${a.produto}"${teto ? ` até ${R(teto)}` : ""} (as ofertas aparecem num cartão com os links; preços da busca, a conferir na loja):`,
+      ...offers.map(
+        (o, i) =>
+          `${i + 1}. ${o.store} — ${o.title} — ${R(o.priceCents)} à vista${o.installments ? ` · ${o.installments}` : ""}${
+            o.linkKind === "busca" ? " (anúncio não conferido: o cartão leva à busca da loja)" : o.priceSeen ? "" : " (preço não confirmado no trecho da página)"
+          }`,
+      ),
+    ].join("\n");
+  } catch (e) {
+    return `A pesquisa falhou: ${e instanceof Error ? e.message : "erro desconhecido"}`;
+  } finally {
+    await recordAiUsage(ctx.houseId, "pesquisa", { calls: 1, costUsd: custo, model: modelo, details: detalhes });
+  }
+}
+
+async function simularCompra(
+  ctx: ToolContext,
+  a: { valor: number; parcelas?: number; categoria?: string },
+): Promise<string> {
+  const total = toCents(a.valor);
+  const n = a.parcelas ?? 1;
+  const cat = resolverCategoria(ctx, a.categoria, undefined);
+  if (typeof cat === "string") return cat;
+
+  const [futuras, passadas, budgets] = await Promise.all([
+    listTransactions(ctx.houseId, {
+      fromMonth: addMonths(ctx.today, 1),
+      toMonth: addMonths(ctx.today, Math.min(24, n)),
+      excludeCategoryIds: ctx.excludeCategoryIds,
+      limit: 5000,
+    }),
+    listTransactions(ctx.houseId, {
+      fromMonth: addMonths(ctx.today, -3),
+      toMonth: ctx.today,
+      excludeCategoryIds: ctx.excludeCategoryIds,
+      limit: 5000,
+    }),
+    cat.categoryId ? listBudgets(ctx.houseId, ctx.today) : Promise.resolve([]),
+  ]);
+
+  const assumidas = new Map(committedInstallments(futuras, ctx.today, Math.min(24, n)).map((m) => [m.month, m.totalCents]));
+  const meses = purchaseImpact(total, n, ctx.today, assumidas);
+  // Media dos tres meses FECHADOS: o atual ainda esta correndo.
+  const fechados = monthRange(addMonths(ctx.today, -3), addMonths(ctx.today, -1)).filter((m) =>
+    passadas.some((t) => t.invoiceMonth === m),
+  );
+  const media =
+    fechados.length > 0
+      ? Math.round(fechados.reduce((s, m) => s + summarizeMonth(passadas, m).spentCents, 0) / fechados.length)
+      : null;
+
+  const linhas = [
+    n === 1
+      ? `Compra de ${R(total)} à vista (entra na próxima fatura do cartão).`
+      : `Compra de ${R(total)} em ${n}x de ${R(meses[meses.length - 1]!.newCents)} (a primeira na próxima fatura; a sobra de centavos vai na primeira).`,
+  ];
+  if (media !== null) linhas.push(`Gasto médio dos últimos ${fechados.length} meses fechados: ${R(media)}.`);
+  linhas.push("Mês a mês (parcelas já assumidas + a nova = total de parcelas):");
+  for (const m of meses.slice(0, 6)) {
+    linhas.push(`- ${monthLabel(m.month)}: ${R(m.committedCents)} + ${R(m.newCents)} = ${R(m.committedCents + m.newCents)}`);
+  }
+  if (meses.length > 6) linhas.push(`- e mais ${meses.length - 6} meses de ${R(meses[6]!.newCents)}`);
+
+  if (cat.categoryId) {
+    const b = budgets.find((x) => x.categoryId === cat.categoryId);
+    if (!b) linhas.push(`${cat.label} não tem orçamento em ${monthLabel(ctx.today)}.`);
+    else {
+      const limite = toCents(b.limitAmount);
+      const gasto = totalsByCategory(passadas, ctx.today).find((c) => c.categoryId === cat.categoryId)?.totalCents ?? 0;
+      const livre = limite - gasto;
+      const primeira = meses[0]!.newCents;
+      linhas.push(
+        `Orçamento de ${cat.label} em ${monthLabel(ctx.today)}: gasto ${R(gasto)} de ${R(limite)}, ${livre >= 0 ? `livre ${R(livre)}` : `estourado em ${R(-livre)}`}.`,
+        primeira <= livre
+          ? `A ${n === 1 ? "compra" : "primeira parcela"} (${R(primeira)}) cabe no que está livre.`
+          : `A ${n === 1 ? "compra" : "primeira parcela"} (${R(primeira)}) passa do que está livre.`,
+      );
+    }
+  }
+  return linhas.join("\n");
+}
+
+function proporTarefa(ctx: ToolContext, a: { titulo: string; valor_previsto?: number; notas?: string }): string {
+  const expectedCents = a.valor_previsto ? toCents(a.valor_previsto) : null;
+  ctx.proposals.push({
+    kind: "tarefa",
+    id: novoId(),
+    fields: { title: a.titulo, expectedCents, notes: a.notas?.trim() || null },
+  });
+  return `Proposta criada: tarefa "${a.titulo}"${expectedCents ? `, previsto ${R(expectedCents)}` : ""}. Peça para confirmar no cartão.`;
+}
+
 /**
  * Executa uma ferramenta pedida pelo modelo.
  *
@@ -646,6 +817,15 @@ export async function runTool(
       break;
     case "grafico":
       output = await grafico(ctx, a);
+      break;
+    case "pesquisar_compra":
+      output = await pesquisarCompra(ctx, a);
+      break;
+    case "simular_compra":
+      output = await simularCompra(ctx, a);
+      break;
+    case "propor_tarefa":
+      output = proporTarefa(ctx, a);
       break;
   }
   return { output: capToolOutput(output), tool: name };

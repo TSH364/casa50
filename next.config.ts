@@ -52,6 +52,15 @@ function commitSha(): string {
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
+  // Previsão e Insights viraram uma tela só (Análise). Os endereços antigos
+  // continuam valendo - atalho salvo no celular, link numa conversa - e a
+  // consulta (?mes=...) segue junto.
+  async redirects() {
+    return [
+      { source: "/previsao", destination: "/analise", permanent: false },
+      { source: "/insights", destination: "/analise", permanent: false },
+    ];
+  },
   experimental: {
     // Bibliotecas de importacao (xlsx/pdfjs) entram na Etapa 3 e sao pesadas:
     // mantemos o bundle do servidor enxuto ate la.

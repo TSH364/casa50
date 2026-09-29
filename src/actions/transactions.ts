@@ -46,7 +46,7 @@ function toRow(input: Parsed) {
 function revalidateTransactions() {
   revalidatePath("/inicio");
   revalidatePath("/extratos");
-  revalidatePath("/insights");
+  revalidatePath("/analise");
 }
 
 export async function createTransaction(

@@ -48,7 +48,9 @@ export function ProposalCard({
               learnMerchant: proposal.learnMerchant,
               learn: aprender,
             })
-          : await applyProposal({ kind: "lancar", fields: proposal.fields });
+          : proposal.kind === "lancar"
+            ? await applyProposal({ kind: "lancar", fields: proposal.fields })
+            : await applyProposal({ kind: "tarefa", fields: proposal.fields });
       if (r.error) {
         setErro(r.error);
         return;
@@ -57,7 +59,9 @@ export function ProposalCard({
         "feito",
         proposal.kind === "classificar"
           ? `${r.count ?? 0} lançamento(s) classificados em ${proposal.summary.categoryLabel}.`
-          : `Lançado: ${proposal.fields.description}, ${formatCents(proposal.fields.amountCents)}.`,
+          : proposal.kind === "lancar"
+            ? `Lançado: ${proposal.fields.description}, ${formatCents(proposal.fields.amountCents)}.`
+            : `Tarefa criada: ${proposal.fields.title}.`,
       );
     });
   }
@@ -65,7 +69,9 @@ export function ProposalCard({
   const titulo =
     proposal.kind === "classificar"
       ? `Classificar ${proposal.summary.count} lançamento(s) em ${proposal.summary.categoryLabel}`
-      : `Lançar ${proposal.fields.description}`;
+      : proposal.kind === "lancar"
+        ? `Lançar ${proposal.fields.description}`
+        : `Nova tarefa: ${proposal.fields.title}`;
 
   return (
     <div className="mt-2 rounded-xl border border-line bg-surface px-3 py-2.5 text-[13px] text-ink">
@@ -96,6 +102,12 @@ export function ProposalCard({
             </label>
           ) : null}
         </>
+      ) : proposal.kind === "tarefa" ? (
+        <p className="tabular break-words text-[12px] text-ink-muted">
+          {proposal.fields.expectedCents !== null ? `Previsto ${formatCents(proposal.fields.expectedCents)} · ` : ""}
+          na primeira coluna do quadro de Tarefas
+          {proposal.fields.notes ? ` · ${proposal.fields.notes}` : ""}
+        </p>
       ) : (
         <p className="tabular text-[12px] text-ink-muted">
           {formatCents(proposal.fields.amountCents)} · {dia(proposal.fields.date)}

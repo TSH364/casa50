@@ -211,7 +211,7 @@ export async function applyBudgetChanges(input: unknown): Promise<FormState & { 
 
   revalidatePath("/orcamentos");
   revalidatePath("/inicio");
-  revalidatePath("/previsao");
+  revalidatePath("/analise");
   return { ok: true, applied: changes.length };
 }
 

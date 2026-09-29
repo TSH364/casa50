@@ -35,6 +35,7 @@ const tx = (p: Partial<Transaction>): Transaction =>
 let LANC: Transaction[] = [];
 
 vi.mock("server-only", () => ({}));
+vi.mock("@/lib/ai-usage", () => ({ recordAiUsage: async () => {} }));
 vi.mock("@/data/queries", () => ({
   listTransactions: async (_h: string, f: { fromMonth?: string; toMonth?: string }) =>
     LANC.filter((t) => (!f.fromMonth || t.invoiceMonth >= f.fromMonth) && (!f.toMonth || t.invoiceMonth <= f.toMonth)),
@@ -51,7 +52,7 @@ const ctx = () => ({
   categories: CATS,
   excludeCategoryIds: [],
   proposals: [] as Proposal[],
-  charts: [] as ChartSpec[],
+  charts: [] as ChartSpec[], searches: [],
 });
 
 describe("ferramenta grafico", () => {

@@ -6,7 +6,6 @@ import {
   House,
   MessageCircle,
   ReceiptText,
-  TrendingUp,
   Hammer,
   KanbanSquare,
   Sparkles,
@@ -18,15 +17,15 @@ import { cn } from "@/lib/utils";
 const ITEMS = [
   { href: "/inicio", label: "Início", Icon: House },
   { href: "/extratos", label: "Extratos", Icon: ReceiptText },
-  { href: "/previsao", label: "Previsão", Icon: TrendingUp },
-  { href: "/insights", label: "Insights", Icon: Sparkles },
+  // Previsão e Insights numa tela só: o que aconteceu e o que vem.
+  { href: "/analise", label: "Análise", Icon: Sparkles },
   { href: "/metas", label: "Metas", Icon: Target },
   { href: "/projetos", label: "Projetos", Icon: Hammer },
   { href: "/tarefas", label: "Tarefas", Icon: KanbanSquare },
+  { href: "/conversa", label: "Conversa", Icon: MessageCircle },
   // So no computador: a barra do celular ja tem sete, e uma oitava espremia
-  // os rotulos. No celular, conversa e casa ficam em icones da barra de cima
-  // - a casa se abre pouco (convites, cartoes, chave), tarefas todo dia.
-  { href: "/conversa", label: "Conversa", Icon: MessageCircle, desktopOnly: true },
+  // os rotulos. No celular a casa fica num icone da barra de cima - ela se
+  // abre pouco (convites, cartoes, chave).
   { href: "/casa", label: "Casa", Icon: Users, desktopOnly: true },
 ] as const;
 

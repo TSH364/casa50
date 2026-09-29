@@ -6,6 +6,8 @@ import { askHouse } from "@/actions/chat";
 import type { ChartSpec, ChatMessage, Proposal } from "@/domain/chat";
 import { ChatChart } from "./chat-chart";
 import { ProposalCard } from "./proposal-card";
+import { ShoppingCard } from "./shopping-card";
+import type { ShoppingSearch } from "@/domain/shopping";
 import type { ProposalStatus } from "./proposal-card";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -27,6 +29,7 @@ interface Entry extends ChatMessage {
   error?: boolean;
   proposals?: Proposal[];
   charts?: ChartSpec[];
+  searches?: ShoppingSearch[];
   /** So quando a pergunta pediu PDF: de qual resposta ele e. */
   pdf?: "esta" | "anterior";
   /** id da proposta -> o que a casa fez com ela, e a frase do resultado. */
@@ -67,6 +70,7 @@ const SUGESTOES = [
   "Onde mais gastamos com alimentação nos últimos 3 meses?",
   "Quais parcelas ainda vão cair?",
   "Como estão os orçamentos e as metas?",
+  "Quero comprar uma air fryer até R$ 400. Cabe no orçamento?",
 ];
 
 /** Guarda so as ultimas: a conversa inteira de meses nao cabe nem ajuda. */
@@ -158,6 +162,7 @@ export function ChatPanel({ houseId }: { houseId: string }) {
             fellBack: r.fellBack,
             ...(r.proposals?.length ? { proposals: r.proposals } : {}),
             ...(r.charts?.length ? { charts: r.charts } : {}),
+            ...(r.searches?.length ? { searches: r.searches } : {}),
             ...(r.pdf ? { pdf: r.pdf } : {}),
           }
         : { role: "assistant", content: r.error ?? "A conversa falhou.", error: true };
@@ -256,6 +261,7 @@ export function ChatPanel({ houseId }: { houseId: string }) {
             >
               <Texto texto={e.content} />
               {e.charts?.map((c) => <ChatChart key={c.id} chart={c} />)}
+              {e.searches?.map((sr) => <ShoppingCard key={sr.id} search={sr} />)}
               {e.proposals?.map((p) => (
                 <ProposalCard
                   key={p.id}

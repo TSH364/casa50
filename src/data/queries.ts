@@ -1,6 +1,7 @@
 import "server-only";
 import { spendingCents, withoutExcludedCategories } from "@/domain/finance";
 import { buildBoard } from "@/domain/tasks";
+import { savedAnalysisSchema, type AiAnalysis } from "@/domain/ai-insights";
 import { merchantLabel } from "@/domain/merchants";
 import type { BoardColumn, LinkedTransaction, Task, TaskList } from "@/domain/tasks";
 import { createClient } from "@/lib/supabase/server";
@@ -798,4 +799,46 @@ export async function getTaskBoard(houseId: string): Promise<BoardColumn[]> {
     position: Number(l.position),
   }));
   return buildBoard(lists, tasks);
+}
+
+// --------------------------------------------------------------------------
+// Analise do mes com IA (secao 14)
+// --------------------------------------------------------------------------
+
+export interface SavedAiAnalysis {
+  items: AiAnalysis[];
+  dropped: number;
+  model: string | null;
+  createdAt: string;
+}
+
+/**
+ * A analise mais recente do mes, no recorte pedido. Conteudo que nao passa no
+ * schema (versao antiga, linha estragada) conta como "sem analise": a tela
+ * oferece fazer de novo em vez de quebrar.
+ */
+export async function getLatestAiAnalysis(
+  houseId: string,
+  month: MonthKey,
+  scope: "casa" | "tudo",
+): Promise<SavedAiAnalysis | null> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("ai_insights")
+    .select("content, model, created_at")
+    .eq("house_id", houseId)
+    .eq("month", month)
+    .eq("scope", scope)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) fail("a análise do mês", error);
+  if (!data) return null;
+  const content = savedAnalysisSchema.safeParse(data.content);
+  if (!content.success) return null;
+  return {
+    ...content.data,
+    model: (data.model as string | null) ?? null,
+    createdAt: String(data.created_at),
+  };
 }

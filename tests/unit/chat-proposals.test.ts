@@ -118,7 +118,7 @@ const ctx = () => ({
   categories: CATS,
   excludeCategoryIds: [],
   proposals: [] as Proposal[],
-  charts: [] as ChartSpec[],
+  charts: [] as ChartSpec[], searches: [],
 });
 
 describe("ferramentas de propor", () => {

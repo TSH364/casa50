@@ -190,8 +190,7 @@ export async function setCategoryExcludedFromTotals(
   for (const path of [
     "/categorias",
     "/inicio",
-    "/insights",
-    "/previsao",
+    "/analise",
     "/orcamentos",
     "/extratos",
   ]) {

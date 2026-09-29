@@ -43,7 +43,7 @@ const aceitarSchema = z.object({
 function revalidar() {
   revalidatePath("/categorias");
   revalidatePath("/extratos");
-  revalidatePath("/insights");
+  revalidatePath("/analise");
   revalidatePath("/inicio");
 }
 
