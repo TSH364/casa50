@@ -51,7 +51,7 @@ export const ROUTE_QUESTION = {
  * pago sem precisar); falso negativo custa um dado errado.
  */
 const ACAO =
-  /\b(classifi\w*|categoriz\w*|recategoriz\w*|lan[cç]\w*|registr\w*|gastei|paguei|comprei|coloc\w*|mud\w*|troc\w*|marc\w*|corrig\w*|apag\w*|exclu\w*|grafico|gr[aá]fico\w*|pdf|export\w*|desenh\w*|plot\w*)\b/i;
+  /\b(classifi\w*|categoriz\w*|recategoriz\w*|lan[cç]\w*|registr\w*|gastei|paguei|comprei|coloc\w*|mud\w*|troc\w*|marc\w*|corrig\w*|apag\w*|exclu\w*|grafico|gr[aá]fico\w*|pdf|export\w*|desenh\w*|plot\w*|comprar\w*|pesquis\w*|pre[cç]o\w*|ofert\w*)\b/i;
 
 export function isActionRequest(text: string): boolean {
   return ACAO.test(text.normalize("NFC"));

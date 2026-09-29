@@ -120,6 +120,8 @@ interface PostOptions {
 interface RawMessage {
   content?: unknown;
   tool_calls?: unknown;
+  /** Citacoes da busca na web (`url_citation`), quando o plugin "web" roda. */
+  annotations?: unknown;
 }
 
 /**
@@ -339,6 +341,71 @@ export async function chatTurn(
     throw new OpenRouterError("A IA respondeu vazio. Tente perguntar de outro jeito.", 200);
   }
   return { content, toolCalls, servedBy, costUsd };
+}
+
+// ---------------------------------------------------------------------------
+// Busca na web
+// ---------------------------------------------------------------------------
+
+export interface WebCitation {
+  url: string;
+  title: string;
+  /** O trecho da pagina que a busca trouxe - e onde se confere um preco. */
+  content: string;
+}
+
+export interface WebSearchResult {
+  content: string;
+  citations: WebCitation[];
+  servedBy: string | null;
+  costUsd: number;
+}
+
+/**
+ * Uma pergunta com busca na web (plugin "web" do OpenRouter).
+ *
+ * As paginas que a busca abriu voltam como `url_citation`: sao a unica fonte
+ * de link que o app aceita - link que o modelo escreveu e nao esta aqui nao
+ * foi visitado, e nao vai para a tela.
+ */
+export async function webSearch(
+  messages: readonly ChatMessage[],
+  options: { apiKey: string | null; model: string; maxResults?: number; fetchImpl?: typeof fetch },
+): Promise<WebSearchResult> {
+  const { message, servedBy, costUsd } = await postChat({
+    apiKey: options.apiKey,
+    model: options.model,
+    timeoutMs: 30_000,
+    timeoutMessage: "A pesquisa demorou demais. Tente de novo.",
+    fetchImpl: options.fetchImpl,
+    message: (status) => (status === 429 ? "Muitas pesquisas seguidas. Espere um minuto e tente de novo." : null),
+    body: {
+      messages,
+      temperature: 0,
+      max_tokens: 3000,
+      plugins: [{ id: "web", max_results: options.maxResults ?? 8 }],
+      provider: { data_collection: "deny" },
+    },
+  });
+
+  const citations: WebCitation[] = [];
+  if (Array.isArray(message.annotations)) {
+    for (const a of message.annotations as unknown[]) {
+      const c = (a as { type?: unknown; url_citation?: { url?: unknown; title?: unknown; content?: unknown } })?.url_citation;
+      if (typeof c?.url !== "string") continue;
+      citations.push({
+        url: c.url,
+        title: typeof c.title === "string" ? c.title : "",
+        content: typeof c.content === "string" ? c.content : "",
+      });
+    }
+  }
+  return {
+    content: typeof message.content === "string" ? message.content : "",
+    citations,
+    servedBy,
+    costUsd,
+  };
 }
 
 // ---------------------------------------------------------------------------

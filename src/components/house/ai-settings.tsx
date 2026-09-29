@@ -64,6 +64,7 @@ const USO: Record<string, string> = {
   jev: "Jev",
   orcamento: "Leitura de orçamento",
   insights: "Análise do mês",
+  pesquisa: "Pesquisa de compra",
 };
 
 export function AiSettings({

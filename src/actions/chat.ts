@@ -36,6 +36,8 @@ import {
   trimHistory,
 } from "@/domain/chat";
 import type { ChartSpec, Proposal, ToolName } from "@/domain/chat";
+import type { ShoppingSearch } from "@/domain/shopping";
+import { DEFAULT_LISTS } from "@/domain/tasks";
 import { currentMonth } from "@/domain/month";
 
 /**
@@ -81,6 +83,8 @@ export interface ChatReply {
   proposals?: Proposal[];
   /** Graficos com numeros do app, para desenhar abaixo da resposta. */
   charts?: ChartSpec[];
+  /** Pesquisas de compra: ofertas conferidas, com os links. */
+  searches?: ShoppingSearch[];
   /**
    * So quando a pergunta pediu PDF: de qual resposta ele e. Sem pedido, sem
    * botao - ver `isPdfRequest`.
@@ -122,6 +126,8 @@ export async function askHouse(input: z.input<typeof schema>): Promise<ChatReply
     excludeCategoryIds: view.excludeCategoryIds,
     proposals: [],
     charts: [],
+    searches: [],
+    apiKey,
     // AAAA-MM-DD no fuso da casa: "gastei ontem" as 23h nao pode cair amanha.
     todayIso: new Date().toLocaleDateString("sv-SE", { timeZone: "America/Sao_Paulo" }),
   };
@@ -240,6 +246,7 @@ async function runConversation(
   // Uma tentativa que falhou no gratuito nao deixa proposta para tras.
   ctx.proposals.length = 0;
   ctx.charts.length = 0;
+  ctx.searches.length = 0;
   const inicio = Date.now();
 
   for (let rodada = 0; rodada <= MAX_TOOL_ROUNDS; rodada += 1) {
@@ -267,6 +274,7 @@ async function runConversation(
         model: turn.servedBy,
         ...(ctx.proposals.length > 0 ? { proposals: [...ctx.proposals] } : {}),
         ...(ctx.charts.length > 0 ? { charts: [...ctx.charts] } : {}),
+        ...(ctx.searches.length > 0 ? { searches: [...ctx.searches] } : {}),
       };
     }
 
@@ -307,6 +315,14 @@ const proposalSchema = z.discriminatedUnion("kind", [
       subcategoryId: uuid.nullable(),
       memberId: uuid.nullable(),
       isJoint: z.boolean(),
+    }),
+  }),
+  z.object({
+    kind: z.literal("tarefa"),
+    fields: z.object({
+      title: z.string().trim().min(1).max(200),
+      expectedCents: z.number().int().min(0).max(1_000_000_000).nullable(),
+      notes: z.string().trim().max(4000).nullable(),
     }),
   }),
 ]);
@@ -376,6 +392,52 @@ export async function applyProposal(input: unknown): Promise<ApplyProposalResult
     }
     revalidarLancamentos();
     return { ok: true, count: marcados?.length ?? 0 };
+  }
+
+  if (p.kind === "tarefa") {
+    // Na primeira coluna do quadro, no fim; quadro vazio ganha as colunas de
+    // partida, como no botao da tela de Tarefas.
+    let { data: colunas } = await supabase
+      .from("task_lists")
+      .select("id")
+      .eq("house_id", houseId)
+      .order("position")
+      .limit(1);
+    if (!colunas || colunas.length === 0) {
+      const { data: criadas, error: erroQuadro } = await supabase
+        .from("task_lists")
+        .insert(DEFAULT_LISTS.map((name, position) => ({ house_id: houseId, name, position })))
+        .select("id, position");
+      if (erroQuadro) {
+        console.error("[conversa] falha ao criar o quadro", { code: erroQuadro.code });
+        return { error: "Não foi possível criar a tarefa." };
+      }
+      colunas = [...(criadas ?? [])].sort((a, b) => Number(a.position) - Number(b.position));
+    }
+    const listId = colunas?.[0]?.id as string | undefined;
+    if (!listId) return { error: "Não foi possível criar a tarefa." };
+    const { data: ultimas } = await supabase
+      .from("tasks")
+      .select("position")
+      .eq("house_id", houseId)
+      .eq("list_id", listId)
+      .order("position", { ascending: false })
+      .limit(1);
+    const { error } = await supabase.from("tasks").insert({
+      house_id: houseId,
+      list_id: listId,
+      title: p.fields.title,
+      notes: p.fields.notes,
+      expected_amount: p.fields.expectedCents === null ? null : fromCents(p.fields.expectedCents),
+      position: ultimas && ultimas.length > 0 ? Number(ultimas[0]!.position) + 1 : 0,
+      created_by: user?.id ?? null,
+    });
+    if (error) {
+      console.error("[conversa] falha ao criar a tarefa", { code: error.code });
+      return { error: "Não foi possível criar a tarefa." };
+    }
+    revalidatePath("/tarefas");
+    return { ok: true, count: 1 };
   }
 
   const f = p.fields;
