@@ -72,6 +72,25 @@ export function normalizeUrl(raw: string): string | null {
   }
 }
 
+/**
+ * O mesmo produto aparece com enderecos diferentes: a IA copia o da lista, a
+ * busca cita o do anuncio; um tem o nome no caminho, o outro nao. O codigo do
+ * produto e o que nao muda - MLB123 no Mercado Livre, o ASIN na Amazon.
+ */
+export function productKeys(raw: string): string[] {
+  const k = normalizeUrl(raw);
+  if (!k) return [];
+  const chaves = [k];
+  const ml = /MLB-?(\d{6,})/i.exec(k);
+  if (ml) chaves.push(`mlb:${ml[1]}`);
+  const amz = /\/(?:dp|gp\/product)\/([A-Z0-9]{10})/i.exec(k);
+  if (amz && /amazon\./.test(k)) chaves.push(`amz:${amz[1]!.toUpperCase()}`);
+  const partes = k.split("/");
+  const ultimo = partes[partes.length - 1];
+  if (partes.length > 1 && ultimo && ultimo.length >= 6) chaves.push(`${partes[0]}|${ultimo}`);
+  return chaves;
+}
+
 const LOJAS: [RegExp, string][] = [
   [/(^|\.)mercadoli(vre|bre)\./, "Mercado Livre"],
   [/(^|\.)amazon\./, "Amazon"],
@@ -133,18 +152,16 @@ export function checkOffers(
   const json = jsonDe(raw) as { ofertas?: unknown } | null;
   const lista = Array.isArray(json?.ofertas) ? json.ofertas : [];
   const visitadas = new Map<string, Citation>();
-  for (const c of citations) {
-    const k = normalizeUrl(c.url);
-    if (k) visitadas.set(k, c);
-  }
+  for (const c of citations) for (const k of productKeys(c.url)) if (!visitadas.has(k)) visitadas.set(k, c);
 
   const vistos = new Set<string>();
   const offers: Offer[] = [];
   let dropped = 0;
   for (const bruto of lista) {
     const o = ofertaSchema.safeParse(bruto);
-    const k = o.success ? normalizeUrl(o.data.url) : null;
-    const pagina = k ? visitadas.get(k) : undefined;
+    const chaves = o.success ? productKeys(o.data.url) : [];
+    const pagina = chaves.map((c) => visitadas.get(c)).find(Boolean);
+    const k = pagina ? normalizeUrl(pagina.url) : null;
     const cents = o.success ? precoEmCentavos(o.data.preco) : null;
     if (!o.success || !k || !pagina || cents === null || vistos.has(k)) {
       dropped += 1;
@@ -168,6 +185,51 @@ export function checkOffers(
   }
   offers.sort((a, b) => a.priceCents - b.priceCents);
   return { offers: offers.slice(0, MAX_OFERTAS), dropped: dropped + Math.max(0, offers.length - MAX_OFERTAS) };
+}
+
+/** A loja pelo endereco, so quando e uma das conhecidas. */
+function lojaConhecida(url: string): string | null {
+  try {
+    const host = new URL(url).hostname.toLowerCase();
+    return LOJAS.find(([re]) => re.test(host))?.[1] ?? null;
+  } catch {
+    return null;
+  }
+}
+
+const PRECO = /R\$\s?(\d{1,3}(?:\.\d{3})*(?:,\d{2})?|\d+(?:,\d{2})?)/;
+const PARCELAS = /(\d{1,2})\s?x\s?(?:de\s)?R\$\s?[\d.]+(?:,\d{2})?(?:\s?sem juros)?/i;
+
+/**
+ * Plano B: as ofertas direto das paginas citadas, quando a IA errou os links.
+ *
+ * So pagina de loja conhecida (blog e comparador citam preco de outra
+ * coisa), e so com "R$" no trecho - o preco e o que a pagina mostrou, entao
+ * `priceSeen` e verdadeiro por construcao.
+ */
+export function offersFromCitations(citations: readonly Citation[], maxPriceCents: Cents | null): Offer[] {
+  const vistos = new Set<string>();
+  const offers: Offer[] = [];
+  for (const c of citations) {
+    const store = lojaConhecida(c.url);
+    const k = normalizeUrl(c.url);
+    if (!store || !k || vistos.has(k)) continue;
+    const m = PRECO.exec(`${c.title} ${c.content}`);
+    const reais = m ? numbersIn(m[1]!)[0] ?? Number(m[1]) : Number.NaN;
+    if (!Number.isFinite(reais) || reais <= 0 || reais > 1_000_000) continue;
+    const cents = Math.round(reais * 100);
+    if (maxPriceCents !== null && cents > maxPriceCents) continue;
+    vistos.add(k);
+    offers.push({
+      title: (c.title || store).slice(0, 160),
+      store,
+      priceCents: cents,
+      installments: PARCELAS.exec(c.content)?.[0] ?? null,
+      url: c.url,
+      priceSeen: true,
+    });
+  }
+  return offers.sort((a, b) => a.priceCents - b.priceCents).slice(0, MAX_OFERTAS);
 }
 
 // ---------------------------------------------------------------------------

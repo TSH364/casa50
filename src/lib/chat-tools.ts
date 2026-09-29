@@ -26,7 +26,7 @@ import {
 } from "@/domain/chat";
 import { refOf, refPrefix } from "@/domain/chat";
 import type { ChartSpec, Proposal, Range, ToolName } from "@/domain/chat";
-import { checkOffers, offersPrompt, purchaseImpact } from "@/domain/shopping";
+import { checkOffers, offersFromCitations, offersPrompt, purchaseImpact } from "@/domain/shopping";
 import type { ShoppingSearch } from "@/domain/shopping";
 import { webSearch } from "@/lib/openrouter";
 import { recordAiUsage } from "@/lib/ai-usage";
@@ -70,6 +70,12 @@ export interface ToolContext {
   apiKey?: string;
   /** Pesquisas de compra desta pergunta - vao para a tela como cartoes. */
   searches: ShoppingSearch[];
+  /**
+   * Quando a pergunta inteira tem de terminar (epoch ms). A pesquisa tem de
+   * caber antes disso, com folga para a resposta: passar do prazo da funcao
+   * na Vercel derruba a pergunta toda, e a tela so ve "sem servidor".
+   */
+  deadline?: number;
 }
 
 /** Pesquisas por pergunta: cada uma custa uma chamada paga com busca na web. */
@@ -615,6 +621,9 @@ async function pesquisarCompra(ctx: ToolContext, a: { produto: string; preco_max
   if (!ctx.apiKey) return "A pesquisa na web não está disponível.";
   if (ctx.searches.length >= MAX_PESQUISAS) return `Já foram ${MAX_PESQUISAS} pesquisas nesta pergunta. Responda com o que já encontrou.`;
   const teto = a.preco_maximo ? toCents(a.preco_maximo) : null;
+  // Folga de 12 s para o modelo escrever a resposta depois da pesquisa.
+  const tempo = Math.min(25_000, (ctx.deadline ?? Number.POSITIVE_INFINITY) - Date.now() - 12_000);
+  if (tempo < 8_000) return "Não há tempo para pesquisar nesta pergunta. Diga para pedir a pesquisa de novo, sozinha.";
 
   let custo = 0;
   let modelo: string | null = DEFAULT_CHAT_PAID_MODEL;
@@ -622,10 +631,20 @@ async function pesquisarCompra(ctx: ToolContext, a: { produto: string; preco_max
     const r = await webSearch([{ role: "user", content: offersPrompt(a.produto, teto) }], {
       apiKey: ctx.apiKey,
       model: DEFAULT_CHAT_PAID_MODEL,
+      timeoutMs: tempo,
     });
     custo = r.costUsd;
     modelo = r.servedBy ?? modelo;
-    const { offers } = checkOffers(r.content, r.citations, teto);
+    const conferidas = checkOffers(r.content, r.citations, teto);
+    // A IA errou os links: as ofertas saem direto das paginas de loja citadas.
+    const offers = conferidas.offers.length > 0 ? conferidas.offers : offersFromCitations(r.citations, teto);
+    // So contagens no log: o texto e as paginas nao sao da conta de ninguem.
+    console.info("[pesquisa]", {
+      citacoes: r.citations.length,
+      conferidas: conferidas.offers.length,
+      descartadas: conferidas.dropped,
+      planoB: conferidas.offers.length === 0 ? offers.length : null,
+    });
     ctx.searches.push({
       id: novoId(),
       query: a.produto,

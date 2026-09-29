@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { checkOffers, installmentPlan, normalizeUrl, purchaseImpact, storeFromUrl } from "@/domain/shopping";
+import { checkOffers, installmentPlan, normalizeUrl, offersFromCitations, purchaseImpact, storeFromUrl } from "@/domain/shopping";
 import type { ShoppingSearch } from "@/domain/shopping";
 import type { ChartSpec, Proposal } from "@/domain/chat";
 import type { Transaction } from "@/domain/types";
@@ -54,6 +54,49 @@ describe("checkOffers", () => {
     expect(normalizeUrl("ftp://x.com/a")).toBeNull();
     expect(storeFromUrl("https://www.magazineluiza.com.br/x", "")).toBe("Magalu");
     expect(storeFromUrl("https://lojinha.com.br/x", "Lojinha")).toBe("Lojinha");
+  });
+});
+
+describe("mesmo produto, endereços diferentes", () => {
+  it("Mercado Livre pelo código MLB; Amazon pelo ASIN", () => {
+    const cit = [
+      { url: "https://www.mercadolivre.com.br/fechadura-tapo-dl110/p/MLB23456789", title: "Fechadura Tapo DL110", content: "R$ 899,00" },
+      { url: "https://www.amazon.com.br/Fechadura-Tapo/dp/B0CXYZ1234/ref=sr_1", title: "Tapo", content: "" },
+    ];
+    const r = checkOffers(
+      resposta([
+        { titulo: "Fechadura Tapo DL110", preco: 899, url: "https://produto.mercadolivre.com.br/MLB-23456789-fechadura-tapo-_JM" },
+        { titulo: "Fechadura Tapo", preco: 949, url: "https://amazon.com.br/dp/B0CXYZ1234" },
+      ]),
+      cit,
+      null,
+    );
+    expect(r.offers.map((o) => o.url)).toEqual([cit[0]!.url, cit[1]!.url]);
+    expect(r.offers[0]!.priceSeen).toBe(true);
+  });
+});
+
+describe("plano B: ofertas direto das páginas citadas", () => {
+  it("só loja conhecida, com preço no trecho; blog e redirecionamento ficam de fora", () => {
+    const r = offersFromCitations(
+      [
+        { url: "https://www.magazineluiza.com.br/fechadura-tapo/p/abc123/", title: "Fechadura Digital Tapo DL100", content: "R$ 1.099,90 ou 10x de R$ 109,99 sem juros" },
+        { url: "https://blog.exemplo.com.br/melhores-fechaduras", title: "As melhores", content: "a partir de R$ 300" },
+        { url: "https://vertexaisearch.cloud.google.com/grounding-api-redirect/xyz", title: "amazon.com.br", content: "R$ 999" },
+        { url: "https://www.kabum.com.br/produto/1", title: "Fechadura sem preço", content: "Indisponível" },
+      ],
+      null,
+    );
+    expect(r).toEqual([
+      {
+        title: "Fechadura Digital Tapo DL100",
+        store: "Magalu",
+        priceCents: 109_990,
+        installments: "10x de R$ 109,99 sem juros",
+        url: "https://www.magazineluiza.com.br/fechadura-tapo/p/abc123/",
+        priceSeen: true,
+      },
+    ]);
   });
 });
 
@@ -182,7 +225,7 @@ describe("pesquisar_compra", () => {
     globalThis.fetch = fetchOriginal;
 
     const corpo = estado.corpos[0]!;
-    expect(corpo.plugins).toEqual([{ id: "web", max_results: 8 }]);
+    expect(corpo.plugins).toEqual([{ id: "web", engine: "exa", max_results: 8 }]);
     expect(corpo.provider).toEqual({ data_collection: "deny" });
     const pedido = JSON.stringify(corpo.messages);
     expect(pedido).toMatch(/air fryer 4 litros/);
@@ -193,6 +236,35 @@ describe("pesquisar_compra", () => {
     expect(c.searches[0]!.offers[0]).toMatchObject({ store: "Mercado Livre", priceCents: 34_990, url: ML, priceSeen: true });
     expect(r.output).toMatch(/Mercado Livre — Air Fryer Mondial 4L — R\$\s*349,90 à vista/);
     expect(estado.usos[0]).toEqual(["casa-1", "pesquisa", { calls: 1, costUsd: 0.021, model: "google/gemini-3.6-flash" }]);
+  });
+
+  it("sem tempo até o prazo da pergunta, não pesquisa", async () => {
+    const c = { ...ctx(), deadline: Date.now() + 15_000 };
+    const r = await runTool(c, "pesquisar_compra", JSON.stringify({ produto: "fechadura" }));
+    globalThis.fetch = fetchOriginal;
+    expect(estado.corpos).toHaveLength(0);
+    expect(r.output).toMatch(/Não há tempo para pesquisar/);
+  });
+
+  it("a IA errou os links: as ofertas saem das páginas de loja citadas", async () => {
+    globalThis.fetch = (async () =>
+      new Response(
+        JSON.stringify({
+          choices: [
+            {
+              message: {
+                content: resposta([{ titulo: "Air Fryer", preco: 349.9, url: "https://lojainventada.com/x" }]),
+                annotations: citacoes.map((c) => ({ type: "url_citation", url_citation: c })),
+              },
+            },
+          ],
+        }),
+        { status: 200 },
+      )) as typeof fetch;
+    const c = ctx();
+    await runTool(c, "pesquisar_compra", JSON.stringify({ produto: "air fryer" }));
+    globalThis.fetch = fetchOriginal;
+    expect(c.searches[0]!.offers.map((o) => [o.store, o.priceCents])).toEqual([["Mercado Livre", 34_990]]);
   });
 
   it("no máximo duas pesquisas por pergunta", async () => {

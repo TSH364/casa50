@@ -176,6 +176,7 @@ export async function askHouse(input: z.input<typeof schema>): Promise<ChatReply
   };
 
   const inicio = Date.now();
+  ctx.deadline = inicio + PRAZO_MS;
   // O gasto de cada tentativa e anotado mesmo quando ela falha no meio: as
   // chamadas feitas ate ali ja contaram na cota e no credito.
   const conversar = async (tier: Tier) => {
