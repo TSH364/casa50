@@ -38,6 +38,12 @@ import {
 import type { ChartSpec, Proposal, ToolName } from "@/domain/chat";
 import type { ShoppingSearch } from "@/domain/shopping";
 import { DEFAULT_LISTS } from "@/domain/tasks";
+import { DOS_DOIS } from "@/domain/schemas";
+import { isMonthKey } from "@/domain/month";
+import { createGoal } from "./goals";
+import { setBudget } from "./budgets";
+import { createRecurrence } from "./recurrences";
+import { moveTask, updateTask } from "./tasks";
 import { currentMonth } from "@/domain/month";
 
 /**
@@ -319,6 +325,46 @@ const proposalSchema = z.discriminatedUnion("kind", [
     }),
   }),
   z.object({
+    kind: z.literal("meta"),
+    fields: z.object({
+      name: z.string().trim().min(1).max(120),
+      targetCents: z.number().int().positive().max(9_999_999_900),
+      targetDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable(),
+      monthlyCents: z.number().int().min(0).max(9_999_999_900).nullable(),
+      ownerId: uuid.nullable(),
+    }),
+  }),
+  z.object({
+    kind: z.literal("orcamento"),
+    fields: z.object({
+      categoryId: uuid,
+      month: z.string().refine(isMonthKey),
+      limitCents: z.number().int().min(0).max(9_999_999_999),
+    }),
+  }),
+  z.object({
+    kind: z.literal("conta_fixa"),
+    fields: z.object({
+      description: z.string().trim().min(1).max(120),
+      merchant: z.string().trim().max(120).nullable(),
+      amountCents: z.number().int().min(0).max(9_999_999_900),
+      interval: z.enum(["weekly", "monthly", "yearly"]),
+      expectedDay: z.number().int().min(1).max(31).nullable(),
+      categoryId: uuid.nullable(),
+    }),
+  }),
+  z.object({
+    kind: z.literal("mudar_tarefa"),
+    fields: z.object({
+      taskId: uuid,
+      listId: uuid.optional(),
+      done: z.boolean().optional(),
+      who: z.union([uuid, z.literal(DOS_DOIS), z.literal("")]).optional(),
+      dueDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
+      expectedCents: z.number().int().min(0).max(1_000_000_000).nullable().optional(),
+    }),
+  }),
+  z.object({
     kind: z.literal("tarefa"),
     fields: z.object({
       title: z.string().trim().min(1).max(200),
@@ -393,6 +439,91 @@ export async function applyProposal(input: unknown): Promise<ApplyProposalResult
     }
     revalidarLancamentos();
     return { ok: true, count: marcados?.length ?? 0 };
+  }
+
+  // Metas, orcamentos, contas fixas e tarefas: pelas MESMAS acoes das telas,
+  // com as mesmas validacoes - a conversa nao ganha um caminho mais frouxo.
+  const reais = (c: number) => (c / 100).toFixed(2).replace(".", ",");
+  const form = (o: Record<string, string>) => {
+    const f = new FormData();
+    for (const [k, v] of Object.entries(o)) f.set(k, v);
+    return f;
+  };
+
+  if (p.kind === "meta") {
+    const f = p.fields;
+    if (f.ownerId !== null && !(await listMembers(houseId)).some((m) => m.userId === f.ownerId)) {
+      return { error: "Essa pessoa não é da casa." };
+    }
+    const r = await createGoal(
+      {},
+      form({
+        name: f.name,
+        targetAmount: reais(f.targetCents),
+        targetDate: f.targetDate ?? "",
+        monthlyContribution: f.monthlyCents === null ? "" : reais(f.monthlyCents),
+        ownerId: f.ownerId ?? "",
+      }),
+    );
+    return r.error ? { error: r.error } : { ok: true, count: 1 };
+  }
+
+  if (p.kind === "orcamento") {
+    if (!(await categoriaOk(p.fields.categoryId, null))) return { error: "Categoria não encontrada." };
+    const r = await setBudget(p.fields);
+    if (r.error) return { error: r.error };
+    revalidatePath("/analise");
+    return { ok: true, count: 1 };
+  }
+
+  if (p.kind === "conta_fixa") {
+    const f = p.fields;
+    if (!(await categoriaOk(f.categoryId, null))) return { error: "Categoria não encontrada." };
+    const r = await createRecurrence(
+      {},
+      form({
+        description: f.description,
+        merchant: f.merchant ?? "",
+        amount: reais(f.amountCents),
+        interval: f.interval,
+        expectedDay: f.expectedDay === null ? "" : String(f.expectedDay),
+        categoryId: f.categoryId ?? "",
+      }),
+    );
+    return r.error ? { error: r.error } : { ok: true, count: 1 };
+  }
+
+  if (p.kind === "mudar_tarefa") {
+    const f = p.fields;
+    const { data: t } = await supabase
+      .from("tasks")
+      .select("id, list_id, title, notes, member_id, is_joint, due_date, expected_amount, done")
+      .eq("house_id", houseId)
+      .eq("id", f.taskId)
+      .maybeSingle();
+    if (!t) return { error: "Tarefa não encontrada." };
+    const atual = t.is_joint ? DOS_DOIS : ((t.member_id as string | null) ?? "");
+    const r = await updateTask({
+      id: f.taskId,
+      title: String(t.title),
+      notes: (t.notes as string | null) ?? null,
+      who: f.who ?? atual,
+      dueDate: f.dueDate !== undefined ? f.dueDate : ((t.due_date as string | null) ?? null),
+      expectedCents:
+        f.expectedCents !== undefined
+          ? f.expectedCents
+          : t.expected_amount === null
+            ? null
+            : Math.round(Number(t.expected_amount) * 100),
+      done: f.done ?? t.done === true,
+    });
+    if (r.error) return { error: r.error };
+    if (f.listId && f.listId !== t.list_id) {
+      // No fim da coluna de destino - como arrastar e soltar no fim.
+      const m = await moveTask({ id: f.taskId, listId: f.listId, index: Number.MAX_SAFE_INTEGER });
+      if (m.error) return { error: m.error };
+    }
+    return { ok: true, count: 1 };
   }
 
   if (p.kind === "tarefa") {

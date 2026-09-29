@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState, useTransition } from "react";
-import { ArrowUp, FileDown, Trash2 } from "lucide-react";
+import { ArrowUp, FileDown, Mic, Square, Trash2, Volume2, VolumeX } from "lucide-react";
+import { useDictation, useSpeech } from "@/lib/voice";
 import { askHouse } from "@/actions/chat";
 import type { ChartSpec, ChatMessage, Proposal } from "@/domain/chat";
 import { ChatChart } from "./chat-chart";
@@ -65,6 +66,8 @@ function conteudoParaModelo(e: Entry): string {
 }
 
 const SUGESTOES = [
+  "Cria uma meta de R$ 5.000 para a viagem até dezembro",
+  "Define o orçamento de Mercado em R$ 1.500 este mês",
   "Quanto gastamos este mês?",
   "O que falta classificar?",
   "Onde mais gastamos com alimentação nos últimos 3 meses?",
@@ -126,6 +129,14 @@ export function ChatPanel({ houseId }: { houseId: string }) {
   const [pergunta, setPergunta] = useState("");
   const [pending, startTransition] = useTransition();
   const fim = useRef<HTMLDivElement>(null);
+  // Pergunta falada, resposta falada: quem pediu por voz provavelmente nao
+  // esta olhando para a tela.
+  const falou = useRef(false);
+  const voz = useSpeech();
+  const ditado = useDictation((texto) => {
+    falou.current = true;
+    enviar(texto);
+  });
 
   useEffect(() => setEntradas(ler(chave)), [chave]);
   useEffect(() => {
@@ -169,6 +180,8 @@ export function ChatPanel({ houseId }: { houseId: string }) {
       const nova = [...comPergunta, resposta];
       setEntradas(nova);
       gravar(chave, nova);
+      if (falou.current && voz.supported) voz.speak(resposta.content);
+      falou.current = false;
     });
   }
 
@@ -276,6 +289,15 @@ export function ChatPanel({ houseId }: { houseId: string }) {
                   {e.tier ? ` · ${e.tier === "pago" ? "Pago" : "Gratuito"}` : ""}
                   {e.fellBack ? " (o gratuito não respondeu)" : ""}
                   {e.model ? ` · ${e.model}` : ""}
+                  {voz.supported ? (
+                    <button
+                      type="button"
+                      onClick={() => voz.speak(e.content)}
+                      className="ml-1 inline-flex items-center gap-1 align-middle text-brand underline-offset-2 hover:underline"
+                    >
+                      <Volume2 className="size-3" aria-hidden /> Ouvir
+                    </button>
+                  ) : null}
                 </p>
               ) : null}
               {/* So quando a pergunta pediu PDF (ver `isPdfRequest`). */}
@@ -311,7 +333,8 @@ export function ChatPanel({ houseId }: { houseId: string }) {
         }}
       >
         <textarea
-          value={pergunta}
+          value={ditado.listening ? ditado.interim : pergunta}
+          readOnly={ditado.listening}
           onChange={(ev) => setPergunta(ev.target.value)}
           onKeyDown={(ev) => {
             // Enter envia; Shift+Enter quebra linha, como em qualquer chat.
@@ -322,14 +345,55 @@ export function ChatPanel({ houseId }: { houseId: string }) {
           }}
           rows={1}
           maxLength={2000}
-          placeholder="Pergunte sobre os gastos…"
+          placeholder={ditado.listening ? "Ouvindo… pode falar" : "Pergunte ou peça algo…"}
           aria-label="Pergunta"
           className="max-h-40 min-h-11 flex-1 resize-none bg-transparent px-2 py-2.5 text-sm text-ink outline-none placeholder:text-ink-faint"
         />
-        <Button type="submit" size="icon" disabled={pending || !pergunta.trim()} aria-label="Enviar">
+        {ditado.supported ? (
+          <Button
+            type="button"
+            size="icon"
+            variant={ditado.listening ? "danger" : "secondary"}
+            disabled={pending}
+            aria-label={ditado.listening ? "Parar e enviar" : "Falar o pedido"}
+            aria-pressed={ditado.listening}
+            onClick={() => {
+              if (ditado.listening) ditado.stop();
+              else {
+                voz.stop();
+                ditado.start();
+              }
+            }}
+          >
+            {ditado.listening ? <Square aria-hidden /> : <Mic aria-hidden />}
+          </Button>
+        ) : null}
+        <Button
+          type="submit"
+          size="icon"
+          disabled={pending || ditado.listening || !pergunta.trim()}
+          aria-label="Enviar"
+        >
           <ArrowUp aria-hidden />
         </Button>
       </form>
+      {ditado.error ? (
+        <p role="alert" className="px-1 text-[12px] text-danger">
+          {ditado.error}
+        </p>
+      ) : ditado.listening ? (
+        <p className="px-1 text-[12px] text-ink-muted" aria-live="polite">
+          Ouvindo. Ao parar de falar, o pedido é enviado. A voz é transcrita pelo navegador (no Chrome, pelos
+          servidores do Google).
+        </p>
+      ) : null}
+      {voz.speaking ? (
+        <div className="flex justify-center">
+          <Button variant="secondary" size="sm" onClick={voz.stop}>
+            <VolumeX aria-hidden /> Parar a leitura
+          </Button>
+        </div>
+      ) : null}
 
       {imprimindo !== null && entradas[imprimindo] ? (
         <ImpressaoDaResposta

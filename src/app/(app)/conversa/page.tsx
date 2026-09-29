@@ -23,8 +23,8 @@ export default async function ConversaPage() {
       <header>
         <h1 className="text-xl font-semibold tracking-tight text-ink">Conversa</h1>
         <p className="mt-1 text-[13px] text-ink-faint">
-          Pergunte sobre os gastos da casa. A IA consulta os dados e responde — ela só lê, não
-          muda nada.
+          Pergunte ou peça por escrito ou por voz: gastos, metas, orçamentos, contas fixas, tarefas,
+          pesquisa de compra. A IA consulta os dados e propõe; nada muda sem o seu toque em Confirmar.
         </p>
       </header>
 
