@@ -26,7 +26,15 @@ import {
 } from "@/domain/chat";
 import { refOf, refPrefix } from "@/domain/chat";
 import type { ChartSpec, Proposal, Range, ToolName } from "@/domain/chat";
-import { checkOffers, offersFromCitations, offersPrompt, purchaseImpact } from "@/domain/shopping";
+import {
+  SEARCH_PROMPT,
+  checkOffers,
+  offersFromCitations,
+  offersPrompt,
+  purchaseImpact,
+  searchDiagnostics,
+  unverifiedOffers,
+} from "@/domain/shopping";
 import type { ShoppingSearch } from "@/domain/shopping";
 import { webSearch } from "@/lib/openrouter";
 import { recordAiUsage } from "@/lib/ai-usage";
@@ -627,23 +635,28 @@ async function pesquisarCompra(ctx: ToolContext, a: { produto: string; preco_max
 
   let custo = 0;
   let modelo: string | null = DEFAULT_CHAT_PAID_MODEL;
+  let detalhes: Record<string, unknown> | null = null;
   try {
     const r = await webSearch([{ role: "user", content: offersPrompt(a.produto, teto) }], {
       apiKey: ctx.apiKey,
       model: DEFAULT_CHAT_PAID_MODEL,
       timeoutMs: tempo,
+      searchPrompt: SEARCH_PROMPT,
     });
     custo = r.costUsd;
     modelo = r.servedBy ?? modelo;
+    // Tres niveis, do mais ao menos conferido: o anuncio que a IA citou e a
+    // busca abriu; o anuncio direto das paginas de loja citadas; e, por
+    // ultimo, a busca na loja pelo nome do que a IA viu.
     const conferidas = checkOffers(r.content, r.citations, teto);
-    // A IA errou os links: as ofertas saem direto das paginas de loja citadas.
-    const offers = conferidas.offers.length > 0 ? conferidas.offers : offersFromCitations(r.citations, teto);
-    // So contagens no log: o texto e as paginas nao sao da conta de ninguem.
-    console.info("[pesquisa]", {
-      citacoes: r.citations.length,
+    const planoB = conferidas.offers.length > 0 ? [] : offersFromCitations(r.citations, teto);
+    const planoC = conferidas.offers.length > 0 || planoB.length > 0 ? [] : unverifiedOffers(r.content, teto);
+    const offers = conferidas.offers.length > 0 ? conferidas.offers : planoB.length > 0 ? planoB : planoC;
+    detalhes = searchDiagnostics(a.produto, r.content, r.citations, {
       conferidas: conferidas.offers.length,
       descartadas: conferidas.dropped,
-      planoB: conferidas.offers.length === 0 ? offers.length : null,
+      planoB: planoB.length,
+      planoC: planoC.length,
     });
     ctx.searches.push({
       id: novoId(),
@@ -653,19 +666,21 @@ async function pesquisarCompra(ctx: ToolContext, a: { produto: string; preco_max
       searchedAt: new Date().toISOString(),
     });
     if (offers.length === 0) {
-      return `A pesquisa por "${a.produto}" não trouxe ofertas com preço e link conferidos. Diga isso, e sugira descrever o produto de outro jeito.`;
+      return `A pesquisa por "${a.produto}" não trouxe ofertas com preço. Diga isso, e sugira descrever o produto de outro jeito.`;
     }
     return [
       `Pesquisa na web por "${a.produto}"${teto ? ` até ${R(teto)}` : ""} (as ofertas aparecem num cartão com os links; preços da busca, a conferir na loja):`,
       ...offers.map(
         (o, i) =>
-          `${i + 1}. ${o.store} — ${o.title} — ${R(o.priceCents)} à vista${o.installments ? ` · ${o.installments}` : ""}${o.priceSeen ? "" : " (preço não confirmado no trecho da página)"}`,
+          `${i + 1}. ${o.store} — ${o.title} — ${R(o.priceCents)} à vista${o.installments ? ` · ${o.installments}` : ""}${
+            o.linkKind === "busca" ? " (anúncio não conferido: o cartão leva à busca da loja)" : o.priceSeen ? "" : " (preço não confirmado no trecho da página)"
+          }`,
       ),
     ].join("\n");
   } catch (e) {
     return `A pesquisa falhou: ${e instanceof Error ? e.message : "erro desconhecido"}`;
   } finally {
-    await recordAiUsage(ctx.houseId, "pesquisa", { calls: 1, costUsd: custo, model: modelo });
+    await recordAiUsage(ctx.houseId, "pesquisa", { calls: 1, costUsd: custo, model: modelo, details: detalhes });
   }
 }
 

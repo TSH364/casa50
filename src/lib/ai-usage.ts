@@ -15,7 +15,7 @@ export type AiFeature = "orcamento" | "jev" | "conversa_gratuita" | "conversa_pa
 export async function recordAiUsage(
   houseId: string,
   feature: AiFeature,
-  usage: { calls: number; costUsd: number; model?: string | null },
+  usage: { calls: number; costUsd: number; model?: string | null; details?: Record<string, unknown> | null },
 ): Promise<void> {
   if (usage.calls <= 0) return;
   try {
@@ -29,6 +29,7 @@ export async function recordAiUsage(
       // Seis casas, como a coluna: uma chamada do Jev custa ~US$ 0,00002.
       cost_usd: Math.round(Math.max(0, usage.costUsd) * 1e6) / 1e6,
       created_by: user.id,
+      ...(usage.details ? { details: usage.details } : {}),
     });
     if (error) console.error("[ia] falha ao registrar o gasto", { code: error.code });
   } catch {

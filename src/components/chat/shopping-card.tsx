@@ -68,7 +68,11 @@ export function ShoppingCard({ search }: { search: ShoppingSearch }) {
               <p className="mt-0.5 line-clamp-2 break-words text-[13px] text-ink">{o.title}</p>
               <p className="mt-0.5 text-[12px] text-ink-muted">
                 {o.installments ?? "à vista"}
-                {o.priceSeen ? "" : " · confira o preço na loja"}
+                {o.linkKind === "busca"
+                  ? " · anúncio não conferido: o link abre a busca da loja"
+                  : o.priceSeen
+                    ? ""
+                    : " · confira o preço na loja"}
               </p>
               <div className="mt-1.5 flex flex-wrap gap-2">
                 <a
@@ -78,7 +82,7 @@ export function ShoppingCard({ search }: { search: ShoppingSearch }) {
                   className="inline-flex min-h-9 items-center gap-1.5 rounded-md border border-line-strong px-3 text-[13px] text-ink transition-colors hover:bg-surface-2"
                 >
                   <ExternalLink className="size-3.5" aria-hidden />
-                  Abrir na loja
+                  {o.linkKind === "busca" ? "Buscar na loja" : "Abrir na loja"}
                   <span className="sr-only"> (abre em outra aba)</span>
                 </a>
                 {feitas[o.url] ? (

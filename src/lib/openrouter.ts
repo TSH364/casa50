@@ -370,7 +370,14 @@ export interface WebSearchResult {
  */
 export async function webSearch(
   messages: readonly ChatMessage[],
-  options: { apiKey: string | null; model: string; maxResults?: number; timeoutMs?: number; fetchImpl?: typeof fetch },
+  options: {
+    apiKey: string | null;
+    model: string;
+    maxResults?: number;
+    timeoutMs?: number;
+    searchPrompt?: string;
+    fetchImpl?: typeof fetch;
+  },
 ): Promise<WebSearchResult> {
   const { message, servedBy, costUsd } = await postChat({
     apiKey: options.apiKey,
@@ -386,7 +393,16 @@ export async function webSearch(
       // Exa, e nao a busca "nativa" do provedor: a do Google devolve as
       // citacoes como links de redirecionamento dele, e ai nenhuma oferta
       // pode ser conferida contra a pagina da loja.
-      plugins: [{ id: "web", engine: "exa", max_results: options.maxResults ?? 8 }],
+      plugins: [
+        {
+          id: "web",
+          engine: "exa",
+          max_results: options.maxResults ?? 8,
+          // O padrao do OpenRouter pede para citar em links markdown - e o
+          // modelo passa a responder em texto em vez do formato pedido.
+          ...(options.searchPrompt ? { search_prompt: options.searchPrompt } : {}),
+        },
+      ],
       provider: { data_collection: "deny" },
     },
   });

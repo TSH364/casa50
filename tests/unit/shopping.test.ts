@@ -1,5 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { checkOffers, installmentPlan, normalizeUrl, offersFromCitations, purchaseImpact, storeFromUrl } from "@/domain/shopping";
+import {
+  checkOffers,
+  installmentPlan,
+  normalizeUrl,
+  offersFromCitations,
+  purchaseImpact,
+  storeFromUrl,
+  storeSearchUrl,
+  unverifiedOffers,
+} from "@/domain/shopping";
 import type { ShoppingSearch } from "@/domain/shopping";
 import type { ChartSpec, Proposal } from "@/domain/chat";
 import type { Transaction } from "@/domain/types";
@@ -97,6 +106,37 @@ describe("plano B: ofertas direto das páginas citadas", () => {
         priceSeen: true,
       },
     ]);
+  });
+});
+
+describe("quando a IA responde em texto, ou nada confere", () => {
+  it("texto com link e R$ passa pela mesma conferência", () => {
+    const texto = `Encontrei:\n- [Air Fryer Mondial 4L](${ML}) por R$ 349,90 no Mercado Livre\n- Outra sem preço ${AMZ}`;
+    const r = checkOffers(texto, citacoes, null);
+    expect(r.offers.map((o) => [o.title, o.priceCents, o.url])).toEqual([["Air Fryer Mondial 4L", 34_990, ML]]);
+  });
+
+  it("plano C: loja conhecida vira link de BUSCA na loja, nunca o anúncio inventado", () => {
+    const r = unverifiedOffers(
+      resposta([
+        { titulo: "Fechadura Tapo DL100", loja: "Mercado Livre", preco: 899, url: "https://produto.mercadolivre.com.br/MLB-000-inventado" },
+        { titulo: "Fechadura X", loja: "Loja Desconhecida", preco: 500, url: "https://desconhecida.com/x" },
+      ]),
+      null,
+    );
+    expect(r).toEqual([
+      {
+        title: "Fechadura Tapo DL100",
+        store: "Mercado Livre",
+        priceCents: 89_900,
+        installments: null,
+        url: "https://lista.mercadolivre.com.br/fechadura-tapo-dl100",
+        priceSeen: false,
+        linkKind: "busca",
+      },
+    ]);
+    expect(storeSearchUrl("Amazon", "Fechadura Tapo")).toBe("https://www.amazon.com.br/s?k=Fechadura%20Tapo");
+    expect(storeSearchUrl("Loja X", "Fechadura")).toBeNull();
   });
 });
 
@@ -225,7 +265,7 @@ describe("pesquisar_compra", () => {
     globalThis.fetch = fetchOriginal;
 
     const corpo = estado.corpos[0]!;
-    expect(corpo.plugins).toEqual([{ id: "web", engine: "exa", max_results: 8 }]);
+    expect(corpo.plugins).toEqual([{ id: "web", engine: "exa", max_results: 8, search_prompt: expect.stringMatching(/formato JSON/) }]);
     expect(corpo.provider).toEqual({ data_collection: "deny" });
     const pedido = JSON.stringify(corpo.messages);
     expect(pedido).toMatch(/air fryer 4 litros/);
@@ -235,7 +275,13 @@ describe("pesquisar_compra", () => {
     expect(c.searches).toHaveLength(1);
     expect(c.searches[0]!.offers[0]).toMatchObject({ store: "Mercado Livre", priceCents: 34_990, url: ML, priceSeen: true });
     expect(r.output).toMatch(/Mercado Livre — Air Fryer Mondial 4L — R\$\s*349,90 à vista/);
-    expect(estado.usos[0]).toEqual(["casa-1", "pesquisa", { calls: 1, costUsd: 0.021, model: "google/gemini-3.6-flash" }]);
+    expect(estado.usos[0]!.slice(0, 2)).toEqual(["casa-1", "pesquisa"]);
+    const uso = estado.usos[0]![2] as { calls: number; costUsd: number; details: Record<string, unknown> };
+    expect(uso).toMatchObject({ calls: 1, costUsd: 0.021, model: "google/gemini-3.6-flash" });
+    // O diagnostico: so a pesquisa - enderecos, contagens -, nada da casa.
+    expect(uso.details).toMatchObject({ q: "air fryer 4 litros", citacoes: 2, conferidas: 1, planoB: 0, planoC: 0 });
+    expect((uso.details.paginas as { h: string; rs: boolean }[])[0]).toMatchObject({ h: "produto.mercadolivre.com.br", rs: true });
+    expect(JSON.stringify(uso.details)).not.toMatch(/Vinicius|Alimentacao|casa-1/);
   });
 
   it("sem tempo até o prazo da pergunta, não pesquisa", async () => {

@@ -28,6 +28,12 @@ export interface Offer {
   url: string;
   /** O preco apareceu no trecho da pagina que a busca trouxe. */
   priceSeen: boolean;
+  /**
+   * "pagina": o anuncio que a busca abriu. "busca": a busca da loja pelo nome
+   * do produto - quando a IA citou uma loja mas o anuncio nao foi conferido.
+   * Link de busca nunca quebra; link de anuncio inventado, sim.
+   */
+  linkKind?: "pagina" | "busca";
 }
 
 export interface ShoppingSearch {
@@ -60,6 +66,13 @@ export function offersPrompt(query: string, maxPriceCents: Cents | null): string
     .filter(Boolean)
     .join("\n");
 }
+
+/**
+ * O texto que acompanha os resultados da busca. Substitui o do OpenRouter,
+ * que pede citacao em links markdown - e com ele o modelo responde em prosa.
+ */
+export const SEARCH_PROMPT =
+  "Resultados de uma busca na web, feita agora. Use-os para responder exatamente no formato JSON pedido. O campo url de cada oferta tem de ser o endereço de um destes resultados, copiado como está.";
 
 /** Endereco comparavel: sem www, sem consulta, sem ancora, sem barra no fim. */
 export function normalizeUrl(raw: string): string | null {
@@ -150,7 +163,7 @@ export function checkOffers(
   maxPriceCents: Cents | null,
 ): { offers: Offer[]; dropped: number } {
   const json = jsonDe(raw) as { ofertas?: unknown } | null;
-  const lista = Array.isArray(json?.ofertas) ? json.ofertas : [];
+  const lista = Array.isArray(json?.ofertas) ? json.ofertas : ofertasDoTexto(raw);
   const visitadas = new Map<string, Citation>();
   for (const c of citations) for (const k of productKeys(c.url)) if (!visitadas.has(k)) visitadas.set(k, c);
 
@@ -185,6 +198,25 @@ export function checkOffers(
   }
   offers.sort((a, b) => a.priceCents - b.priceCents);
   return { offers: offers.slice(0, MAX_OFERTAS), dropped: dropped + Math.max(0, offers.length - MAX_OFERTAS) };
+}
+
+/**
+ * Quando a IA responde em texto e nao em JSON: cada linha com um link e um
+ * "R$" vira candidata. Passa pela mesma conferencia de link das outras.
+ */
+function ofertasDoTexto(raw: string): unknown[] {
+  const out: unknown[] = [];
+  for (const linha of raw.split(/\n+/)) {
+    const url = /\((https?:\/\/[^\s)]+)\)/.exec(linha)?.[1] ?? /(https?:\/\/[^\s)\]]+)/.exec(linha)?.[1];
+    const preco = PRECO.exec(linha)?.[1];
+    if (!url || !preco) continue;
+    const titulo = (/\[([^\]]+)\]/.exec(linha)?.[1] ?? linha.replace(/https?:\/\/\S+/g, "").replace(PRECO, ""))
+      .replace(/[*_#>`|-]+/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+    out.push({ titulo: titulo || "Oferta", preco: `R$ ${preco}`, url });
+  }
+  return out;
 }
 
 /** A loja pelo endereco, so quando e uma das conhecidas. */
@@ -230,6 +262,100 @@ export function offersFromCitations(citations: readonly Citation[], maxPriceCent
     });
   }
   return offers.sort((a, b) => a.priceCents - b.priceCents).slice(0, MAX_OFERTAS);
+}
+
+/** A busca da loja pelo nome do produto - endereco que sempre abre. */
+export function storeSearchUrl(store: string, title: string): string | null {
+  const q = title.replace(/\s+/g, " ").trim().slice(0, 100);
+  if (q.length < 2) return null;
+  const slug = q
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
+  const enc = encodeURIComponent(q);
+  switch (store) {
+    case "Mercado Livre":
+      return `https://lista.mercadolivre.com.br/${slug}`;
+    case "Amazon":
+      return `https://www.amazon.com.br/s?k=${enc}`;
+    case "Magalu":
+      return `https://www.magazineluiza.com.br/busca/${enc}/`;
+    case "Kabum":
+      return `https://www.kabum.com.br/busca/${slug}`;
+    case "Americanas":
+      return `https://www.americanas.com.br/busca/${slug}`;
+    case "Shopee":
+      return `https://shopee.com.br/search?keyword=${enc}`;
+    default:
+      return null;
+  }
+}
+
+/**
+ * Plano C: nada conferiu, mas a IA citou ofertas em lojas conhecidas. O
+ * cartao mostra a loja e o preco que a IA viu, com o link de BUSCA na loja
+ * pelo nome do produto (nunca o anuncio que ela escreveu, que pode nao
+ * existir) - e avisa que o preco nao foi conferido.
+ */
+export function unverifiedOffers(raw: string, maxPriceCents: Cents | null): Offer[] {
+  const json = jsonDe(raw) as { ofertas?: unknown } | null;
+  const lista = Array.isArray(json?.ofertas) ? json.ofertas : ofertasDoTexto(raw);
+  const vistos = new Set<string>();
+  const offers: Offer[] = [];
+  for (const bruto of lista) {
+    const o = ofertaSchema.safeParse(bruto);
+    if (!o.success) continue;
+    const cents = precoEmCentavos(o.data.preco);
+    if (cents === null || (maxPriceCents !== null && cents > maxPriceCents)) continue;
+    const store = lojaConhecida(o.data.url) ?? LOJAS.find(([, nome]) => nome.toLowerCase() === o.data.loja.toLowerCase())?.[1] ?? null;
+    const url = store ? storeSearchUrl(store, o.data.titulo) : null;
+    if (!store || !url || vistos.has(url)) continue;
+    vistos.add(url);
+    offers.push({
+      title: o.data.titulo,
+      store,
+      priceCents: cents,
+      installments: o.data.parcelamento?.trim() || null,
+      url,
+      priceSeen: false,
+      linkKind: "busca",
+    });
+  }
+  return offers.sort((a, b) => a.priceCents - b.priceCents).slice(0, MAX_OFERTAS);
+}
+
+/**
+ * O que a pesquisa viu, para o diagnostico em `ai_usage.details`: so
+ * enderecos, titulos, tamanhos e o comeco da resposta. Nada da casa.
+ */
+export function searchDiagnostics(
+  query: string,
+  raw: string,
+  citations: readonly Citation[],
+  counts: { conferidas: number; descartadas: number; planoB: number; planoC: number },
+): Record<string, unknown> {
+  const host = (u: string) => {
+    try {
+      const x = new URL(u);
+      return { h: x.hostname.replace(/^www\./, ""), p: x.pathname.slice(0, 80) };
+    } catch {
+      return { h: "?", p: u.slice(0, 80) };
+    }
+  };
+  return {
+    q: query.slice(0, 120),
+    citacoes: citations.length,
+    paginas: citations.slice(0, 10).map((c) => ({
+      ...host(c.url),
+      t: c.title.slice(0, 80),
+      n: c.content.length,
+      rs: /R\$/.test(c.content),
+    })),
+    resposta: raw.slice(0, 600),
+    ...counts,
+  };
 }
 
 // ---------------------------------------------------------------------------
