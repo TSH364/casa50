@@ -102,46 +102,36 @@ export default async function InicioPage({
   ].filter(Boolean);
   const resumoFiltros = partes.join(" · ");
   const filtroAtivo = memberId !== null || cardId !== null || view.showingAll;
+  const filtros = temFiltros ? (
+    <FiltrosInicio resumo={resumoFiltros} ativo={filtroAtivo}>
+      {members.length > 1 ? (
+        <FilterChips
+          param="membro"
+          label="Filtrar por pessoa"
+          active={memberId}
+          options={members.map((m) => ({ value: m.userId, label: m.fullName }))}
+        />
+      ) : null}
+      {cartoesAtivos.length > 1 ? (
+        <FilterChips
+          param="cartao"
+          label="Filtrar por cartão"
+          active={cardId}
+          allLabel="Todos os cartões"
+          options={cartoesAtivos.map((c) => ({ value: c.id, label: c.name }))}
+        />
+      ) : null}
+      <TotalsNote view={view} month={month} extraParams={{ membro: memberId, cartao: cardId }} />
+    </FiltrosInicio>
+  ) : null;
 
   return (
     <div className="mx-auto max-w-3xl space-y-5">
-      <header className="space-y-0.5">
-        <div className="flex items-center justify-between gap-3">
-          <p className="min-w-0 truncate text-corpo text-ink-muted">
-            {saudacao}
-            {eu ? `, ${eu.fullName.split(" ")[0]}` : ""}
-          </p>
-          {temFiltros ? (
-            <FiltrosInicio resumo={resumoFiltros} ativo={filtroAtivo}>
-              {members.length > 1 ? (
-                <FilterChips
-                  param="membro"
-                  label="Filtrar por pessoa"
-                  active={memberId}
-                  options={members.map((m) => ({ value: m.userId, label: m.fullName }))}
-                />
-              ) : null}
-
-              {cards.filter((c) => c.isActive).length > 1 ? (
-                <FilterChips
-                  param="cartao"
-                  label="Filtrar por cartão"
-                  active={cardId}
-                  allLabel="Todos os cartões"
-                  options={cards
-                    .filter((c) => c.isActive)
-                    .map((c) => ({ value: c.id, label: c.name }))}
-                />
-              ) : null}
-
-              <TotalsNote
-                view={view}
-                month={month}
-                extraParams={{ membro: memberId, cartao: cardId }}
-              />
-            </FiltrosInicio>
-          ) : null}
-        </div>
+      <header>
+        <p className="truncate text-corpo text-ink-muted">
+          {saudacao}
+          {eu ? `, ${eu.fullName.split(" ")[0]}` : ""}
+        </p>
         <h1 className="sr-only">Início</h1>
         <div className="-ml-3 flex items-center justify-between gap-2">
           <MonthSwitcher month={month} />
@@ -151,7 +141,7 @@ export default async function InicioPage({
             members={members}
             defaultMonth={month}
             label="Lançar"
-            size="default"
+            iconOnly
           />
         </div>
       </header>
@@ -174,6 +164,7 @@ export default async function InicioPage({
           excludeCategoryIds={excludeCategoryIds}
           categories={view.categories}
           hasData={monthsWithData.length > 0}
+          filtros={filtros}
         />
       </Suspense>
 

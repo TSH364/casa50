@@ -65,7 +65,10 @@ export async function InicioPainel({
   excludeCategoryIds,
   categories,
   hasData,
+  filtros = null,
 }: {
+  /** O botao dos filtros: fica no cartao do gasto, que e o numero que eles recortam. */
+  filtros?: React.ReactNode;
   houseId: string;
   month: MonthKey;
   memberId: string | null;
@@ -166,7 +169,10 @@ export async function InicioPainel({
         className="space-y-3 rounded-[20px] bg-surface p-5 shadow-[0_8px_24px_rgba(20,23,40,0.08)]"
       >
         <div>
-          <p className="text-corpo text-ink-muted">Gasto do mês</p>
+          <div className="flex min-h-9 items-center justify-between gap-3">
+            <p className="text-corpo text-ink-muted">Gasto do mês</p>
+            {filtros}
+          </div>
           <p className="tabular text-principal font-bold tracking-tight text-ink">{formatCents(resumo.spentCents)}</p>
         </div>
         <DoriRitmo barra={barra} />
