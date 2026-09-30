@@ -26,26 +26,22 @@ export interface BudgetRow {
   suggestionCents: number | null;
 }
 
-function ProgressBar({ progress }: { progress: BudgetProgress }) {
+/** A cor e a da categoria; a situacao vem escrita logo abaixo, e o vermelho so para quem passou. */
+function ProgressBar({ progress, color }: { progress: BudgetProgress; color: string }) {
   const width = Math.min(100, progress.ratio * 100);
   return (
-    <div
-      className="mt-2 h-1.5 overflow-hidden rounded-full bg-surface-3"
-      role="img"
-      aria-label={`${Math.round(progress.ratio * 100)}% do limite usado`}
-    >
-      <span
-        className={cn(
-          "block h-full rounded-full transition-all",
-          progress.isOver
-            ? "bg-danger"
-            : progress.isWarning
-              ? "bg-attention"
-              : "bg-positive",
-        )}
-        style={{ width: `${width}%` }}
-      />
-    </div>
+    <>
+      <div
+        className="mt-2 h-1.5 overflow-hidden rounded-full bg-surface-3"
+        role="img"
+        aria-label={`${Math.round(progress.ratio * 100)}% do limite usado`}
+      >
+        <span
+          className={cn("block h-full rounded-full transition-all", progress.isOver && "bg-danger-fill")}
+          style={{ width: `${width}%`, ...(progress.isOver ? {} : { backgroundColor: color }) }}
+        />
+      </div>
+    </>
   );
 }
 
@@ -121,7 +117,7 @@ export function BudgetsManager({
     return (
       <li
         key={row.category.id}
-        className="rounded-[--radius-control] bg-surface-2 px-3 py-3"
+        className="rounded-(--radius-control) bg-surface-2 px-3 py-3"
       >
         <div className="flex items-center gap-3">
           <span
@@ -165,7 +161,7 @@ export function BudgetsManager({
                 );
                 setEditing(row.category.id);
               }}
-              className="tabular shrink-0 rounded-[--radius-control] px-2 py-1 text-sm text-ink transition-colors hover:bg-surface-3"
+              className="tabular shrink-0 rounded-(--radius-control) px-2 py-1 text-sm text-ink transition-colors hover:bg-surface-3"
             >
               {row.limitCents > 0 ? (
                 <>
@@ -184,8 +180,8 @@ export function BudgetsManager({
 
         {row.progress ? (
           <>
-            <ProgressBar progress={row.progress} />
-            <p className="mt-1.5 text-[12px]">
+            <ProgressBar progress={row.progress} color={row.category.color} />
+            <p className="mt-1.5 text-legenda">
               {row.progress.isOver ? (
                 <span className="text-danger">
                   Passou {formatCents(row.progress.overCents)} do limite.
@@ -206,7 +202,7 @@ export function BudgetsManager({
             </p>
           </>
         ) : row.suggestionCents !== null ? (
-          <p className="mt-1.5 flex items-center gap-1.5 text-[12px] text-ink-faint">
+          <p className="mt-1.5 flex items-center gap-1.5 text-legenda text-ink-faint">
             <Lightbulb className="size-3 shrink-0" aria-hidden />
             Média dos últimos meses: {formatCents(row.suggestionCents)}
             <button
@@ -221,7 +217,7 @@ export function BudgetsManager({
             </button>
           </p>
         ) : (
-          <p className="mt-1.5 text-[12px] text-ink-faint">
+          <p className="mt-1.5 text-legenda text-ink-faint">
             Gasto no mês: {formatCents(row.spentCents)}
           </p>
         )}
@@ -249,8 +245,8 @@ export function BudgetsManager({
 
         {withBudget.length > 0 ? (
           <>
-            <div className="mb-3 flex items-baseline justify-between rounded-[--radius-control] bg-surface-3 px-3 py-2.5">
-              <span className="text-[13px] text-ink-muted">
+            <div className="mb-3 flex items-baseline justify-between rounded-(--radius-control) bg-surface-3 px-3 py-2.5">
+              <span className="text-corpo text-ink-muted">
                 Total orçado neste mês
               </span>
               <span className="tabular text-sm font-semibold text-ink">
@@ -265,7 +261,7 @@ export function BudgetsManager({
           </>
         ) : (
           <div className="py-4 text-center">
-            <p className="text-[13px] text-ink-faint">
+            <p className="text-corpo text-ink-faint">
               Nenhum limite definido para este mês. Toque numa categoria abaixo
               para começar
               {comSugestao.length > 0 ? " — ou aceite a média de uma vez." : "."}
@@ -286,7 +282,7 @@ export function BudgetsManager({
                 {/* O total fica FORA do botão: dentro dele o rótulo não quebra
                     (`whitespace-nowrap`), e medido a 360px o botão inteiro
                     passava 19px da tela. Aqui a linha quebra à vontade. */}
-                <p className="mt-1.5 text-[12px] text-ink-faint">
+                <p className="mt-1.5 text-legenda text-ink-faint">
                   {formatCents(totalSugerido)} no total, a partir dos três meses
                   anteriores
                 </p>

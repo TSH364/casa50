@@ -138,7 +138,7 @@ export function TaskBoard({
             <li
               key={col.id}
               className={cn(
-                "w-[17.5rem] shrink-0 snap-start rounded-[--radius-card] border bg-surface",
+                "w-[17.5rem] shrink-0 snap-start rounded-(--radius-card) border bg-surface",
                 overCol === col.id ? "border-brand" : "border-line",
               )}
               onDragOver={(e) => {
@@ -155,7 +155,7 @@ export function TaskBoard({
               }}
             >
               <div className="flex items-center justify-between gap-2 py-1 pl-3 pr-1">
-                <h2 className="min-w-0 truncate text-[13px] font-semibold text-ink">
+                <h2 className="min-w-0 truncate text-corpo font-semibold text-ink">
                   {col.name}
                   <span className="tabular ml-1.5 font-normal text-ink-muted">{col.tasks.length}</span>
                 </h2>
@@ -253,7 +253,7 @@ function TaskCard({
   const vencida = isOverdue(task, todayIso);
 
   return (
-    <div className="flex items-start gap-1 rounded-[--radius-control] border border-line bg-surface-2 py-1 pl-1 pr-3 transition-colors hover:border-line-strong">
+    <div className="flex items-start gap-1 rounded-(--radius-control) border border-line bg-surface-2 py-1 pl-1 pr-3 transition-colors hover:border-line-strong">
       <button
         type="button"
         role="checkbox"
@@ -265,7 +265,7 @@ function TaskCard({
         <span
           className={cn(
             "flex size-5 items-center justify-center rounded-full border",
-            task.done ? "border-positive bg-positive text-white" : "border-line-strong",
+            task.done ? "border-positive bg-positive text-on-brand" : "border-line-strong",
           )}
         >
           {task.done ? <Check className="size-3" strokeWidth={3} aria-hidden /> : null}
@@ -276,7 +276,7 @@ function TaskCard({
           {task.title}
         </span>
         {task.dueDate || quem || temDinheiro ? (
-          <span className="mt-1.5 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[12px] text-ink-muted">
+          <span className="mt-1.5 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-legenda text-ink-muted">
             {task.dueDate ? (
               <span
                 className={cn(
@@ -327,7 +327,7 @@ function NewTask({ listId }: { listId: string }) {
         <button
           type="button"
           onClick={() => setAberto(true)}
-          className="flex min-h-11 w-full items-center gap-2 rounded-[--radius-control] px-2 text-sm text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink"
+          className="flex min-h-11 w-full items-center gap-2 rounded-(--radius-control) px-2 text-sm text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink"
         >
           <Plus className="size-4" aria-hidden />
           Adicionar tarefa
@@ -383,7 +383,7 @@ function NewColumn() {
       <button
         type="button"
         onClick={() => setAberto(true)}
-        className="flex min-h-12 w-full items-center gap-2 rounded-[--radius-card] border border-dashed border-line-strong px-3 text-sm text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink"
+        className="flex min-h-12 w-full items-center gap-2 rounded-(--radius-card) border border-dashed border-line-strong px-3 text-sm text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink"
       >
         <Plus className="size-4" aria-hidden />
         Nova coluna
@@ -393,7 +393,7 @@ function NewColumn() {
 
   return (
     <form
-      className="space-y-2 rounded-[--radius-card] border border-line bg-surface p-2"
+      className="space-y-2 rounded-(--radius-card) border border-line bg-surface p-2"
       onSubmit={(e) => {
         e.preventDefault();
         start(async () => {
@@ -476,7 +476,7 @@ function ColumnDialog({
         >
           <div className="space-y-4">
             <div className="space-y-1.5">
-              <label htmlFor="coluna-nome" className="block text-[13px] font-medium text-ink-muted">
+              <label htmlFor="coluna-nome" className="block text-corpo font-medium text-ink-muted">
                 Nome
               </label>
               <Input id="coluna-nome" maxLength={60} value={nome} onChange={(e) => setNome(e.target.value)} />

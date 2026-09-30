@@ -14,6 +14,7 @@ export function NewTransactionButton({
   defaultMonth,
   size = "sm",
   label = "Novo lançamento",
+  iconOnly = false,
 }: {
   categories: Category[];
   cards: Card[];
@@ -21,14 +22,28 @@ export function NewTransactionButton({
   defaultMonth: string;
   size?: "sm" | "default";
   label?: string;
+  /** So o "+", redondo; o rotulo vai para o leitor de tela. */
+  iconOnly?: boolean;
 }) {
   const [open, setOpen] = useState(false);
 
   return (
     <>
-      <Button size={size} onClick={() => setOpen(true)}>
-        <Plus aria-hidden /> {label}
-      </Button>
+      {iconOnly ? (
+        <Button
+          size="icon"
+          onClick={() => setOpen(true)}
+          aria-label={label}
+          title={label}
+          className="rounded-full shadow-[0_6px_16px_rgba(61,69,189,0.28)] [&_svg]:size-5"
+        >
+          <Plus aria-hidden />
+        </Button>
+      ) : (
+        <Button size={size} onClick={() => setOpen(true)}>
+          <Plus aria-hidden /> {label}
+        </Button>
+      )}
       {/* `key` remonta o formulário a cada abertura, limpando os campos de
           uma edição anterior sem precisar resetá-los um a um. */}
       {open ? (

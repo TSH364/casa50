@@ -27,7 +27,7 @@ export default async function NovaCasaPage() {
   return (
     <main className="mx-auto flex min-h-dvh w-full max-w-sm flex-col justify-center px-5 py-10">
       <div className="rise">
-        <p className="text-[13px] font-medium uppercase tracking-[0.18em] text-brand">
+        <p className="text-corpo font-medium uppercase tracking-[0.18em] text-brand">
           Fluxo
         </p>
         <h1 className="mt-2 text-2xl font-semibold tracking-tight text-ink">
@@ -48,7 +48,7 @@ export default async function NovaCasaPage() {
 
       <div className="mt-8">
         {invites.length > 0 ? (
-          <p className="mb-3 text-[13px] text-ink-faint">
+          <p className="mb-3 text-corpo text-ink-faint">
             Ou crie uma casa separada:
           </p>
         ) : null}

@@ -259,10 +259,10 @@ function Gastos({ task }: { task: Task }) {
   return (
     <section aria-labelledby="tarefa-gastos" className="space-y-2 border-t border-line pt-4">
       <div className="flex items-baseline justify-between gap-3">
-        <h3 id="tarefa-gastos" className="text-[13px] font-medium text-ink-muted">
+        <h3 id="tarefa-gastos" className="text-corpo font-medium text-ink-muted">
           Gastos ligados
         </h3>
-        <p className={cn("tabular text-[13px]", dinheiro.over ? "font-medium text-danger" : "text-ink")}>
+        <p className={cn("tabular text-corpo", dinheiro.over ? "font-medium text-danger" : "text-ink")}>
           {formatCents(dinheiro.spentCents)}
           {dinheiro.expectedCents !== null ? (
             <span className={dinheiro.over ? undefined : "text-ink-faint"}>
@@ -275,12 +275,12 @@ function Gastos({ task }: { task: Task }) {
       </div>
 
       {task.linked.length === 0 ? (
-        <p className="text-[13px] text-ink-faint">Nenhum lançamento ligado.</p>
+        <p className="text-corpo text-ink-faint">Nenhum lançamento ligado.</p>
       ) : (
-        <ul className="divide-y divide-line rounded-[--radius-control] border border-line">
+        <ul className="divide-y divide-line rounded-(--radius-control) border border-line">
           {task.linked.map((l) => (
             <li key={l.id} className="flex items-center gap-2 pl-3">
-              <span className="tabular w-16 shrink-0 text-[12px] text-ink-faint">{dia(l.date)}</span>
+              <span className="tabular w-16 shrink-0 text-legenda text-ink-faint">{dia(l.date)}</span>
               <span className="min-w-0 flex-1 truncate text-sm text-ink">{l.label}</span>
               <span className="tabular shrink-0 text-sm text-ink">{formatCents(l.cents)}</span>
               <button
@@ -330,17 +330,17 @@ function Gastos({ task }: { task: Task }) {
               <Search aria-hidden />
             </Button>
           </form>
-          <p className="text-[12px] text-ink-faint">Despesas dos últimos 6 meses, mais recentes primeiro.</p>
+          <p className="text-legenda text-ink-faint">Despesas dos últimos 6 meses, mais recentes primeiro.</p>
           {opcoes === null ? (
-            <p className="text-[13px] text-ink-faint" aria-live="polite">
+            <p className="text-corpo text-ink-faint" aria-live="polite">
               Buscando…
             </p>
           ) : opcoes.length === 0 ? (
-            <p className="text-[13px] text-ink-faint" aria-live="polite">
+            <p className="text-corpo text-ink-faint" aria-live="polite">
               Nada encontrado.
             </p>
           ) : (
-            <ul className="max-h-64 divide-y divide-line overflow-y-auto rounded-[--radius-control] border border-line">
+            <ul className="max-h-64 divide-y divide-line overflow-y-auto rounded-(--radius-control) border border-line">
               {opcoes.map((o) => {
                 const ja = ligados.has(o.id);
                 return (
@@ -351,7 +351,7 @@ function Gastos({ task }: { task: Task }) {
                       onClick={() => ligar(o.id)}
                       className="flex min-h-11 w-full items-center gap-2 px-3 text-left transition-colors hover:bg-surface-2 disabled:opacity-60"
                     >
-                      <span className="tabular w-16 shrink-0 text-[12px] text-ink-faint">{dia(o.date)}</span>
+                      <span className="tabular w-16 shrink-0 text-legenda text-ink-faint">{dia(o.date)}</span>
                       <span className="min-w-0 flex-1 truncate text-sm text-ink">{o.label}</span>
                       <span className="tabular shrink-0 text-sm text-ink">
                         {ja ? "ligado" : formatCents(o.cents)}

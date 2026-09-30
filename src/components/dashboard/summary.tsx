@@ -27,11 +27,11 @@ function Kpi({
   hint?: string;
 }) {
   return (
-    <div className="rounded-[--radius-control] bg-surface-2 px-3.5 py-3">
-      <p className="text-[12px] uppercase tracking-[0.08em] text-ink-faint">{label}</p>
+    <div className="rounded-(--radius-control) bg-surface-2 px-3.5 py-3">
+      <p className="text-legenda uppercase tracking-[0.08em] text-ink-faint">{label}</p>
       <p
         className={cn(
-          "tabular mt-1 text-[19px] font-semibold",
+          "tabular mt-1 text-titulo font-semibold",
           tone === "positive" && "text-positive",
           tone === "negative" && "text-danger",
           tone === "muted" && "text-ink-muted",
@@ -40,7 +40,7 @@ function Kpi({
       >
         {value}
       </p>
-      {hint ? <p className="mt-0.5 text-[12px] text-ink-faint">{hint}</p> : null}
+      {hint ? <p className="mt-0.5 text-legenda text-ink-faint">{hint}</p> : null}
     </div>
   );
 }
@@ -52,7 +52,7 @@ export function SummarySkeleton() {
       <CardHeader title="Resumo do mês" />
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
         {Array.from({ length: 6 }, (_, i) => (
-          <div key={i} className="rounded-[--radius-control] bg-surface-2 px-3.5 py-3">
+          <div key={i} className="rounded-(--radius-control) bg-surface-2 px-3.5 py-3">
             <Skeleton className="h-3 w-16" />
             <Skeleton className="mt-2 h-6 w-24" />
           </div>

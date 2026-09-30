@@ -94,7 +94,7 @@ export async function RebalancePanel({
           title="A agenda pressiona este mês"
           description={`${monthLabel(month)} aponta ${formatCents(pressure.extraCents)} acima de um mês comum.`}
         />
-        <p className="text-[13px] text-ink-muted">
+        <p className="text-corpo text-ink-muted">
           {states.length === 0
             ? "Não há orçamento cadastrado neste mês, então não há limite para realocar. Defina os limites abaixo e a proposta aparece aqui."
             : "Nenhuma categoria tem folga para ceder: o que está cadastrado já é compromisso assumido ou já foi gasto."}
@@ -120,7 +120,7 @@ export async function RebalancePanel({
         {plan.proposals.map((p) => (
           <li
             key={p.categoryId}
-            className="rounded-[--radius-control] bg-surface-2 px-3 py-3"
+            className="rounded-(--radius-control) bg-surface-2 px-3 py-3"
           >
             <div className="flex items-center gap-2">
               <span
@@ -143,12 +143,12 @@ export async function RebalancePanel({
               <span className="tabular font-semibold text-ink">
                 {formatCents(p.toCents)}
               </span>
-              <span className="tabular text-[12px] text-brand">
+              <span className="tabular text-legenda text-brand">
                 libera {formatCents(p.freedCents)}
               </span>
             </p>
 
-            <p className="mt-1 text-[12px] text-ink-faint">
+            <p className="mt-1 text-legenda text-ink-faint">
               {MOTIVO[p.reason]}
               {p.typicalCents > 0
                 ? ` · costuma gastar ${formatCents(p.typicalCents)}`
@@ -159,7 +159,7 @@ export async function RebalancePanel({
         ))}
       </ul>
 
-      <dl className="mt-3 flex flex-wrap gap-x-4 gap-y-1 border-t border-line pt-2.5 text-[12px]">
+      <dl className="mt-3 flex flex-wrap gap-x-4 gap-y-1 border-t border-line pt-2.5 text-legenda">
         <div className="flex items-center gap-1.5">
           <dt className="text-ink-faint">Precisa abrir:</dt>
           <dd className="tabular text-ink-muted">{formatCents(plan.needCents)}</dd>
@@ -178,7 +178,7 @@ export async function RebalancePanel({
         ) : null}
       </dl>
 
-      <p className="mt-2 text-[12px] text-ink-faint">
+      <p className="mt-2 text-legenda text-ink-faint">
         Parcelas e contas recorrentes do mês não entram no corte, e nenhum
         limite cai abaixo do que já foi gasto.{" "}
         <Link href="/analise#recorrencias" className="text-brand underline-offset-4 hover:underline">

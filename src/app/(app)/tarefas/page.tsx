@@ -45,8 +45,8 @@ export default async function TarefasPage() {
   return (
     <div className="space-y-4">
       <header>
-        <h1 className="text-[17px] font-semibold tracking-tight text-ink">Tarefas</h1>
-        <p className="mt-0.5 text-[13px] text-ink-faint">
+        <h1 className="text-titulo font-semibold tracking-tight text-ink">Tarefas</h1>
+        <p className="mt-0.5 text-corpo text-ink-faint">
           Toque numa tarefa para editar, mudar de coluna ou ligar gastos.
           <span className="hidden md:inline"> No computador, dá para arrastar.</span>
         </p>

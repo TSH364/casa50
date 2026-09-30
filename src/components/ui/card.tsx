@@ -8,7 +8,7 @@ export function Card({
   return (
     <div
       className={cn(
-        "rounded-[--radius-card] border border-line bg-surface p-4 sm:p-5",
+        "rounded-(--radius-card) border border-line bg-surface p-4 sm:p-5",
         className,
       )}
       {...props}
@@ -28,9 +28,9 @@ export function CardHeader({
   return (
     <div className="mb-4 flex items-start justify-between gap-3">
       <div className="min-w-0">
-        <h2 className="text-[15px] font-semibold tracking-tight text-ink">{title}</h2>
+        <h2 className="text-destaque font-semibold tracking-tight text-ink">{title}</h2>
         {description ? (
-          <p className="mt-0.5 text-[13px] text-ink-faint">{description}</p>
+          <p className="mt-0.5 text-corpo text-ink-faint">{description}</p>
         ) : null}
       </div>
       {action ? <div className="shrink-0">{action}</div> : null}
@@ -45,9 +45,9 @@ export function CardHeader({
  */
 export function InDevelopment({ note }: { note?: string }) {
   return (
-    <div className="rounded-[--radius-control] border border-dashed border-line-strong bg-surface-2 px-4 py-6 text-center">
-      <p className="text-[13px] font-medium text-attention">Em desenvolvimento</p>
-      {note ? <p className="mt-1 text-[13px] text-ink-faint">{note}</p> : null}
+    <div className="rounded-(--radius-control) border border-dashed border-line-strong bg-surface-2 px-4 py-6 text-center">
+      <p className="text-corpo font-medium text-attention">Em desenvolvimento</p>
+      {note ? <p className="mt-1 text-corpo text-ink-faint">{note}</p> : null}
     </div>
   );
 }

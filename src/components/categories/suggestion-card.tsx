@@ -80,14 +80,14 @@ export function SuggestionCard({
   }
 
   return (
-    <div className="rounded-[--radius-control] bg-surface-2 px-3 py-3">
+    <div className="rounded-(--radius-control) bg-surface-2 px-3 py-3">
       <div className="flex items-center gap-2">
         <span
           className="size-2 shrink-0 rounded-full"
           style={{ backgroundColor: color }}
           aria-hidden
         />
-        <span className="min-w-0 flex-1 break-words text-[13px] text-ink-faint">
+        <span className="min-w-0 flex-1 break-words text-corpo text-ink-faint">
           em {categoryName}
         </span>
       </div>
@@ -103,7 +103,7 @@ export function SuggestionCard({
       </label>
 
       {/* A evidencia, em numeros que se conferem no extrato. */}
-      <p className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[12px] text-ink-muted">
+      <p className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-legenda text-ink-muted">
         <span className="tabular">
           {suggestion.count} lançamentos em {suggestion.monthsSeen} meses
         </span>
@@ -117,14 +117,14 @@ export function SuggestionCard({
       </p>
 
       <details className="mt-2">
-        <summary className="cursor-pointer text-[12px] text-ink-faint">
+        <summary className="cursor-pointer text-legenda text-ink-faint">
           Ver os {suggestion.merchants.length} estabelecimentos
         </summary>
         <ul className="mt-1.5 space-y-1">
           {suggestion.merchants.map((m) => (
             <li
               key={m.merchant}
-              className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-[12px]"
+              className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-legenda"
             >
               <span className="min-w-0 break-words text-ink">{m.label}</span>
               <span className="tabular text-ink-faint">

@@ -64,7 +64,7 @@ function IssueLine({ level, text }: { level: string; text: string }) {
   return (
     <li
       className={cn(
-        "flex items-start gap-2 text-[13px]",
+        "flex items-start gap-2 text-corpo",
         level === "error" && "text-danger",
         level === "warning" && "text-attention",
         level === "info" && "text-ink-muted",
@@ -350,7 +350,7 @@ export function ImportWizard({
           description="CSV ou planilha (.xlsx) da fatura, exportados pelo app ou site do banco."
         />
         <label
-          className="flex cursor-pointer flex-col items-center justify-center gap-3 rounded-[--radius-card] border border-dashed border-line-strong bg-surface-2 px-6 py-12 text-center transition-colors hover:border-brand"
+          className="flex cursor-pointer flex-col items-center justify-center gap-3 rounded-(--radius-card) border border-dashed border-line-strong bg-surface-2 px-6 py-12 text-center transition-colors hover:border-brand"
           onDragOver={(e) => e.preventDefault()}
           onDrop={(e) => {
             e.preventDefault();
@@ -362,7 +362,7 @@ export function ImportWizard({
           <span className="text-sm text-ink">
             Arraste o arquivo ou toque para escolher
           </span>
-          <span className="text-[13px] text-ink-faint">
+          <span className="text-corpo text-ink-faint">
             .csv ou .xlsx · até {MAX_FILE_BYTES / 1024 / 1024} MB
           </span>
           <input
@@ -379,7 +379,7 @@ export function ImportWizard({
         {fileError ? (
           <p
             role="alert"
-            className="mt-4 rounded-[--radius-control] bg-danger-soft px-3 py-2.5 text-[13px] text-danger"
+            className="mt-4 rounded-(--radius-control) bg-danger-soft px-3 py-2.5 text-corpo text-danger"
           >
             {fileError}
           </p>
@@ -542,13 +542,13 @@ export function ImportWizard({
           <ul className="divide-y divide-line">
             {parsed.drafts.slice(0, 8).map((d) => (
               <li key={d.row} className="flex items-center gap-3 py-2">
-                <span className="tabular w-16 shrink-0 text-[12px] text-ink-faint">
+                <span className="tabular w-16 shrink-0 text-legenda text-ink-faint">
                   {d.date.slice(8)}/{d.date.slice(5, 7)}
                 </span>
                 <span className="min-w-0 flex-1 truncate text-sm text-ink">
                   {d.description}
                 </span>
-                <span className="shrink-0 text-[11px] text-ink-faint">
+                <span className="shrink-0 text-legenda text-ink-faint">
                   {TYPE_LABEL[d.type]}
                 </span>
                 <span className="tabular shrink-0 text-sm text-ink">
@@ -558,7 +558,7 @@ export function ImportWizard({
             ))}
           </ul>
           {parsed.drafts.length > 8 ? (
-            <p className="mt-3 text-[13px] text-ink-faint">
+            <p className="mt-3 text-corpo text-ink-faint">
               e mais {parsed.drafts.length - 8} linha(s).
             </p>
           ) : null}
@@ -595,8 +595,8 @@ export function ImportWizard({
               { label: "Ignorados", value: summary.ignored, tone: "text-ink-muted" },
               { label: "Sem categoria", value: summary.withoutCategory, tone: "text-ink-muted" },
             ].map((k) => (
-              <div key={k.label} className="rounded-[--radius-control] bg-surface-2 px-3 py-2.5">
-                <p className="text-[12px] uppercase tracking-[0.08em] text-ink-faint">
+              <div key={k.label} className="rounded-(--radius-control) bg-surface-2 px-3 py-2.5">
+                <p className="text-legenda uppercase tracking-[0.08em] text-ink-faint">
                   {k.label}
                 </p>
                 <p className={cn("tabular mt-1 text-lg font-semibold", k.tone)}>
@@ -606,7 +606,7 @@ export function ImportWizard({
             ))}
           </div>
 
-          <p className="mt-3 text-[13px] text-ink-muted">
+          <p className="mt-3 text-corpo text-ink-muted">
             Total calculado:{" "}
             <span className="tabular font-medium text-ink">
               {formatCents(summary.computedTotalCents)}
@@ -635,7 +635,7 @@ export function ImportWizard({
                   onClick={() => toggleDecision(d.row)}
                   aria-pressed={d.decision === "new"}
                   className={cn(
-                    "min-h-9 shrink-0 rounded-full border px-2.5 text-[11px] transition-colors",
+                    "min-h-9 shrink-0 rounded-full border px-2.5 text-legenda transition-colors",
                     d.decision === "new" && "border-positive/50 bg-positive-soft text-positive",
                     d.decision === "duplicate" && "border-attention/50 bg-attention-soft text-attention",
                     d.decision === "ignored" && "border-line bg-surface-2 text-ink-faint",
@@ -650,22 +650,22 @@ export function ImportWizard({
                 <span className="min-w-0 flex-1 truncate text-sm text-ink">
                   {d.description}
                   {d.installmentTotal ? (
-                    <span className="ml-1.5 text-[12px] text-ink-faint">
+                    <span className="ml-1.5 text-legenda text-ink-faint">
                       {d.installmentCurrent}/{d.installmentTotal}
                     </span>
                   ) : null}
                   {d.cardLastFour ? (
-                    <span className="ml-1.5 text-[12px] text-ink-faint">
+                    <span className="ml-1.5 text-legenda text-ink-faint">
                       ···· {d.cardLastFour}
                     </span>
                   ) : null}
-                  <span className="block truncate text-[12px] text-ink-faint">
+                  <span className="block truncate text-legenda text-ink-faint">
                     {d.categoryName ?? "Sem categoria"}
                     {d.subcategoryName ? ` › ${d.subcategoryName}` : null}
                     {d.categoryVia === "jev" || d.subcategoryName ? (
                       // Palpite marcado como palpite: quem revisa precisa saber
                       // o que veio de regra da casa e o que a IA achou.
-                      <span className="ml-1.5 rounded-full bg-brand-soft px-1.5 text-[11px] text-brand">
+                      <span className="ml-1.5 rounded-full bg-brand-soft px-1.5 text-legenda text-brand">
                         Jev
                         {jevCerteza(d) !== null ? ` · ${probabilityLabel(jevCerteza(d)!)}` : ""}
                       </span>
@@ -709,7 +709,7 @@ export function ImportWizard({
             {formatCents(summary.computedTotalCents)}
           </p>
           {summary.duplicates > 0 ? (
-            <p className="mt-2 text-[13px] text-ink-faint">
+            <p className="mt-2 text-corpo text-ink-faint">
               {summary.duplicates} repetição(ões) não foram gravadas.
             </p>
           ) : null}

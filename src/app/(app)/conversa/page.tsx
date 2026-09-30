@@ -4,8 +4,9 @@ import { notFound } from "next/navigation";
 import { getActiveHouse } from "@/lib/houses";
 import { getAiStatus } from "@/lib/ai-config";
 import { ChatPanel } from "@/components/chat/chat-panel";
+import { parseModo } from "@/lib/doria-mode";
 
-export const metadata: Metadata = { title: "Conversa · Fluxo" };
+export const metadata: Metadata = { title: "Dor.IA · Fluxo" };
 
 /**
  * Uma pergunta pode levar algumas rodadas de ferramenta, e modelo gratuito
@@ -13,7 +14,12 @@ export const metadata: Metadata = { title: "Conversa · Fluxo" };
  */
 export const maxDuration = 60;
 
-export default async function ConversaPage() {
+export default async function ConversaPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ modo?: string }>;
+}) {
+  const { modo } = await searchParams;
   const { active } = await getActiveHouse();
   if (!active) notFound();
   const ai = await getAiStatus(active.id);
@@ -21,15 +27,17 @@ export default async function ConversaPage() {
   return (
     <div className="mx-auto max-w-2xl space-y-4">
       <header>
-        <h1 className="text-xl font-semibold tracking-tight text-ink">Conversa</h1>
-        <p className="mt-1 text-[13px] text-ink-faint">
+        <h1 className="text-xl font-semibold tracking-tight text-ink">
+          Dor<span className="text-brand">.</span>IA
+        </h1>
+        <p className="mt-1 text-corpo text-ink-faint">
           Pergunte ou peça por escrito ou por voz: gastos, metas, orçamentos, contas fixas, tarefas,
           pesquisa de compra. A IA consulta os dados e propõe; nada muda sem o seu toque em Confirmar.
         </p>
       </header>
 
       {ai.source === null ? (
-        <p className="rounded-[--radius-control] bg-surface-2 px-3.5 py-3 text-[13px] text-ink-muted">
+        <p className="rounded-(--radius-control) bg-surface-2 px-3.5 py-3 text-corpo text-ink-muted">
           A conversa usa a chave do OpenRouter da casa.{" "}
           <Link href="/casa" className="text-brand underline underline-offset-2">
             Guardar a chave na tela Casa
@@ -37,7 +45,7 @@ export default async function ConversaPage() {
           .
         </p>
       ) : (
-        <ChatPanel houseId={active.id} />
+        <ChatPanel houseId={active.id} modo={parseModo(modo)} />
       )}
     </div>
   );

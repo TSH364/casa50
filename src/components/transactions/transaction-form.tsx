@@ -49,7 +49,7 @@ function Footer({ isEdit }: { isEdit: boolean }) {
       <DialogClose
         type="button"
         disabled={pending}
-        className="min-h-11 flex-1 rounded-[--radius-control] border border-line-strong text-sm text-ink transition-colors hover:bg-surface-2 disabled:opacity-50"
+        className="min-h-11 flex-1 rounded-(--radius-control) border border-line-strong text-sm text-ink transition-colors hover:bg-surface-2 disabled:opacity-50"
       >
         Cancelar
       </DialogClose>
@@ -58,7 +58,7 @@ function Footer({ isEdit }: { isEdit: boolean }) {
         form="transaction-form"
         disabled={pending}
         aria-busy={pending}
-        className="min-h-11 flex-1 rounded-[--radius-control] bg-brand text-sm font-medium text-white transition-colors hover:bg-brand/90 disabled:opacity-50"
+        className="min-h-11 flex-1 rounded-(--radius-control) bg-brand text-sm font-medium text-on-brand transition-colors hover:bg-brand/90 disabled:opacity-50"
       >
         {pending ? "Salvando…" : isEdit ? "Salvar alterações" : "Adicionar"}
       </button>
@@ -243,18 +243,18 @@ export function TransactionFormDialog({
                 options={parents.map((c) => ({ value: c.id, label: c.name }))}
               />
               {sugerindo ? (
-                <p className="mt-1 text-[12px] text-ink-muted">Procurando a categoria…</p>
+                <p className="mt-1 text-legenda text-ink-muted">Procurando a categoria…</p>
               ) : sugestao?.categoryId ? (
                 sugestao.aplicada ? (
                   sugestao.categoryId === categoryId ? (
-                    <p className="mt-1 text-[12px] text-ink-muted">
+                    <p className="mt-1 text-legenda text-ink-muted">
                       {sugestao.via === "regra" ? "Pela regra da casa." : "Pelo nome da loja."}
                     </p>
                   ) : null
                 ) : (
                   <button
                     type="button"
-                    className="mt-1 inline-flex min-h-9 items-center rounded-full border border-brand/50 bg-brand-soft px-3 text-left text-[12px] text-ink"
+                    className="mt-1 inline-flex min-h-9 items-center rounded-full border border-brand/50 bg-brand-soft px-3 text-left text-legenda text-ink"
                     onClick={() => {
                       setCategoryId(sugestao.categoryId!);
                       setSubcategoryId(sugestao.subcategoryId ?? "");
@@ -400,7 +400,7 @@ export function TransactionFormDialog({
           {state.error ? (
             <p
               role="alert"
-              className="rounded-[--radius-control] bg-danger-soft px-3 py-2 text-[13px] text-danger"
+              className="rounded-(--radius-control) bg-danger-soft px-3 py-2 text-corpo text-danger"
             >
               {state.error}
             </p>

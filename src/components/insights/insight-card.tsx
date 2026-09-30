@@ -37,7 +37,7 @@ export function InsightCard({ insight }: { insight: Insight }) {
         <tone.Icon className={cn("mt-0.5 size-4 shrink-0", tone.icon)} aria-hidden />
         <div className="min-w-0 flex-1">
           <p className="text-sm font-medium text-ink">{insight.title}</p>
-          <p className="mt-0.5 text-[13px] text-ink-muted">{insight.detail}</p>
+          <p className="mt-0.5 text-corpo text-ink-muted">{insight.detail}</p>
         </div>
         {insight.href ? (
           <ArrowRight className="mt-0.5 size-4 shrink-0 text-ink-faint" aria-hidden />
@@ -51,8 +51,8 @@ export function InsightCard({ insight }: { insight: Insight }) {
       <dl className="mt-2.5 flex flex-wrap gap-x-4 gap-y-1 border-t border-line pt-2">
         {insight.evidence.map((e) => (
           <div key={e.label} className="flex items-baseline gap-1.5">
-            <dt className="text-[12px] text-ink-faint">{e.label}:</dt>
-            <dd className="tabular text-[12px] font-medium text-ink-muted">
+            <dt className="text-legenda text-ink-faint">{e.label}:</dt>
+            <dd className="tabular text-legenda font-medium text-ink-muted">
               {e.value}
             </dd>
           </div>
@@ -62,7 +62,7 @@ export function InsightCard({ insight }: { insight: Insight }) {
   );
 
   const className = cn(
-    "block rounded-[--radius-control] border-l-2 bg-surface-2 px-3 py-3 text-left",
+    "block rounded-(--radius-control) border-l-2 bg-surface-2 px-3 py-3 text-left",
     tone.border,
     insight.href && "transition-colors hover:bg-surface-3",
   );

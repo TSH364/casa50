@@ -10,8 +10,6 @@ import { Button } from "@/components/ui/button";
 import { buildInfo, buildLabel, versionLabel } from "@/lib/version";
 import { cookies } from "next/headers";
 import { ThemeToggle } from "@/components/theme-toggle";
-import Link from "next/link";
-import { Users } from "lucide-react";
 import { THEME_COOKIE, parseTheme } from "@/lib/theme";
 
 export default async function AppLayout({
@@ -46,17 +44,21 @@ export default async function AppLayout({
       */}
       <a
         href="#conteudo"
-        className="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-50 focus:rounded-[--radius-control] focus:bg-brand focus:px-4 focus:py-2.5 focus:text-sm focus:text-white"
+        className="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-50 focus:rounded-(--radius-control) focus:bg-brand focus:px-4 focus:py-2.5 focus:text-sm focus:text-on-brand"
       >
         Pular para o conteúdo
       </a>
 
-      <AppNav />
+      <AppNav tema={tema} versao={versionLabel(build)} versaoCompleta={buildLabel(build)} />
 
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="sticky top-0 z-30 flex min-h-14 items-center justify-between gap-3 border-b border-line bg-canvas/90 px-4 backdrop-blur-md sm:px-6">
           <HouseSwitcher houses={houses} activeId={active.id} />
-          <div className="flex shrink-0 items-center gap-1">
+          {/*
+            No celular o topo fica so com a casa: tema, versao e Sair foram
+            para o "Mais" da barra de baixo, e a Casa tambem.
+          */}
+          <div className="hidden shrink-0 items-center gap-1 md:flex">
             {/*
               Versão do build, discreta mas em toda tela: serve para conferir
               num relance se a atualização entrou mesmo, sem depender de
@@ -67,20 +69,9 @@ export default async function AppLayout({
               continua na tela Casa, junto com ambiente e horário do build, que
               é onde se procura quando algo deu errado.
             */}
-            <span
-              title={buildLabel(build)}
-              className="tabular text-[11px] text-ink-faint"
-            >
+            <span title={buildLabel(build)} className="tabular text-legenda text-ink-faint">
               {versionLabel(build)}
             </span>
-            {/* A casa, no celular: a barra de baixo ja esta cheia. */}
-            <Link
-              href="/casa"
-              aria-label="Casa: pessoas, cartões e configurações"
-              className="inline-flex size-11 items-center justify-center rounded-full text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink md:hidden"
-            >
-              <Users className="size-[18px]" aria-hidden />
-            </Link>
             <ThemeToggle initial={tema} />
             <form action={signOut}>
               <Button variant="ghost" size="sm" type="submit">
@@ -90,8 +81,8 @@ export default async function AppLayout({
           </div>
         </header>
 
-        {/* pb-24 no celular reserva a altura da barra inferior fixa. */}
-        <main id="conteudo" tabIndex={-1} className="min-w-0 flex-1 px-4 pb-24 pt-5 sm:px-6 md:pb-10">
+        {/* pb-28 no celular reserva a barra inferior fixa e o botao da Dor.IA acima dela. */}
+        <main id="conteudo" tabIndex={-1} className="min-w-0 flex-1 px-4 pb-28 pt-5 sm:px-6 md:pb-10">
           {children}
         </main>
       </div>

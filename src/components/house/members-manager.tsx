@@ -102,18 +102,18 @@ export function MembersManager({
             return (
               <li
                 key={member.memberId}
-                className="flex items-center gap-3 rounded-[--radius-control] bg-surface-2 px-3 py-3"
+                className="flex items-center gap-3 rounded-(--radius-control) bg-surface-2 px-3 py-3"
               >
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm text-ink">
                     {member.name}
                     {isMe ? (
-                      <span className="ml-1.5 text-[12px] text-ink-faint">
+                      <span className="ml-1.5 text-legenda text-ink-faint">
                         (você)
                       </span>
                     ) : null}
                   </p>
-                  <p className="truncate text-[13px] text-ink-faint">
+                  <p className="truncate text-corpo text-ink-faint">
                     {member.email}
                   </p>
                 </div>
@@ -136,7 +136,7 @@ export function MembersManager({
                     />
                   </div>
                 ) : (
-                  <span className="shrink-0 text-[13px] text-ink-muted">
+                  <span className="shrink-0 text-corpo text-ink-muted">
                     {ROLE_LABEL[member.role] ?? member.role}
                   </span>
                 )}
@@ -167,13 +167,13 @@ export function MembersManager({
             {invited.map((invite) => (
               <li
                 key={invite.memberId}
-                className="flex items-center gap-3 rounded-[--radius-control] bg-surface-2 px-3 py-2.5"
+                className="flex items-center gap-3 rounded-(--radius-control) bg-surface-2 px-3 py-2.5"
               >
                 <Clock className="size-4 shrink-0 text-attention" aria-hidden />
                 <span className="min-w-0 flex-1 truncate text-sm text-ink-muted">
                   {invite.email}
                 </span>
-                <span className="shrink-0 text-[12px] text-ink-faint">
+                <span className="shrink-0 text-legenda text-ink-faint">
                   {ROLE_LABEL[invite.role] ?? invite.role}
                 </span>
                 {canManage ? (
@@ -203,7 +203,7 @@ export function MembersManager({
             {state.error ? (
               <p
                 role="alert"
-                className="rounded-[--radius-control] bg-danger-soft px-3 py-2.5 text-[13px] text-danger"
+                className="rounded-(--radius-control) bg-danger-soft px-3 py-2.5 text-corpo text-danger"
               >
                 {state.error}
               </p>
@@ -236,7 +236,7 @@ export function MembersManager({
             <InviteSubmit />
           </form>
 
-          <p className="mt-3 flex items-start gap-2 text-[13px] text-ink-faint">
+          <p className="mt-3 flex items-start gap-2 text-corpo text-ink-faint">
             <Copy className="mt-0.5 size-3.5 shrink-0" aria-hidden />
             <span>
               O app não envia e-mail. Avise a pessoa por fora: ela cria a conta

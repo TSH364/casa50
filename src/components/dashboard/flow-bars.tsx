@@ -40,7 +40,7 @@ export function FlowBars({
         <span className="tabular text-lg font-semibold text-ink">
           {formatCents(atual?.cents ?? 0)}
         </span>
-        <span className="text-[12px] text-ink-faint">
+        <span className="text-legenda text-ink-faint">
           em {monthLabel(atual?.month ?? month)}
           {atual?.isForecast ? " · previsto" : ""}
         </span>

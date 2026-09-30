@@ -22,7 +22,7 @@ export function NextMonthsCard({ forecast }: { forecast: ReturnType<typeof forec
       {forecast.map((m) => (
         <li
           key={m.month}
-          className="rounded-[--radius-control] bg-surface-2 px-3 py-3"
+          className="rounded-(--radius-control) bg-surface-2 px-3 py-3"
         >
           <div className="flex items-baseline justify-between gap-3">
             <span className="text-sm text-ink">{monthLabel(m.month)}</span>
@@ -47,7 +47,7 @@ export function NextMonthsCard({ forecast }: { forecast: ReturnType<typeof forec
             )}
           </div>
 
-          <dl className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[12px]">
+          <dl className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-legenda">
             <div className="flex items-center gap-1.5">
               <span className="size-2 rounded-full bg-danger" aria-hidden />
               <dt className="text-ink-faint">Parcelas:</dt>
@@ -77,7 +77,7 @@ export function NextMonthsCard({ forecast }: { forecast: ReturnType<typeof forec
       ))}
     </ul>
 
-    <p className="mt-3 text-[12px] text-ink-faint">
+    <p className="mt-3 text-legenda text-ink-faint">
       {forecast[0]?.hasEstimate
         ? "O estimado é a média do gasto variável dos últimos meses — é palpite, não compromisso."
         : "Ainda não há histórico suficiente para estimar o gasto variável. Os valores acima são só o que já está comprometido."}
@@ -121,7 +121,7 @@ export function InstallmentsCard({
         {running.map((s) => (
           <li
             key={s.key}
-            className="rounded-[--radius-control] bg-surface-2 px-3 py-3"
+            className="rounded-(--radius-control) bg-surface-2 px-3 py-3"
           >
             <div className="flex items-baseline justify-between gap-3">
               <span className="min-w-0 truncate text-sm text-ink">
@@ -144,7 +144,7 @@ export function InstallmentsCard({
               />
             </div>
 
-            <p className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[12px] text-ink-faint">
+            <p className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-legenda text-ink-faint">
               <span>
                 {s.paidCount}/{s.totalCount} pagas · faltam {s.remainingCount}
               </span>

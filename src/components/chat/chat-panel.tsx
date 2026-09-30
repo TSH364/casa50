@@ -14,6 +14,8 @@ import type { ShoppingSearch } from "@/domain/shopping";
 import type { ProposalStatus } from "./proposal-card";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { DoriaIntro } from "./doria-intro";
+import { lembrarModo, marcarVozApresentada, vozApresentada, type DoriaModo } from "@/lib/doria-mode";
 
 /**
  * A conversa com os dados da casa (secao 16).
@@ -130,7 +132,14 @@ function Texto({ texto }: { texto: string }) {
   );
 }
 
-export function ChatPanel({ houseId }: { houseId: string }) {
+export function ChatPanel({
+  houseId,
+  modo = null,
+}: {
+  houseId: string;
+  /** Como a Dor.IA foi aberta pelo botao central: ja na voz, ou no texto. */
+  modo?: DoriaModo | null;
+}) {
   const chave = `fluxo-conversa:${houseId}`;
   const [entradas, setEntradas] = useState<Entry[]>([]);
   const [pergunta, setPergunta] = useState("");
@@ -150,6 +159,8 @@ export function ChatPanel({ houseId }: { houseId: string }) {
   const entradasRef = useRef<Entry[]>([]);
   const [saudacao, setSaudacao] = useState<Greeting | null>(null);
   const [conversando, setConversando] = useState(false);
+  const [apresentando, setApresentando] = useState(false);
+  const campo = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
     const lidas = ler(chave);
@@ -248,6 +259,41 @@ export function ChatPanel({ houseId }: { houseId: string }) {
     saudacao !== null && (entradas.length === 0 || !ultima?.at || Date.now() - ultima.at > RESUMO_DEPOIS_DE_MS);
   const podeConversar = ditado.supported && voz.supported;
 
+  function abrirVoz() {
+    ditado.cancel();
+    voz.stop();
+    lembrarModo("voz");
+    marcarVozApresentada();
+    setApresentando(false);
+    setConversando(true);
+  }
+
+  function escrever() {
+    lembrarModo("texto");
+    setApresentando(false);
+    setConversando(false);
+    // Depois de a sobreposicao sair, o campo recebe o foco.
+    setTimeout(() => campo.current?.focus(), 0);
+  }
+
+  // Aberta pelo botao central: pela voz (a primeira vez explica antes de o
+  // navegador pedir o microfone) ou direto no texto. So ao montar.
+  const abriu = useRef(false);
+  useEffect(() => {
+    if (abriu.current || modo === null) return;
+    if (modo === "texto") {
+      abriu.current = true;
+      campo.current?.focus();
+      return;
+    }
+    // O suporte a voz so e conhecido depois de montar; sem ele, fica o texto.
+    if (!podeConversar) return;
+    abriu.current = true;
+    if (vozApresentada()) abrirVoz();
+    else setApresentando(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [modo, podeConversar]);
+
   // Exportar em PDF: a resposta escolhida vai para um bloco que so aparece na
   // impressao, e o dialogo do navegador tem "Salvar como PDF" em todo lugar -
   // computador, iPhone e Android -, sem biblioteca nenhuma.
@@ -285,13 +331,13 @@ export function ChatPanel({ houseId }: { houseId: string }) {
     <div className="flex flex-col gap-3">
       {entradas.length === 0 ? (
         <div className="space-y-3">
-          <p className="rounded-[--radius-control] bg-attention-soft px-3.5 py-2.5 text-[13px] text-attention">
+          <p className="rounded-(--radius-control) bg-attention-soft px-3.5 py-2.5 text-corpo text-attention">
             O Jev escolhe quem responde. Perguntas simples vão a modelos{" "}
             <strong className="font-semibold">gratuitos</strong>, e o provedor pode guardar e usar
             o que recebe (lojas, valores, nomes) para treinar modelos. Análises e pedidos de mudar
             dados vão a um modelo pago que não guarda. Não vão e-mails, cartões nem anotações.
           </p>
-          <p className="text-[12px] text-ink-muted">
+          <p className="text-legenda text-ink-muted">
             Os gratuitos têm limite de 50 chamadas por dia na conta do OpenRouter; quando acaba, o
             pago assume sozinho.
           </p>
@@ -302,7 +348,7 @@ export function ChatPanel({ houseId }: { houseId: string }) {
                 type="button"
                 onClick={() => enviar(s)}
                 disabled={pending}
-                className="min-h-9 rounded-full border border-line bg-surface-2 px-3.5 text-left text-[13px] text-ink-muted transition-colors hover:text-ink disabled:opacity-50"
+                className="min-h-9 rounded-full border border-line bg-surface-2 px-3.5 text-left text-corpo text-ink-muted transition-colors hover:text-ink disabled:opacity-50"
               >
                 {s}
               </button>
@@ -337,7 +383,7 @@ export function ChatPanel({ houseId }: { houseId: string }) {
                 />
               ))}
               {e.role === "assistant" && !e.error && (e.consulted?.length || e.model) ? (
-                <p className="mt-1.5 text-[11px] text-ink-muted">
+                <p className="mt-1.5 text-legenda text-ink-muted">
                   {e.consulted?.length ? `Consultei: ${e.consulted.join(", ")}` : "Respondi com o resumo do mês"}
                   {e.tier ? ` · ${e.tier === "pago" ? "Pago" : "Gratuito"}` : ""}
                   {e.fellBack ? " (o gratuito não respondeu)" : ""}
@@ -357,7 +403,7 @@ export function ChatPanel({ houseId }: { houseId: string }) {
               {e.role === "assistant" && !e.error && e.pdf ? (
                 <div className="mt-2 flex flex-wrap items-center gap-2 rounded-xl border border-line bg-surface px-3 py-2">
                   <FileDown className="size-4 shrink-0 text-ink-muted" aria-hidden />
-                  <span className="min-w-0 flex-1 text-[12px] text-ink-muted">
+                  <span className="min-w-0 flex-1 text-legenda text-ink-muted">
                     {e.pdf === "esta" ? "PDF desta resposta" : "PDF da resposta anterior"}
                   </span>
                   <Button size="sm" onClick={() => setImprimindo(alvoDoPdf(entradas, i, e.pdf!))}>
@@ -380,7 +426,7 @@ export function ChatPanel({ houseId }: { houseId: string }) {
       {mostrarResumo && saudacao ? (
         <div className="space-y-2">
           <div className="max-w-[88%] rounded-2xl rounded-bl-md bg-surface-2 px-3.5 py-2.5 text-sm text-ink">
-            <p className="mb-1 flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wide text-ink-muted">
+            <p className="mb-1 flex items-center gap-1.5 text-legenda font-medium uppercase tracking-wide text-ink-muted">
               <Sparkles className="size-3" aria-hidden /> Resumo do dia
             </p>
             <p>{saudacao.text.replace(/R\$ /g, "R$\u00a0")}</p>
@@ -392,7 +438,7 @@ export function ChatPanel({ houseId }: { houseId: string }) {
                 type="button"
                 onClick={() => enviar(s)}
                 disabled={pending}
-                className="min-h-9 rounded-full border border-line bg-surface-2 px-3.5 text-left text-[13px] text-ink-muted transition-colors hover:text-ink disabled:opacity-50"
+                className="min-h-9 rounded-full border border-line bg-surface-2 px-3.5 text-left text-corpo text-ink-muted transition-colors hover:text-ink disabled:opacity-50"
               >
                 {s}
               </button>
@@ -407,11 +453,7 @@ export function ChatPanel({ houseId }: { houseId: string }) {
           variant="secondary"
           className="self-center"
           disabled={pending}
-          onClick={() => {
-            ditado.cancel();
-            voz.stop();
-            setConversando(true);
-          }}
+          onClick={abrirVoz}
         >
           <AudioLines aria-hidden /> Conversar por voz
         </Button>
@@ -421,10 +463,12 @@ export function ChatPanel({ houseId }: { houseId: string }) {
         className="sticky bottom-20 flex items-end gap-2 rounded-2xl border border-line bg-surface p-2 md:bottom-4"
         onSubmit={(ev) => {
           ev.preventDefault();
+          lembrarModo("texto");
           enviar(pergunta);
         }}
       >
         <textarea
+          ref={campo}
           value={ditado.listening ? ditado.interim : pergunta}
           readOnly={ditado.listening}
           onChange={(ev) => setPergunta(ev.target.value)}
@@ -432,6 +476,7 @@ export function ChatPanel({ houseId }: { houseId: string }) {
             // Enter envia; Shift+Enter quebra linha, como em qualquer chat.
             if (ev.key === "Enter" && !ev.shiftKey) {
               ev.preventDefault();
+              lembrarModo("texto");
               enviar(pergunta);
             }
           }}
@@ -470,11 +515,11 @@ export function ChatPanel({ houseId }: { houseId: string }) {
         </Button>
       </form>
       {ditado.error ? (
-        <p role="alert" className="px-1 text-[12px] text-danger">
+        <p role="alert" className="px-1 text-legenda text-danger">
           {ditado.error}
         </p>
       ) : ditado.listening ? (
-        <p className="px-1 text-[12px] text-ink-muted" aria-live="polite">
+        <p className="px-1 text-legenda text-ink-muted" aria-live="polite">
           Ouvindo. Ao parar de falar, o pedido é enviado. A voz é transcrita pelo navegador (no Chrome, pelos
           servidores do Google).
         </p>
@@ -494,7 +539,12 @@ export function ChatPanel({ houseId }: { houseId: string }) {
           pending={pendentes}
           resolve={resolver}
           onClose={() => setConversando(false)}
+          onEscrever={escrever}
         />
+      ) : null}
+
+      {apresentando ? (
+        <DoriaIntro onPermitir={abrirVoz} onEscrever={escrever} onFechar={() => setApresentando(false)} />
       ) : null}
 
       {imprimindo !== null && entradas[imprimindo] ? (
@@ -524,14 +574,14 @@ function ImpressaoDaResposta({ pergunta, resposta }: { pergunta: string | null; 
   const hoje = new Date().toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" });
   return (
     <section className="so-impressao" aria-hidden>
-      <p className="text-[12px] text-ink-muted">Fluxo · Conversa · {hoje}</p>
+      <p className="text-legenda text-ink-muted">Fluxo · Conversa · {hoje}</p>
       {pergunta ? <h1 className="mt-2 text-lg font-semibold text-ink">{pergunta}</h1> : null}
       <div className="mt-3 whitespace-pre-wrap text-sm text-ink">
         <Texto texto={resposta.content} />
       </div>
       {resposta.charts?.map((c) => <ChatChart key={c.id} chart={c} printTable />)}
       {resposta.consulted?.length ? (
-        <p className="mt-3 text-[11px] text-ink-muted">
+        <p className="mt-3 text-legenda text-ink-muted">
           Dados consultados: {resposta.consulted.join(", ")}. Números calculados pelo app.
         </p>
       ) : null}

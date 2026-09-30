@@ -152,7 +152,7 @@ export function TransactionList({
                   </p>
                 </div>
 
-                <p className="mt-0.5 truncate text-[12px] text-ink-faint">
+                <p className="mt-0.5 truncate text-legenda text-ink-faint">
                   {details.join(" · ")}
                 </p>
 

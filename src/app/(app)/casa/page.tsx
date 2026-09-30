@@ -70,7 +70,7 @@ export default async function CasaPage() {
         />
         <Link
           href="/cartoes"
-          className="flex min-h-11 items-center gap-3 rounded-[--radius-control] bg-surface-2 px-3 text-sm text-ink transition-colors hover:bg-surface-3"
+          className="flex min-h-11 items-center gap-3 rounded-(--radius-control) bg-surface-2 px-3 text-sm text-ink transition-colors hover:bg-surface-3"
         >
           <CreditCard className="size-4 text-ink-muted" aria-hidden />
           Gerenciar cartões
@@ -84,7 +84,7 @@ export default async function CasaPage() {
         />
         <Link
           href="/categorias"
-          className="flex min-h-11 items-center gap-3 rounded-[--radius-control] bg-surface-2 px-3 text-sm text-ink transition-colors hover:bg-surface-3"
+          className="flex min-h-11 items-center gap-3 rounded-(--radius-control) bg-surface-2 px-3 text-sm text-ink transition-colors hover:bg-surface-3"
         >
           <Tags className="size-4 text-ink-muted" aria-hidden />
           Gerenciar categorias
@@ -98,7 +98,7 @@ export default async function CasaPage() {
         />
         <Link
           href="/historico"
-          className="flex min-h-11 items-center gap-3 rounded-[--radius-control] bg-surface-2 px-3 text-sm text-ink transition-colors hover:bg-surface-3"
+          className="flex min-h-11 items-center gap-3 rounded-(--radius-control) bg-surface-2 px-3 text-sm text-ink transition-colors hover:bg-surface-3"
         >
           <History className="size-4 text-ink-muted" aria-hidden />
           Ver histórico da casa
@@ -109,7 +109,7 @@ export default async function CasaPage() {
         Versão por extenso. O cabeçalho mostra só o commit, e `title` não abre
         no toque - num app usado no celular, o detalhe precisa estar escrito.
       */}
-      <p className="pb-2 text-center text-[12px] text-ink-faint">
+      <p className="pb-2 text-center text-legenda text-ink-faint">
         {buildLabel(buildInfo())}
       </p>
     </div>

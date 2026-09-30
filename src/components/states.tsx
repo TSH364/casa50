@@ -33,10 +33,10 @@ export function EmptyState({
   action?: React.ReactNode;
 }) {
   return (
-    <div className="flex flex-col items-center justify-center rounded-[--radius-control] border border-dashed border-line px-6 py-10 text-center">
+    <div className="flex flex-col items-center justify-center rounded-(--radius-control) border border-dashed border-line px-6 py-10 text-center">
       <p className="text-sm font-medium text-ink">{title}</p>
       {description ? (
-        <p className="mt-1 max-w-sm text-[13px] text-ink-faint">{description}</p>
+        <p className="mt-1 max-w-sm text-corpo text-ink-faint">{description}</p>
       ) : null}
       {action ? <div className="mt-4">{action}</div> : null}
     </div>
@@ -55,11 +55,11 @@ export function ErrorState({
   return (
     <div
       role="alert"
-      className="flex flex-col items-center justify-center rounded-[--radius-control] border border-danger/40 bg-danger-soft/40 px-6 py-8 text-center"
+      className="flex flex-col items-center justify-center rounded-(--radius-control) border border-danger/40 bg-danger-soft/40 px-6 py-8 text-center"
     >
       <p className="text-sm font-medium text-ink">{title}</p>
       {description ? (
-        <p className="mt-1 max-w-sm text-[13px] text-ink-muted">{description}</p>
+        <p className="mt-1 max-w-sm text-corpo text-ink-muted">{description}</p>
       ) : null}
       {onRetry ? (
         <Button variant="outline" size="sm" className="mt-4" onClick={onRetry}>

@@ -29,7 +29,7 @@ export default async function ImportarPage() {
         <h1 className="text-xl font-semibold tracking-tight text-ink">
           Importar fatura
         </h1>
-        <p className="mt-1 text-[13px] text-ink-faint">
+        <p className="mt-1 text-corpo text-ink-faint">
           O arquivo é lido aqui no seu navegador. Nada é gravado antes de você
           revisar e confirmar.
         </p>

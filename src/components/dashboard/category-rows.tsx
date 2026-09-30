@@ -50,13 +50,13 @@ export function CategoryRows({
         const key = row.categoryId ?? "sem-categoria";
         const isOpen = open === key;
         return (
-          <li key={key} className="rounded-[--radius-control]">
+          <li key={key} className="rounded-(--radius-control)">
             <button
               type="button"
               onClick={() => setOpen(isOpen ? null : key)}
               aria-expanded={isOpen}
               className={cn(
-                "flex w-full items-center gap-2.5 rounded-[--radius-control] px-2 py-2 text-left transition-colors",
+                "flex w-full items-center gap-2.5 rounded-(--radius-control) px-2 py-2 text-left transition-colors",
                 isOpen ? "bg-surface-2" : "hover:bg-surface-2",
               )}
             >
@@ -68,7 +68,7 @@ export function CategoryRows({
               <span className="min-w-0 flex-1 truncate text-sm text-ink">
                 {row.name}
               </span>
-              <span className="shrink-0 text-[12px] text-ink-faint">
+              <span className="shrink-0 text-legenda text-ink-faint">
                 {Math.round(row.share * 100)}%
               </span>
               <span className="tabular shrink-0 text-sm font-medium text-ink">
@@ -89,9 +89,9 @@ export function CategoryRows({
                   {row.items.slice(0, 12).map((item) => (
                     <li
                       key={item.id}
-                      className="flex items-baseline gap-2 text-[13px]"
+                      className="flex items-baseline gap-2 text-corpo"
                     >
-                      <span className="tabular shrink-0 text-[11px] text-ink-faint">
+                      <span className="tabular shrink-0 text-legenda text-ink-faint">
                         {DIA.format(new Date(`${item.date}T00:00:00Z`))}
                       </span>
                       {/*
@@ -124,7 +124,7 @@ export function CategoryRows({
                 */}
                 <Link
                   href={`/extratos?mes=${month}&categoria=${row.categoryId ?? "sem"}`}
-                  className="mt-2 inline-flex items-center gap-1 pl-3 text-[12px] text-brand hover:underline"
+                  className="mt-2 inline-flex items-center gap-1 pl-3 text-legenda text-brand hover:underline"
                 >
                   {row.items.length > 12
                     ? `Ver os ${row.count} lançamentos`

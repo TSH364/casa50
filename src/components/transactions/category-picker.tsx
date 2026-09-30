@@ -73,7 +73,7 @@ export function CategoryPicker({
           // ninguém descobria que dava para tocar. Alvo de 32px de altura,
           // que é o mínimo confortável dentro de uma linha de lista.
           "min-h-8 w-full min-w-0 cursor-pointer appearance-none truncate rounded-full",
-          "border border-line bg-surface-2 py-1 pl-6 pr-6 text-[13px]",
+          "border border-line bg-surface-2 py-1 pl-6 pr-6 text-corpo",
           "transition-colors hover:border-line-strong focus:border-brand focus:outline-none",
           "disabled:opacity-50",
           value === "" ? "text-ink-faint" : "text-ink",

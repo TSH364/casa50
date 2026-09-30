@@ -155,7 +155,7 @@ export function QuotePdfInput({
       />
       <label
         htmlFor="pdf-cotacao"
-        className="inline-flex min-h-11 cursor-pointer items-center gap-1.5 text-[12px] text-brand underline underline-offset-2"
+        className="inline-flex min-h-11 cursor-pointer items-center gap-1.5 text-legenda text-brand underline underline-offset-2"
       >
         {lendo ? (
           <Loader2 className="size-3.5 animate-spin" aria-hidden />
@@ -164,7 +164,7 @@ export function QuotePdfInput({
         )}
         {lendo ?? (aiEnabled ? "Ler de um PDF ou foto" : "Ler de um PDF")}
       </label>
-      {erro ? <p className="text-[12px] text-attention">{erro}</p> : null}
+      {erro ? <p className="text-legenda text-attention">{erro}</p> : null}
     </div>
   );
 }

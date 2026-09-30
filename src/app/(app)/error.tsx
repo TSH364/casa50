@@ -40,14 +40,14 @@ export default function Error({
   return (
     <div className="mx-auto max-w-lg">
       <Card>
-        <h1 className="text-[15px] font-semibold tracking-tight text-ink">
+        <h1 className="text-destaque font-semibold tracking-tight text-ink">
           Esta tela não carregou
         </h1>
-        <p className="mt-1.5 text-[13px] text-ink-muted">
+        <p className="mt-1.5 text-corpo text-ink-muted">
           A conexão com o banco falhou no meio do caminho. Costuma ser passageiro
           — tentar de novo quase sempre resolve.
         </p>
-        <p className="mt-2 text-[12px] text-ink-faint">
+        <p className="mt-2 text-legenda text-ink-faint">
           Nenhum lançamento foi perdido: isto é uma falha de leitura, e nada
           deixou de ser gravado por causa dela.
         </p>
@@ -59,7 +59,7 @@ export default function Error({
         </div>
 
         {error.digest ? (
-          <p className="mt-3 border-t border-line pt-2.5 text-[11px] text-ink-faint">
+          <p className="mt-3 border-t border-line pt-2.5 text-legenda text-ink-faint">
             Código desta falha: <span className="tabular">{error.digest}</span>
           </p>
         ) : null}

@@ -44,12 +44,12 @@ export function ChatChart({ chart, printTable = false }: { chart: ChartSpec; pri
   return (
     <figure className="mt-2 rounded-xl border border-line bg-surface-2 px-3 py-3 text-ink">
       <figcaption>
-        <p className="text-[13px] font-medium">{chart.title}</p>
-        <p className="text-[12px] text-ink-muted">{chart.subtitle}</p>
+        <p className="text-corpo font-medium">{chart.title}</p>
+        <p className="text-legenda text-ink-muted">{chart.subtitle}</p>
       </figcaption>
 
       {/* A linha de leitura: o valor do que esta tocado, ou a dica de tocar. */}
-      <p className="tabular mt-2 min-h-5 text-[12px] text-ink-muted" aria-live="polite">
+      <p className="tabular mt-2 min-h-5 text-legenda text-ink-muted" aria-live="polite">
         {leitura ? (
           <>
             <span className="font-semibold text-ink">{formatCents(leitura.cents)}</span> · {leitura.label}
@@ -104,7 +104,7 @@ export function ChatChart({ chart, printTable = false }: { chart: ChartSpec; pri
                 onClick={() => setAtivo(i)}
                 className="group block w-full text-left outline-offset-2"
               >
-                <span className="block truncate text-[12px] text-ink">{p.label}</span>
+                <span className="block truncate text-legenda text-ink">{p.label}</span>
                 <span className="mt-0.5 flex items-center gap-2">
                   <span
                     className={cn(
@@ -114,7 +114,7 @@ export function ChatChart({ chart, printTable = false }: { chart: ChartSpec; pri
                     style={{ width: `${Math.max((p.cents / max) * 78, p.cents > 0 ? 1 : 0)}%` }}
                   />
                   {/* Valor na ponta, em tinta de texto - nunca na cor da barra. */}
-                  <span className="tabular shrink-0 text-[11px] text-ink-muted">{formatCentsCompact(p.cents)}</span>
+                  <span className="tabular shrink-0 text-legenda text-ink-muted">{formatCentsCompact(p.cents)}</span>
                 </span>
               </button>
             </li>
@@ -136,7 +136,7 @@ export function ChatChart({ chart, printTable = false }: { chart: ChartSpec; pri
       {/* No PDF a tabela vai aberta: <details> fechado nao imprime o conteudo. */}
       {printTable ? (
         <div className="mt-2">
-          <table className="mt-1 w-full text-[12px]">
+          <table className="mt-1 w-full text-legenda">
           <tbody>
             {chart.points.map((p, i) => (
               <tr key={i} className="border-t border-line">
@@ -149,8 +149,8 @@ export function ChatChart({ chart, printTable = false }: { chart: ChartSpec; pri
         </div>
       ) : (
         <details className="mt-2">
-          <summary className="cursor-pointer text-[12px] text-ink-muted">Ver tabela</summary>
-          <table className="mt-1 w-full text-[12px]">
+          <summary className="cursor-pointer text-legenda text-ink-muted">Ver tabela</summary>
+          <table className="mt-1 w-full text-legenda">
           <tbody>
             {chart.points.map((p, i) => (
               <tr key={i} className="border-t border-line">

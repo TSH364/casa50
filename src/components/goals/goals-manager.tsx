@@ -77,12 +77,12 @@ export function GoalsManager({
     return (
       <li
         key={goal.id}
-        className="rounded-[--radius-control] bg-surface-2 px-3 py-3"
+        className="rounded-(--radius-control) bg-surface-2 px-3 py-3"
       >
         <div className="flex items-start gap-3">
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-medium text-ink">{goal.name}</p>
-            <p className="truncate text-[12px] text-ink-faint">
+            <p className="truncate text-legenda text-ink-faint">
               {memberName(goal.ownerId) ?? "Da casa"}
               {goal.targetDate
                 ? ` · prazo ${dateFormat.format(new Date(`${goal.targetDate}T12:00:00`))}`
@@ -124,7 +124,7 @@ export function GoalsManager({
           <span className="tabular text-base font-semibold text-ink">
             {formatBRL(goal.currentAmount)}
           </span>
-          <span className="tabular text-[13px] text-ink-faint">
+          <span className="tabular text-corpo text-ink-faint">
             de {formatBRL(goal.targetAmount)}
           </span>
         </div>
@@ -143,7 +143,7 @@ export function GoalsManager({
           />
         </div>
 
-        <p className="mt-1.5 text-[12px]">
+        <p className="mt-1.5 text-legenda">
           {progress.isComplete ? (
             <span className="text-positive">Meta alcançada.</span>
           ) : (
@@ -160,7 +160,7 @@ export function GoalsManager({
         </p>
 
         {progress.onTrack === false ? (
-          <p className="mt-1 text-[12px] text-attention">
+          <p className="mt-1 text-legenda text-attention">
             O aporte de {formatBRL(goal.monthlyContribution ?? 0)}/mês não
             alcança o prazo
             {progress.projectedMonth
@@ -170,13 +170,13 @@ export function GoalsManager({
           </p>
         ) : null}
         {progress.onTrack === true ? (
-          <p className="mt-1 text-[12px] text-positive">
+          <p className="mt-1 text-legenda text-positive">
             No ritmo do aporte declarado, o prazo é alcançado.
           </p>
         ) : null}
 
         {goal.note ? (
-          <p className="mt-1.5 text-[12px] text-ink-muted">{goal.note}</p>
+          <p className="mt-1.5 text-legenda text-ink-muted">{goal.note}</p>
         ) : null}
 
         {mine.length > 0 ? (
@@ -185,7 +185,7 @@ export function GoalsManager({
               type="button"
               onClick={() => setExpanded(isOpen ? null : goal.id)}
               aria-expanded={isOpen}
-              className="mt-2 flex min-h-9 items-center gap-1 text-[12px] text-brand"
+              className="mt-2 flex min-h-9 items-center gap-1 text-legenda text-brand"
             >
               <ChevronDown
                 className={cn("size-3 transition-transform", isOpen && "rotate-180")}
@@ -198,15 +198,15 @@ export function GoalsManager({
               <ul className="mt-1.5 space-y-1 border-l border-line pl-3">
                 {mine.map((d) => (
                   <li key={d.id} className="flex items-center gap-2 py-1">
-                    <span className="w-20 shrink-0 text-[12px] text-ink-faint">
+                    <span className="w-20 shrink-0 text-legenda text-ink-faint">
                       {dateFormat.format(new Date(`${d.date}T12:00:00`))}
                     </span>
-                    <span className="min-w-0 flex-1 truncate text-[12px] text-ink-muted">
+                    <span className="min-w-0 flex-1 truncate text-legenda text-ink-muted">
                       {d.note ?? memberName(d.memberId) ?? "—"}
                     </span>
                     <span
                       className={cn(
-                        "tabular shrink-0 text-[13px]",
+                        "tabular shrink-0 text-corpo",
                         d.amount < 0 ? "text-danger" : "text-ink",
                       )}
                     >

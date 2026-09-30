@@ -134,7 +134,7 @@ export function InvoiceList({
             <li
               key={invoice.id}
               className={cn(
-                "flex items-start gap-3 rounded-[--radius-control] bg-surface-2 px-3 py-3",
+                "flex items-start gap-3 rounded-(--radius-control) bg-surface-2 px-3 py-3",
                 isReverted && "opacity-55",
               )}
             >
@@ -152,7 +152,7 @@ export function InvoiceList({
                   </span>
                 </div>
 
-                <p className="truncate text-[12px] text-ink-faint">
+                <p className="truncate text-legenda text-ink-faint">
                   {[
                     invoice.institution,
                     `${invoice.transactionCount} lançamento(s)`,
@@ -165,7 +165,7 @@ export function InvoiceList({
                 </p>
 
                 {divergence !== null && Math.abs(divergence) >= 0.01 ? (
-                  <p className="mt-1 text-[12px] text-attention">
+                  <p className="mt-1 text-legenda text-attention">
                     Diferença de {formatBRL(Math.abs(divergence))} entre o total
                     do banco e a soma dos lançamentos.
                   </p>

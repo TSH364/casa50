@@ -135,13 +135,13 @@ export function CalendarGrid({
               aria-pressed={isOpen}
               title={rotulo}
               className={cn(
-                "relative flex aspect-square min-h-[38px] flex-col items-center justify-center rounded-[--radius-control] transition-shadow",
+                "relative flex aspect-square min-h-[38px] flex-col items-center justify-center rounded-(--radius-control) transition-shadow",
                 d.step === 0 && "border border-line",
                 isOpen && "ring-2 ring-ink",
               )}
               style={{ backgroundColor: FUNDO[d.step] }}
             >
-              <span className={cn("text-[11px] font-medium leading-none", TINTA[d.step])}>
+              <span className={cn("text-legenda font-medium leading-none", TINTA[d.step])}>
                 {d.day}
               </span>
               {d.totalCents > 0 ? (
@@ -163,7 +163,7 @@ export function CalendarGrid({
       </div>
 
       {selecionado ? (
-        <div className="mt-3 rounded-[--radius-control] bg-surface-2 px-3 py-2.5">
+        <div className="mt-3 rounded-(--radius-control) bg-surface-2 px-3 py-2.5">
           <p className="flex flex-wrap items-baseline justify-between gap-2">
             <span className="text-sm text-ink">Dia {selecionado.day}</span>
             <span className="tabular text-sm font-medium text-ink">
@@ -177,7 +177,7 @@ export function CalendarGrid({
               Sem esta linha ele mostraria "sem gasto" com lançamentos logo
               abaixo, e a tela se contradiria diante de quem a lê. */}
           {selecionado.fixedCount > 0 ? (
-            <p className="mt-0.5 text-[12px] text-ink-faint">
+            <p className="mt-0.5 text-legenda text-ink-faint">
               {selecionado.totalCents > 0 ? "Mais " : ""}
               {formatCents(selecionado.fixedCents)} de assinatura, fora da conta
               do dia
@@ -185,7 +185,7 @@ export function CalendarGrid({
           ) : null}
 
           {selecionado.events.length > 0 ? (
-            <p className="mt-1 flex flex-wrap items-center gap-1.5 text-[12px] text-attention">
+            <p className="mt-1 flex flex-wrap items-center gap-1.5 text-legenda text-attention">
               <CalendarDays className="size-3 shrink-0" aria-hidden />
               {selecionado.events.join(" · ")}
             </p>
@@ -195,7 +195,7 @@ export function CalendarGrid({
             <>
               <ul className="mt-2 space-y-1 border-l border-line pl-3">
                 {selecionado.items.slice(0, 8).map((item) => (
-                  <li key={item.id} className="flex items-baseline gap-2 text-[13px]">
+                  <li key={item.id} className="flex items-baseline gap-2 text-corpo">
                     {/* A cor vai num PONTO, e nao no texto do lançamento: cor
                         sobre texto derruba o contraste de uma categoria clara e
                         some numa escura, e a mesma paleta serve dez categorias.
@@ -236,7 +236,7 @@ export function CalendarGrid({
               </ul>
               <Link
                 href={`/extratos?mes=${month}`}
-                className="mt-2 inline-flex items-center gap-1 pl-3 text-[12px] text-brand hover:underline"
+                className="mt-2 inline-flex items-center gap-1 pl-3 text-legenda text-brand hover:underline"
               >
                 {/* `items.length`, e não `count`: a lista mostra também as
                     assinaturas, que `count` deixou de somar. */}
@@ -250,7 +250,7 @@ export function CalendarGrid({
         </div>
       ) : null}
 
-      <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-line pt-2.5 text-[12px] text-ink-faint">
+      <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-line pt-2.5 text-legenda text-ink-faint">
         <span>Menos</span>
         {[1, 2, 3, 4].map((s) => (
           <span

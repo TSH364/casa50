@@ -74,10 +74,10 @@ export function CategoryDonut({
       </svg>
 
       <div className="absolute inset-0 flex flex-col items-center justify-center">
-        <span className="text-[11px] uppercase tracking-[0.08em] text-ink-faint">
+        <span className="text-legenda uppercase tracking-[0.08em] text-ink-faint">
           {centerLabel}
         </span>
-        <span className="tabular mt-0.5 text-[15px] font-semibold text-ink">
+        <span className="tabular mt-0.5 text-destaque font-semibold text-ink">
           {formatCents(centerValue)}
         </span>
       </div>

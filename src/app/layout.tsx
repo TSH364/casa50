@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import { Instrument_Sans } from "next/font/google";
 import { cookies } from "next/headers";
 import { Toaster } from "sonner";
 import { THEME_COOKIE, parseTheme, themeAttribute, toasterTheme } from "@/lib/theme";
@@ -10,6 +11,18 @@ export const metadata: Metadata = {
     "Central financeira compartilhada: faturas, categorias, parcelas, previsões, orçamentos e metas do casal.",
   applicationName: "Fluxo",
 };
+
+/**
+ * A fonte do app, servida pelo proprio app (o next/font baixa no build): o
+ * tema pedia "Inter" sem nunca carrega-la, e cada aparelho caia na fonte do
+ * sistema.
+ */
+const sans = Instrument_Sans({
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
+  variable: "--font-instrument",
+  display: "swap",
+});
 
 const BARRA_ESCURA = "#08090c";
 const BARRA_CLARA = "#f4f5f8";
@@ -40,7 +53,7 @@ export default async function RootLayout({
 }: Readonly<{ children: React.ReactNode }>) {
   const pref = parseTheme((await cookies()).get(THEME_COOKIE)?.value);
   return (
-    <html lang="pt-BR" data-theme={themeAttribute(pref)}>
+    <html lang="pt-BR" data-theme={themeAttribute(pref)} className={sans.variable}>
       <body>
         {children}
         <Toaster

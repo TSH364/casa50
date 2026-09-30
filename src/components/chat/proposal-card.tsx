@@ -52,13 +52,13 @@ export function ProposalCard({
   const titulo = proposalTitle(proposal);
 
   return (
-    <div className="mt-2 rounded-xl border border-line bg-surface px-3 py-2.5 text-[13px] text-ink">
+    <div className="mt-2 rounded-xl border border-line bg-surface px-3 py-2.5 text-corpo text-ink">
       <p className="font-medium">{titulo}</p>
 
       {proposal.kind === "classificar" ? (
         <>
-          <p className="tabular text-[12px] text-ink-muted">Total {formatCents(proposal.summary.totalCents)}</p>
-          <ul className="mt-1 space-y-0.5 text-[12px] text-ink-muted">
+          <p className="tabular text-legenda text-ink-muted">Total {formatCents(proposal.summary.totalCents)}</p>
+          <ul className="mt-1 space-y-0.5 text-legenda text-ink-muted">
             {proposal.summary.examples.map((e, i) => (
               <li key={i} className="tabular break-words">
                 {dia(e.date)} · {e.label} · {formatCents(e.cents)}
@@ -69,7 +69,7 @@ export function ProposalCard({
             ) : null}
           </ul>
           {proposal.learnMerchant && status === "pendente" ? (
-            <label className="mt-1.5 flex min-h-9 items-center gap-2 text-[12px] text-ink-muted">
+            <label className="mt-1.5 flex min-h-9 items-center gap-2 text-legenda text-ink-muted">
               <input
                 type="checkbox"
                 className="size-4 accent-[var(--color-brand)]"
@@ -83,20 +83,20 @@ export function ProposalCard({
       ) : simples ? (
         <>
           {simples.linhas.filter(Boolean).map((l, i) => (
-            <p key={i} className="tabular break-words text-[12px] text-ink-muted">
+            <p key={i} className="tabular break-words text-legenda text-ink-muted">
               {l}
             </p>
           ))}
         </>
       ) : proposal.kind === "lancar" ? (
-        <p className="tabular text-[12px] text-ink-muted">
+        <p className="tabular text-legenda text-ink-muted">
           {formatCents(proposal.fields.amountCents)} · {dia(proposal.fields.date)}
           {proposal.summary.categoryLabel ? ` · ${proposal.summary.categoryLabel}` : " · sem categoria"}
           {proposal.summary.personLabel ? ` · ${proposal.summary.personLabel}` : ""}
         </p>
       ) : null}
 
-      {erro ? <p className="mt-1 text-[12px] text-danger">{erro}</p> : null}
+      {erro ? <p className="mt-1 text-legenda text-danger">{erro}</p> : null}
 
       {status === "pendente" ? (
         <div className="mt-2 flex flex-wrap gap-2">
@@ -108,7 +108,7 @@ export function ProposalCard({
           </Button>
         </div>
       ) : (
-        <p className={status === "feito" ? "mt-1.5 text-[12px] text-positive" : "mt-1.5 text-[12px] text-ink-muted"}>
+        <p className={status === "feito" ? "mt-1.5 text-legenda text-positive" : "mt-1.5 text-legenda text-ink-muted"}>
           {status === "feito" ? "Feito." : "Descartada."}
         </p>
       )}

@@ -61,7 +61,7 @@ function Chip({ status }: { status: ItemStatus }) {
   return (
     <span
       className={cn(
-        "shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium",
+        "shrink-0 rounded-full px-2 py-0.5 text-legenda font-medium",
         TOM[status],
       )}
     >
@@ -108,9 +108,9 @@ export function ProjectManager({
           ].map(([rotulo, valor, tom]) => (
             <div
               key={rotulo}
-              className="flex items-baseline justify-between gap-3 rounded-[--radius-control] bg-surface-2 px-3 py-2"
+              className="flex items-baseline justify-between gap-3 rounded-(--radius-control) bg-surface-2 px-3 py-2"
             >
-              <dt className="text-[12px] text-ink-faint">{rotulo}</dt>
+              <dt className="text-legenda text-ink-faint">{rotulo}</dt>
               <dd className={cn("tabular text-sm font-semibold", tom)}>{valor}</dd>
             </div>
           ))}
@@ -120,13 +120,13 @@ export function ProjectManager({
             "previsto R$ 26.000" parece o custo da obra quando pode ser o de
             metade dela. */}
         {summary.itemsWithoutQuote > 0 ? (
-          <p className="mt-2.5 text-[12px] text-ink-faint">
+          <p className="mt-2.5 text-legenda text-ink-faint">
             {summary.itemsWithoutQuote} {summary.itemsWithoutQuote === 1 ? "item ainda não tem" : "itens ainda não têm"}{" "}
             cotação — o previsto acima não fala {summary.itemsWithoutQuote === 1 ? "dele" : "deles"}.
           </p>
         ) : null}
         {summary.itemsAwaitingChoice > 0 ? (
-          <p className="mt-1 text-[12px] text-attention">
+          <p className="mt-1 text-legenda text-attention">
             {summary.itemsAwaitingChoice}{" "}
             {summary.itemsAwaitingChoice === 1
               ? "item tem propostas esperando escolha"
@@ -134,7 +134,7 @@ export function ProjectManager({
           </p>
         ) : null}
 
-        <p className="mt-2.5 flex flex-wrap gap-x-3 gap-y-1 border-t border-line pt-2.5 text-[12px] text-ink-faint">
+        <p className="mt-2.5 flex flex-wrap gap-x-3 gap-y-1 border-t border-line pt-2.5 text-legenda text-ink-faint">
           <span>
             {summary.byStatus.comprado}{" "}
             {summary.byStatus.comprado === 1 ? "comprado" : "comprados"}
@@ -208,7 +208,7 @@ function ItemRow({
   const temQuantidade = item.plannedQuantity !== null;
 
   return (
-    <li className="rounded-[--radius-control] bg-surface-2 px-3 py-2.5">
+    <li className="rounded-(--radius-control) bg-surface-2 px-3 py-2.5">
       <button
         type="button"
         onClick={onToggle}
@@ -216,14 +216,14 @@ function ItemRow({
         className="flex w-full items-baseline gap-2 text-left"
       >
         <Chip status={status} />
-        <span className="min-w-0 flex-1 break-words text-[13px] text-ink">
+        <span className="min-w-0 flex-1 break-words text-corpo text-ink">
           {item.name}
         </span>
         {/* Só a prioridade ALTA ganha marca na lista fechada. Marcar os três
             níveis encheria a tela de etiqueta e faria "alta" deixar de saltar,
             que é a única coisa que ela precisa fazer. */}
         {item.priority === 1 ? (
-          <span className="shrink-0 rounded-full bg-danger/15 px-2 py-0.5 text-[11px] font-medium text-danger">
+          <span className="shrink-0 rounded-full bg-danger/15 px-2 py-0.5 text-legenda font-medium text-danger">
             1º
           </span>
         ) : null}
@@ -245,7 +245,7 @@ function ItemRow({
         />
       </div>
 
-      <p className="tabular mt-1.5 flex flex-wrap justify-between gap-x-2 text-[12px] text-ink-faint">
+      <p className="tabular mt-1.5 flex flex-wrap justify-between gap-x-2 text-legenda text-ink-faint">
         <span>
           {temQuantidade ? (
             <>
@@ -268,7 +268,7 @@ function ItemRow({
       {/* Quando não há escolha feita, o previsto vem da menor proposta — e a
           tela diz isso, em vez de deixar parecer decisão tomada. */}
       {chosen === null && progress.quoteCount > 0 ? (
-        <p className="mt-1 text-[12px] text-attention">
+        <p className="mt-1 text-legenda text-attention">
           {progress.quoteCount === 1
             ? "1 proposta recebida, nenhuma escolhida"
             : `${progress.quoteCount} propostas, nenhuma escolhida`}{" "}
@@ -324,7 +324,7 @@ function ItemDetalhe({
             aria-selected={aba === chave}
             onClick={() => setAba(chave)}
             className={cn(
-              "rounded-[--radius-control] px-2.5 py-1 text-[12px]",
+              "rounded-(--radius-control) px-2.5 py-1 text-legenda",
               aba === chave ? "bg-surface-3 text-ink" : "text-ink-faint",
             )}
           >
@@ -339,7 +339,7 @@ function ItemDetalhe({
         <>
           <ul className="space-y-1">
             {item.quotes.map((q) => (
-              <li key={q.id} className="flex items-baseline gap-2 text-[13px]">
+              <li key={q.id} className="flex items-baseline gap-2 text-corpo">
                 <button
                   type="button"
                   disabled={pending}
@@ -372,7 +372,7 @@ function ItemDetalhe({
               </li>
             ))}
             {item.quotes.length === 0 ? (
-              <li className="text-[12px] text-ink-faint">
+              <li className="text-legenda text-ink-faint">
                 Nenhuma proposta recebida ainda.
               </li>
             ) : null}
@@ -388,7 +388,7 @@ function ItemDetalhe({
         <>
           <ul className="space-y-1">
             {item.purchases.map((c) => (
-              <li key={c.id} className="flex items-baseline gap-2 text-[13px]">
+              <li key={c.id} className="flex items-baseline gap-2 text-corpo">
                 <span className="min-w-0 flex-1 break-words text-ink-muted">
                   {c.date.slice(8, 10)}/{c.date.slice(5, 7)}
                   {c.quantity !== null ? (
@@ -416,7 +416,7 @@ function ItemDetalhe({
               </li>
             ))}
             {item.purchases.length === 0 ? (
-              <li className="text-[12px] text-ink-faint">Nada comprado ainda.</li>
+              <li className="text-legenda text-ink-faint">Nada comprado ainda.</li>
             ) : null}
           </ul>
           <NovaCompra
@@ -435,7 +435,7 @@ function ItemDetalhe({
       {/* "O que comprar primeiro" é pergunta de lista, mas a resposta se dá
           item a item — e aqui dentro, onde já se está decidindo sobre ele. */}
       <div className="mt-3 border-t border-line pt-3">
-        <p className="mb-1 text-[12px] text-ink-faint">Prioridade</p>
+        <p className="mb-1 text-legenda text-ink-faint">Prioridade</p>
         <div className="flex flex-wrap gap-1.5">
           {([1, 2, 3] as const).map((nivel) => (
             <button
@@ -458,7 +458,7 @@ function ItemDetalhe({
                 )
               }
               className={cn(
-                "min-h-9 rounded-[--radius-control] px-2.5 py-1.5 text-[12px]",
+                "min-h-9 rounded-(--radius-control) px-2.5 py-1.5 text-legenda",
                 item.priority === nivel
                   ? "bg-brand/15 text-brand"
                   : "bg-surface-2 text-ink-faint",
@@ -479,7 +479,7 @@ function ItemDetalhe({
             item.closedAt === null ? "Item encerrado." : "Item reaberto.",
           )
         }
-        className="mt-3 text-[12px] text-brand underline underline-offset-2"
+        className="mt-3 text-legenda text-brand underline underline-offset-2"
       >
         {item.closedAt === null
           ? "Dar este item por encerrado"
@@ -550,7 +550,7 @@ function NovaCotacao({
           formato garantido, então o app propõe e a pessoa confere — gravar
           sozinho o número errado seria pior que não ler PDF nenhum. */}
       {lido ? (
-        <div className="basis-full space-y-0.5 text-[12px]">
+        <div className="basis-full space-y-0.5 text-legenda">
           <p className="text-ink-faint">
             {lido.via === "ia" ? "Li com IA" : "Li o PDF"} e preenchi abaixo. Confira antes de
             guardar.
@@ -563,7 +563,7 @@ function NovaCotacao({
         </div>
       ) : null}
       {alternativas.length > 0 ? (
-        <div className="basis-full text-[12px] text-ink-faint">
+        <div className="basis-full text-legenda text-ink-faint">
           Outros valores no arquivo:{" "}
           {alternativas.map((a) => (
             <button
