@@ -222,7 +222,7 @@ async function audioDe(texto: string, sinal: AbortSignal): Promise<Blob> {
  * Primeiro a voz neural (rota /api/voz, pelo OpenRouter): os pedacos sao
  * pedidos todos de uma vez e tocados em ordem - a primeira frase comeca a
  * tocar enquanto o resto ainda esta sendo gerado. Se a voz neural nao
- * responder a tempo (4 s) ou falhar, a fala segue na voz do navegador,
+ * responder a tempo (7 s) ou falhar, a fala segue na voz do navegador,
  * escolhendo a mais natural que o aparelho tiver.
  */
 export function useSpeech() {
@@ -285,7 +285,7 @@ export function useSpeech() {
           audios.forEach((a) => a.catch(() => {}));
           try {
             for (let i = 0; i < audios.length; i += 1) {
-              const blob = i === 0 ? await comPrazo(audios[0]!, 4_000) : await audios[i]!;
+              const blob = i === 0 ? await comPrazo(audios[0]!, 7_000) : await audios[i]!;
               if (cancelado) return;
               const url = URL.createObjectURL(blob);
               try {
@@ -302,10 +302,11 @@ export function useSpeech() {
               feitos += 1;
             }
             return;
-          } catch {
+          } catch (e) {
             if (cancelado) return;
-            // Falhou antes de tocar qualquer pedaco: desliga para as proximas.
-            if (feitos === 0) neuralDesligada = true;
+            // A rota disse nao (sem chave, voz indisponivel): desliga para as
+            // proximas. Lentidao nao desliga - a proxima fala pode vir a tempo.
+            if (feitos === 0 && !(e instanceof Error && e.message === "lenta")) neuralDesligada = true;
             controle.abort();
           }
         }

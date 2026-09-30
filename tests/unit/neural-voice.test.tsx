@@ -118,6 +118,7 @@ describe("rota /api/voz", () => {
     new Request("http://x/api/voz", { method: "POST", body: JSON.stringify(body), headers: { "Content-Type": "application/json" } });
   let fetchOriginal: typeof fetch;
   const enviados: { url: string; body: Record<string, unknown>; auth: string | null }[] = [];
+  let respostas: Response[] = [];
 
   beforeEach(() => {
     rota.casa = true;
@@ -125,26 +126,54 @@ describe("rota /api/voz", () => {
     rota.usos.length = 0;
     enviados.length = 0;
     fetchOriginal = globalThis.fetch;
+    respostas = [];
     globalThis.fetch = (async (url: string, init: RequestInit) => {
       enviados.push({ url, body: JSON.parse(String(init.body)), auth: new Headers(init.headers).get("Authorization") });
-      return new Response(new Uint8Array([1, 2, 3]), { headers: { "Content-Type": "audio/mpeg" } });
+      return respostas.shift() ?? new Response(new Uint8Array([1, 2, 3, 4]), { headers: { "Content-Type": "audio/pcm;rate=24000;channels=1" } });
     }) as typeof fetch;
   });
   afterEach(() => {
     globalThis.fetch = fetchOriginal;
   });
 
-  it("fala pelo endpoint do OpenRouter com a chave da casa, e devolve o áudio", async () => {
+  it("Gemini: pede PCM (o único formato que ele aceita) e devolve WAV tocável", async () => {
     const { POST } = await import("@/app/api/voz/route");
     const r = await POST(post({ text: "Setembro está em 320,00." }));
     expect(r.status).toBe(200);
-    expect(r.headers.get("content-type")).toBe("audio/mpeg");
+    expect(r.headers.get("content-type")).toBe("audio/wav");
+    const wav = new Uint8Array(await r.arrayBuffer());
+    expect(wav.length).toBe(44 + 4);
+    expect(String.fromCharCode(...wav.slice(0, 4))).toBe("RIFF");
+    expect(new DataView(wav.buffer).getUint32(24, true)).toBe(24_000);
     expect(enviados[0]).toEqual({
       url: "https://openrouter.ai/api/v1/audio/speech",
-      body: { model: "google/gemini-3.8-flash-lite-tts", input: "Setembro está em 320,00.", voice: "Aoede", response_format: "mp3" },
+      body: { model: "google/gemini-3.8-flash-lite-tts", input: "Setembro está em 320,00.", voice: "Aoede", response_format: "pcm" },
       auth: "Bearer sk-or-da-casa",
     });
-    expect(rota.usos[0]).toMatchObject(["casa-1", "voz", { calls: 1, details: { caracteres: 24, bytes: 3 } }]);
+    expect(rota.usos[0]).toMatchObject(["casa-1", "voz", { calls: 1, details: { caracteres: 24, bytes: 48 } }]);
+  });
+
+  it("Gemini recusou: tenta a voz reserva em mp3, e o motivo fica no registro", async () => {
+    respostas = [
+      new Response(JSON.stringify({ error: { message: "voice not found" } }), { status: 400 }),
+      new Response(new Uint8Array([9, 9]), { headers: { "Content-Type": "audio/mpeg" } }),
+    ];
+    const { POST } = await import("@/app/api/voz/route");
+    const r = await POST(post({ text: "Oi" }));
+    expect(r.headers.get("content-type")).toBe("audio/mpeg");
+    expect(enviados[1]!.body).toMatchObject({ model: "openai/gpt-4o-mini-tts", voice: "coral", response_format: "mp3" });
+    expect(rota.usos[0]).toMatchObject([
+      "casa-1",
+      "voz",
+      { calls: 2, model: "openai/gpt-4o-mini-tts", details: { falhas: [{ modelo: "google/gemini-3.8-flash-lite-tts", status: 400, detalhe: expect.stringMatching(/voice not found/) }] } },
+    ]);
+  });
+
+  it("nenhuma voz: 502, e as duas falhas ficam registradas", async () => {
+    respostas = [new Response("x", { status: 400 }), new Response("y", { status: 404 })];
+    const { POST } = await import("@/app/api/voz/route");
+    expect((await POST(post({ text: "Oi" }))).status).toBe(502);
+    expect(rota.usos[0]).toMatchObject(["casa-1", "voz", { calls: 2, details: { erro: true, falhas: [{ status: 400 }, { status: 404 }] } }]);
   });
 
   it("sem casa, sem chave ou texto longo demais: recusa sem chamar o OpenRouter", async () => {

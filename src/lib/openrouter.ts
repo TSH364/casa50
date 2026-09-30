@@ -660,15 +660,64 @@ function talvez(bruto: unknown): number | null {
 const SPEECH_ENDPOINT = "https://openrouter.ai/api/v1/audio/speech";
 
 /**
+ * PCM 16 bits cru -> WAV. As vozes Gemini no OpenRouter so devolvem PCM
+ * (pedir mp3 da 400), e navegador nao toca PCM cru: o cabecalho de 44 bytes
+ * transforma em um WAV que qualquer <audio> toca.
+ */
+export function wavFromPcm(pcm: ArrayBuffer, rate = 24_000, channels = 1): ArrayBuffer {
+  const bits = 16;
+  const dados = pcm.byteLength;
+  const out = new ArrayBuffer(44 + dados);
+  const v = new DataView(out);
+  const txt = (o: number, t: string) => [...t].forEach((c, i) => v.setUint8(o + i, c.charCodeAt(0)));
+  txt(0, "RIFF");
+  v.setUint32(4, 36 + dados, true);
+  txt(8, "WAVE");
+  txt(12, "fmt ");
+  v.setUint32(16, 16, true);
+  v.setUint16(20, 1, true); // PCM
+  v.setUint16(22, channels, true);
+  v.setUint32(24, rate, true);
+  v.setUint32(28, (rate * channels * bits) / 8, true);
+  v.setUint16(32, (channels * bits) / 8, true);
+  v.setUint16(34, bits, true);
+  txt(36, "data");
+  v.setUint32(40, dados, true);
+  new Uint8Array(out, 44).set(new Uint8Array(pcm));
+  return out;
+}
+
+/** "audio/pcm;rate=24000;channels=1" -> { rate, channels }, com o padrao do Gemini. */
+function formatoPcm(contentType: string): { rate: number; channels: number } {
+  const rate = Number(/rate=(\d+)/i.exec(contentType)?.[1]);
+  const channels = Number(/channels=(\d+)/i.exec(contentType)?.[1]);
+  return {
+    rate: Number.isFinite(rate) && rate > 0 ? rate : 24_000,
+    channels: Number.isFinite(channels) && channels > 0 ? channels : 1,
+  };
+}
+
+/** Erro da voz, com o que o OpenRouter disse - vai para o diagnostico. */
+export class SpeechError extends OpenRouterError {
+  constructor(
+    status: number,
+    readonly detail: string,
+  ) {
+    super("A voz não respondeu.", status);
+  }
+}
+
+/**
  * Texto -> audio, pelo endpoint de fala do OpenRouter (compativel com o da
- * OpenAI). Devolve os bytes do audio e o tipo; erro vira `OpenRouterError`,
- * e quem chama volta para a voz do navegador.
+ * OpenAI). Modelos Google pedem PCM (o unico formato que aceitam) e voltam
+ * como WAV; os demais, mp3.
  */
 export async function textToSpeech(
   text: string,
   options: { apiKey: string; model: string; voice: string; timeoutMs?: number; fetchImpl?: typeof fetch },
 ): Promise<{ audio: ArrayBuffer; contentType: string }> {
   const fetchImpl = options.fetchImpl ?? fetch;
+  const pcm = options.model.startsWith("google/");
   const controle = new AbortController();
   const relogio = setTimeout(() => controle.abort(), options.timeoutMs ?? 15_000);
   try {
@@ -680,18 +729,31 @@ export async function textToSpeech(
         "HTTP-Referer": process.env.NEXT_PUBLIC_SITE_URL || "https://fluxo.app",
         "X-Title": "Fluxo",
       },
-      body: JSON.stringify({ model: options.model, input: text, voice: options.voice, response_format: "mp3" }),
+      body: JSON.stringify({
+        model: options.model,
+        input: text,
+        voice: options.voice,
+        response_format: pcm ? "pcm" : "mp3",
+      }),
       signal: controle.signal,
     });
     if (!r.ok) {
-      const corpo = await r.text().catch(() => "");
-      console.error("[openrouter] voz falhou", { status: r.status, modelo: options.model, corpo: corpo.slice(0, 200) });
-      throw new OpenRouterError("A voz não respondeu.", r.status);
+      // O corpo do erro do OpenRouter (sem dado da casa) vai para o log e
+      // para o diagnostico: e ele que diz se foi modelo, voz ou formato.
+      const corpo = (await r.text().catch(() => "")).slice(0, 300);
+      console.error("[openrouter] voz falhou", { status: r.status, modelo: options.model, corpo });
+      throw new SpeechError(r.status, corpo);
     }
-    return { audio: await r.arrayBuffer(), contentType: r.headers.get("content-type") || "audio/mpeg" };
+    const tipo = r.headers.get("content-type") || (pcm ? "audio/pcm" : "audio/mpeg");
+    const bruto = await r.arrayBuffer();
+    if (/pcm|L16/i.test(tipo)) {
+      const { rate, channels } = formatoPcm(tipo);
+      return { audio: wavFromPcm(bruto, rate, channels), contentType: "audio/wav" };
+    }
+    return { audio: bruto, contentType: tipo };
   } catch (e) {
     if (e instanceof OpenRouterError) throw e;
-    throw new OpenRouterError("A voz não respondeu.", 0);
+    throw new SpeechError(0, e instanceof Error && e.name === "AbortError" ? "tempo esgotado" : "sem conexão");
   } finally {
     clearTimeout(relogio);
   }

@@ -3,8 +3,8 @@ import { z } from "zod";
 import { requireHouseId } from "@/actions/shared";
 import { getAiKey } from "@/lib/ai-config";
 import { recordAiUsage } from "@/lib/ai-usage";
-import { textToSpeech } from "@/lib/openrouter";
-import { DEFAULT_TTS_MODEL, DEFAULT_TTS_VOICE } from "@/domain/ai-models";
+import { SpeechError, textToSpeech } from "@/lib/openrouter";
+import { DEFAULT_TTS_MODEL, DEFAULT_TTS_VOICE, FALLBACK_TTS_MODEL, FALLBACK_TTS_VOICE } from "@/domain/ai-models";
 
 /**
  * A voz da Conversa (secao 16): texto -> audio pelo OpenRouter.
@@ -35,23 +35,42 @@ export async function POST(req: Request) {
   const apiKey = await getAiKey(houseId);
   if (!apiKey) return NextResponse.json({ error: "Sem chave de IA." }, { status: 403 });
 
-  const model = process.env.OPENROUTER_TTS_MODEL?.trim() || DEFAULT_TTS_MODEL;
-  try {
-    const { audio, contentType } = await textToSpeech(parsed.data.text, {
-      apiKey,
-      model,
-      voice: process.env.OPENROUTER_TTS_VOICE?.trim() || DEFAULT_TTS_VOICE,
-    });
-    // O endpoint de voz nao devolve o custo na resposta: fica a contagem, e o
-    // total da chave (tela Casa) mostra o valor que o OpenRouter cobrou.
-    await recordAiUsage(houseId, "voz", {
-      calls: 1,
-      costUsd: 0,
-      model,
-      details: { caracteres: parsed.data.text.length, bytes: audio.byteLength },
-    });
-    return new Response(audio, { headers: { "Content-Type": contentType, "Cache-Control": "no-store" } });
-  } catch {
-    return NextResponse.json({ error: "A voz não respondeu." }, { status: 502 });
+  const principal = {
+    model: process.env.OPENROUTER_TTS_MODEL?.trim() || DEFAULT_TTS_MODEL,
+    voice: process.env.OPENROUTER_TTS_VOICE?.trim() || DEFAULT_TTS_VOICE,
+  };
+  const tentativas = [principal, { model: FALLBACK_TTS_MODEL, voice: FALLBACK_TTS_VOICE }].filter(
+    (t, i, a) => a.findIndex((x) => x.model === t.model) === i,
+  );
+
+  const falhas: { modelo: string; status: number; detalhe: string }[] = [];
+  for (const t of tentativas) {
+    try {
+      const { audio, contentType } = await textToSpeech(parsed.data.text, { apiKey, ...t, timeoutMs: 12_000 });
+      // O endpoint de voz nao devolve o custo: fica a contagem, e o total da
+      // chave (tela Casa) mostra o valor que o OpenRouter cobrou.
+      await recordAiUsage(houseId, "voz", {
+        calls: 1 + falhas.length,
+        costUsd: 0,
+        model: t.model,
+        details: {
+          caracteres: parsed.data.text.length,
+          bytes: audio.byteLength,
+          ...(falhas.length ? { falhas } : {}),
+        },
+      });
+      return new Response(audio, { headers: { "Content-Type": contentType, "Cache-Control": "no-store" } });
+    } catch (e) {
+      falhas.push({
+        modelo: t.model,
+        status: e instanceof SpeechError ? e.status : 0,
+        detalhe: e instanceof SpeechError ? e.detail : "erro",
+      });
+      // Tempo esgotado: tentar outro so atrasaria mais - o navegador ja falou.
+      if (e instanceof SpeechError && e.status === 0) break;
+    }
   }
+  // Nenhuma voz: o motivo fica no registro, para saber o que ajustar.
+  await recordAiUsage(houseId, "voz", { calls: falhas.length, costUsd: 0, model: null, details: { erro: true, falhas } });
+  return NextResponse.json({ error: "A voz não respondeu." }, { status: 502 });
 }
