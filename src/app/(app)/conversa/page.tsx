@@ -22,14 +22,14 @@ export default async function ConversaPage() {
     <div className="mx-auto max-w-2xl space-y-4">
       <header>
         <h1 className="text-xl font-semibold tracking-tight text-ink">Conversa</h1>
-        <p className="mt-1 text-[13px] text-ink-faint">
+        <p className="mt-1 text-corpo text-ink-faint">
           Pergunte ou peça por escrito ou por voz: gastos, metas, orçamentos, contas fixas, tarefas,
           pesquisa de compra. A IA consulta os dados e propõe; nada muda sem o seu toque em Confirmar.
         </p>
       </header>
 
       {ai.source === null ? (
-        <p className="rounded-[--radius-control] bg-surface-2 px-3.5 py-3 text-[13px] text-ink-muted">
+        <p className="rounded-[--radius-control] bg-surface-2 px-3.5 py-3 text-corpo text-ink-muted">
           A conversa usa a chave do OpenRouter da casa.{" "}
           <Link href="/casa" className="text-brand underline underline-offset-2">
             Guardar a chave na tela Casa

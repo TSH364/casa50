@@ -72,20 +72,20 @@ export function AuthForm({
       </Field>
 
       {state.error ? (
-        <p role="alert" className="rounded-[--radius-control] bg-danger-soft px-3 py-2 text-[13px] text-danger">
+        <p role="alert" className="rounded-[--radius-control] bg-danger-soft px-3 py-2 text-corpo text-danger">
           {state.error}
         </p>
       ) : null}
 
       {state.message ? (
-        <p role="status" className="rounded-[--radius-control] bg-positive-soft px-3 py-2 text-[13px] text-positive">
+        <p role="status" className="rounded-[--radius-control] bg-positive-soft px-3 py-2 text-corpo text-positive">
           {state.message}
         </p>
       ) : null}
 
       <SubmitButton label={isSignUp ? "Criar conta" : "Entrar"} />
 
-      <p className="pt-1 text-center text-[13px] text-ink-faint">
+      <p className="pt-1 text-center text-corpo text-ink-faint">
         {isSignUp ? "Já tem conta? " : "Ainda não tem conta? "}
         <Link
           href={isSignUp ? "/entrar" : "/criar-conta"}

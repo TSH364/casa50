@@ -67,7 +67,7 @@ export function FilterChips({
             aria-pressed={isActive}
             onClick={() => select(item.key === "__all" ? null : item.value)}
             className={cn(
-              "min-h-9 shrink-0 whitespace-nowrap rounded-full border px-3.5 text-[13px] transition-colors disabled:opacity-50",
+              "min-h-9 shrink-0 whitespace-nowrap rounded-full border px-3.5 text-corpo transition-colors disabled:opacity-50",
               isActive
                 ? "border-brand bg-brand-soft text-ink"
                 : "border-line bg-surface-2 text-ink-muted hover:text-ink",

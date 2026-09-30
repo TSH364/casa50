@@ -185,7 +185,7 @@ export function BudgetsManager({
         {row.progress ? (
           <>
             <ProgressBar progress={row.progress} />
-            <p className="mt-1.5 text-[12px]">
+            <p className="mt-1.5 text-legenda">
               {row.progress.isOver ? (
                 <span className="text-danger">
                   Passou {formatCents(row.progress.overCents)} do limite.
@@ -206,7 +206,7 @@ export function BudgetsManager({
             </p>
           </>
         ) : row.suggestionCents !== null ? (
-          <p className="mt-1.5 flex items-center gap-1.5 text-[12px] text-ink-faint">
+          <p className="mt-1.5 flex items-center gap-1.5 text-legenda text-ink-faint">
             <Lightbulb className="size-3 shrink-0" aria-hidden />
             Média dos últimos meses: {formatCents(row.suggestionCents)}
             <button
@@ -221,7 +221,7 @@ export function BudgetsManager({
             </button>
           </p>
         ) : (
-          <p className="mt-1.5 text-[12px] text-ink-faint">
+          <p className="mt-1.5 text-legenda text-ink-faint">
             Gasto no mês: {formatCents(row.spentCents)}
           </p>
         )}
@@ -250,7 +250,7 @@ export function BudgetsManager({
         {withBudget.length > 0 ? (
           <>
             <div className="mb-3 flex items-baseline justify-between rounded-[--radius-control] bg-surface-3 px-3 py-2.5">
-              <span className="text-[13px] text-ink-muted">
+              <span className="text-corpo text-ink-muted">
                 Total orçado neste mês
               </span>
               <span className="tabular text-sm font-semibold text-ink">
@@ -265,7 +265,7 @@ export function BudgetsManager({
           </>
         ) : (
           <div className="py-4 text-center">
-            <p className="text-[13px] text-ink-faint">
+            <p className="text-corpo text-ink-faint">
               Nenhum limite definido para este mês. Toque numa categoria abaixo
               para começar
               {comSugestao.length > 0 ? " — ou aceite a média de uma vez." : "."}
@@ -286,7 +286,7 @@ export function BudgetsManager({
                 {/* O total fica FORA do botão: dentro dele o rótulo não quebra
                     (`whitespace-nowrap`), e medido a 360px o botão inteiro
                     passava 19px da tela. Aqui a linha quebra à vontade. */}
-                <p className="mt-1.5 text-[12px] text-ink-faint">
+                <p className="mt-1.5 text-legenda text-ink-faint">
                   {formatCents(totalSugerido)} no total, a partir dos três meses
                   anteriores
                 </p>

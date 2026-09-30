@@ -42,7 +42,7 @@ export function ProjectCategory({
     // com o rótulo ele ficaria da largura da opção mais longa — estreito ou
     // estourando, conforme a categoria.
     <div className="space-y-1">
-      <p className="text-[12px] text-ink-faint">
+      <p className="text-legenda text-ink-faint">
         Despesas de boleto, Pix e dinheiro deste projeto entram em
       </p>
       <Select

@@ -48,7 +48,7 @@ export function Label({
 }: React.LabelHTMLAttributes<HTMLLabelElement>) {
   return (
     <label
-      className={cn("block text-[13px] font-medium text-ink-muted", className)}
+      className={cn("block text-corpo font-medium text-ink-muted", className)}
       {...props}
     />
   );
@@ -97,11 +97,11 @@ export function Field({
       {field}
       {/* role="alert" faz o leitor de tela anunciar o erro assim que aparece. */}
       {error ? (
-        <p id={errorId} role="alert" className="text-[13px] text-danger">
+        <p id={errorId} role="alert" className="text-corpo text-danger">
           {error}
         </p>
       ) : hint ? (
-        <p id={hintId} className="text-[13px] text-ink-faint">
+        <p id={hintId} className="text-corpo text-ink-faint">
           {hint}
         </p>
       ) : null}

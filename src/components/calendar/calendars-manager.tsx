@@ -155,21 +155,21 @@ export function CalendarsManager({
                     <p className="break-words text-sm font-medium leading-tight text-ink">
                       {source.name}
                     </p>
-                    <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[13px] text-ink-faint">
+                    <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-corpo text-ink-faint">
                       {ownerName(source.ownerId) ? (
                         <span>{ownerName(source.ownerId)}</span>
                       ) : null}
                       <span>{source.eventCount} compromissos</span>
                       <span>{quando(source.lastSyncedAt)}</span>
                       {source.host ? (
-                        <span className="break-all text-[12px]">{source.host}</span>
+                        <span className="break-all text-legenda">{source.host}</span>
                       ) : null}
                     </p>
                   </div>
                 </div>
 
                 {source.lastError ? (
-                  <p className="mt-2 flex items-start gap-1.5 rounded-[--radius-control] bg-danger-soft/40 px-2.5 py-2 text-[12px] text-ink-muted">
+                  <p className="mt-2 flex items-start gap-1.5 rounded-[--radius-control] bg-danger-soft/40 px-2.5 py-2 text-legenda text-ink-muted">
                     <TriangleAlert className="mt-0.5 size-3.5 shrink-0 text-danger" aria-hidden />
                     {source.lastError}
                   </p>
@@ -197,7 +197,7 @@ export function CalendarsManager({
             <Button variant="outline" size="sm" disabled={pending} onClick={sync}>
               <RefreshCw aria-hidden /> Reler agendas
             </Button>
-            <p className="mt-2 text-[12px] text-ink-faint">
+            <p className="mt-2 text-legenda text-ink-faint">
               O app relê sozinho quando alguém de vocês abre o Fluxo, no máximo
               uma vez a cada 12 horas. Enquanto ninguém está usando, nada é
               lido. Este botão força a leitura agora.
@@ -222,7 +222,7 @@ export function CalendarsManager({
           }
         >
           <div className="space-y-4">
-            <ol className="space-y-1 rounded-[--radius-control] bg-surface-2 px-3 py-3 text-[13px] text-ink-muted">
+            <ol className="space-y-1 rounded-[--radius-control] bg-surface-2 px-3 py-3 text-corpo text-ink-muted">
               <li>1. No Google Agenda, abra Configurações.</li>
               <li>2. Escolha o calendário na lista da esquerda.</li>
               <li>
@@ -267,7 +267,7 @@ export function CalendarsManager({
               />
             </Field>
 
-            <p className="text-[12px] text-ink-faint">
+            <p className="text-legenda text-ink-faint">
               Esse endereço é uma chave: quem o tem lê a agenda inteira. Ele fica
               guardado de forma que nem o resto da casa consegue vê-lo de volta, e
               some junto quando a agenda é desconectada. Para revogar do lado do

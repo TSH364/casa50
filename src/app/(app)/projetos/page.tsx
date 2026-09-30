@@ -76,14 +76,14 @@ export default async function ProjetosPage({
   return (
     <div className="mx-auto max-w-3xl space-y-4">
       <header>
-        <h1 className="text-[17px] font-semibold tracking-tight text-ink">
+        <h1 className="text-titulo font-semibold tracking-tight text-ink">
           {project.name}
         </h1>
         {/* A economia só aparece quando houve concorrência de verdade: sem
             duas propostas não há o que comparar, e um número de economia
             tirado de proposta única ensinaria a não confiar no resto. */}
         {economia !== 0 ? (
-          <p className="mt-0.5 text-[13px] text-ink-faint">
+          <p className="mt-0.5 text-corpo text-ink-faint">
             {economia > 0 ? "Economizou " : "Pagou a mais "}
             <span className={economia > 0 ? "text-positive" : "text-danger"}>
               {formatCents(Math.abs(economia))}
@@ -111,7 +111,7 @@ export default async function ProjetosPage({
               href={`/projetos?projeto=${p.id}`}
               aria-current={p.id === project.id ? "page" : undefined}
               className={cn(
-                "rounded-[--radius-control] px-2.5 py-1.5 text-[12px]",
+                "rounded-[--radius-control] px-2.5 py-1.5 text-legenda",
                 p.id === project.id
                   ? "bg-surface-3 text-ink"
                   : "bg-surface-2 text-ink-faint",

@@ -78,9 +78,9 @@ export function AiAnalysisCard({
                   <tom.Icon className={cn("mt-0.5 size-4 shrink-0", tom.icon)} aria-hidden />
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-medium text-ink">{a.title}</p>
-                    <p className="mt-0.5 text-[13px] text-ink-muted">{a.text}</p>
+                    <p className="mt-0.5 text-corpo text-ink-muted">{a.text}</p>
                     {a.suggestion ? (
-                      <p className="mt-1.5 flex items-start gap-1.5 text-[13px] text-ink">
+                      <p className="mt-1.5 flex items-start gap-1.5 text-corpo text-ink">
                         <Lightbulb className="mt-0.5 size-3.5 shrink-0 text-attention" aria-hidden />
                         <span>{a.suggestion}</span>
                       </p>
@@ -91,8 +91,8 @@ export function AiAnalysisCard({
                 <dl className="mt-2.5 space-y-0.5 border-t border-line pt-2">
                   {a.evidence.map((e) => (
                     <div key={e.label} className="flex flex-wrap items-baseline gap-x-1.5">
-                      <dt className="text-[12px] text-ink-faint">{e.label}:</dt>
-                      <dd className="tabular text-[12px] font-medium text-ink-muted">{e.value}</dd>
+                      <dt className="text-legenda text-ink-faint">{e.label}:</dt>
+                      <dd className="tabular text-legenda font-medium text-ink-muted">{e.value}</dd>
                     </div>
                   ))}
                 </dl>
@@ -103,7 +103,7 @@ export function AiAnalysisCard({
       ) : null}
 
       {analise && analise.dropped > 0 ? (
-        <p className="mt-2 text-[12px] text-ink-faint">
+        <p className="mt-2 text-legenda text-ink-faint">
           {analise.dropped === 1
             ? "1 análise foi descartada porque citava número que não estava nos dados."
             : `${analise.dropped} análises foram descartadas porque citavam números que não estavam nos dados.`}
@@ -111,7 +111,7 @@ export function AiAnalysisCard({
       ) : null}
 
       {erro ? (
-        <p role="alert" className="mt-3 text-[13px] text-danger">
+        <p role="alert" className="mt-3 text-corpo text-danger">
           {erro}
         </p>
       ) : null}
@@ -128,12 +128,12 @@ export function AiAnalysisCard({
               <Sparkles aria-hidden />
               {pending ? "Analisando… leva uns 15 segundos" : analise ? "Refazer análise" : "Analisar o mês com IA"}
             </Button>
-            <p className="text-[12px] text-ink-faint">
+            <p className="text-legenda text-ink-faint">
               Vai para um modelo pago que não guarda os dados: totais, categorias, lojas e primeiros nomes.
             </p>
           </>
         ) : (
-          <p className="text-[13px] text-ink-muted">
+          <p className="text-corpo text-ink-muted">
             Para usar, configure a chave de IA em{" "}
             <Link href="/casa" className="text-brand underline-offset-4 hover:underline">
               Casa

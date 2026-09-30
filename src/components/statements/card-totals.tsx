@@ -100,7 +100,7 @@ export async function Statements({
                           </span>
                         ) : null}
                       </p>
-                      <p className="text-[12px] text-ink-faint">
+                      <p className="text-legenda text-ink-faint">
                         {bucket.count} lançamento(s)
                         {card.dueDay ? ` · vence dia ${card.dueDay}` : ""}
                       </p>
@@ -117,7 +117,7 @@ export async function Statements({
               <li className="flex min-h-14 items-center gap-3 rounded-[--radius-control] bg-surface-2 px-3">
                 <div className="min-w-0 flex-1">
                   <p className="text-sm text-ink-muted">Sem cartão</p>
-                  <p className="text-[12px] text-ink-faint">
+                  <p className="text-legenda text-ink-faint">
                     {noCard.count} lançamento(s) · PIX, dinheiro ou manual
                   </p>
                 </div>

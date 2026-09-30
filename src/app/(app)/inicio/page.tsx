@@ -86,7 +86,7 @@ export default async function InicioPage({
     <div className="mx-auto max-w-3xl space-y-4">
       <header className="flex flex-wrap items-center justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-[13px] text-ink-faint">{active.name}</p>
+          <p className="text-corpo text-ink-faint">{active.name}</p>
           <MonthSwitcher month={month} />
         </div>
         <NewTransactionButton
@@ -98,7 +98,7 @@ export default async function InicioPage({
       </header>
 
       {redirected ? (
-        <p className="rounded-[--radius-control] bg-attention-soft px-3.5 py-2.5 text-[13px] text-attention">
+        <p className="rounded-[--radius-control] bg-attention-soft px-3.5 py-2.5 text-corpo text-attention">
           {monthLabel(currentMonth())} ainda não tem lançamentos. Mostrando{" "}
           {monthLabel(month)}, o mês mais recente com dados.
         </p>
@@ -187,13 +187,13 @@ export default async function InicioPage({
           title="Cartões"
           description="Cadastre os cartões para que cada lançamento saiba de onde veio."
           action={
-            <Link href="/cartoes" className="text-[13px] text-brand hover:underline">
+            <Link href="/cartoes" className="text-corpo text-brand hover:underline">
               Gerenciar
             </Link>
           }
         />
         {cards.length === 0 ? (
-          <p className="text-[13px] text-ink-faint">Nenhum cartão cadastrado ainda.</p>
+          <p className="text-corpo text-ink-faint">Nenhum cartão cadastrado ainda.</p>
         ) : (
           <ul className="flex flex-wrap gap-2">
             {cards
@@ -201,7 +201,7 @@ export default async function InicioPage({
               .map((c) => (
                 <li
                   key={c.id}
-                  className="rounded-full bg-surface-2 px-3 py-1.5 text-[13px] text-ink-muted"
+                  className="rounded-full bg-surface-2 px-3 py-1.5 text-corpo text-ink-muted"
                 >
                   {c.name}
                   {c.lastFour ? ` ···· ${c.lastFour}` : ""}

@@ -16,16 +16,16 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
-        default: "bg-brand text-white hover:bg-brand/90",
+        default: "bg-brand text-on-brand hover:bg-brand/90",
         secondary: "bg-surface-3 text-ink hover:bg-line-strong",
         outline: "border border-line-strong bg-transparent text-ink hover:bg-surface-2",
         ghost: "text-ink-muted hover:bg-surface-2 hover:text-ink",
-        danger: "bg-danger text-white hover:bg-danger/90",
+        danger: "bg-danger-fill text-white hover:bg-danger-fill/90",
         link: "text-brand underline-offset-4 hover:underline",
       },
       size: {
         default: "min-h-11 px-4 py-2",
-        sm: "min-h-9 rounded-md px-3 text-[13px]",
+        sm: "min-h-9 rounded-md px-3 text-corpo",
         lg: "min-h-12 px-6 text-base",
         icon: "size-11",
       },

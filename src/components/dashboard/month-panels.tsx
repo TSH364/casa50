@@ -35,7 +35,7 @@ function SeeAll({ href, label }: { href: string; label: string }) {
   return (
     <Link
       href={href}
-      className="flex items-center gap-1 text-[13px] text-brand hover:underline"
+      className="flex items-center gap-1 text-corpo text-brand hover:underline"
     >
       {label} <ArrowRight className="size-3" aria-hidden />
     </Link>
@@ -135,7 +135,7 @@ export async function MonthPanels({
           action={<SeeAll href="/analise#proximos-meses" label="Ver todas" />}
         />
         {matches.length === 0 ? (
-          <p className="text-[13px] text-ink-faint">
+          <p className="text-corpo text-ink-faint">
             Nenhuma recorrência cadastrada. Aluguel, assinaturas e mensalidades
             entram em Análise.
           </p>
@@ -169,7 +169,7 @@ export async function MonthPanels({
             ]
               .filter((x) => x !== null)
               .map((row) => (
-                <li key={row.key} className="flex items-center gap-2 text-[13px]">
+                <li key={row.key} className="flex items-center gap-2 text-corpo">
                   <row.Icon className={cn("size-3.5 shrink-0", row.tone)} aria-hidden />
                   <span className="text-ink-muted">{row.text}</span>
                 </li>
@@ -185,7 +185,7 @@ export async function MonthPanels({
           action={<SeeAll href="/analise#parcelas" label="Detalhes" />}
         />
         {committedTotal === 0 ? (
-          <p className="text-[13px] text-ink-faint">
+          <p className="text-corpo text-ink-faint">
             Nenhuma parcela em aberto nos próximos meses.
           </p>
         ) : (
@@ -195,7 +195,7 @@ export async function MonthPanels({
                 key={c.month}
                 className="rounded-[--radius-control] bg-surface-2 px-3 py-2.5 text-center"
               >
-                <p className="text-[12px] uppercase tracking-[0.06em] text-ink-faint">
+                <p className="text-legenda uppercase tracking-[0.06em] text-ink-faint">
                   {monthShortLabel(c.month)}
                 </p>
                 <p className="tabular mt-1 text-sm font-semibold text-ink">
@@ -213,13 +213,13 @@ export async function MonthPanels({
           description="Estornos, IOF, tarifas e anuidade."
         />
         {fees.length === 0 && refunds.length === 0 ? (
-          <p className="text-[13px] text-ink-faint">
+          <p className="text-corpo text-ink-faint">
             Nenhuma tarifa nem estorno em {monthLabel(month)}.
           </p>
         ) : (
           <dl className="grid grid-cols-2 gap-2">
             <div className="rounded-[--radius-control] bg-surface-2 px-3 py-2.5">
-              <dt className="text-[12px] text-ink-faint">
+              <dt className="text-legenda text-ink-faint">
                 Tarifas ({fees.length})
               </dt>
               <dd className="tabular mt-0.5 text-sm font-medium text-danger">
@@ -227,7 +227,7 @@ export async function MonthPanels({
               </dd>
             </div>
             <div className="rounded-[--radius-control] bg-surface-2 px-3 py-2.5">
-              <dt className="text-[12px] text-ink-faint">
+              <dt className="text-legenda text-ink-faint">
                 Estornos ({refunds.length})
               </dt>
               <dd className="tabular mt-0.5 text-sm font-medium text-positive">
@@ -249,7 +249,7 @@ export async function MonthPanels({
           action={<SeeAll href={`/orcamentos?mes=${month}`} label="Definir" />}
         />
         {budgetRows.length === 0 ? (
-          <p className="text-[13px] text-ink-faint">
+          <p className="text-corpo text-ink-faint">
             Nenhum limite definido para {monthLabel(month)}.
           </p>
         ) : (
@@ -263,11 +263,11 @@ export async function MonthPanels({
                       style={{ backgroundColor: row.color }}
                       aria-hidden
                     />
-                    <span className="truncate text-[13px] text-ink">
+                    <span className="truncate text-corpo text-ink">
                       {row.name}
                     </span>
                   </span>
-                  <span className="tabular shrink-0 text-[13px] text-ink-muted">
+                  <span className="tabular shrink-0 text-corpo text-ink-muted">
                     {formatCents(row.progress.spentCents)}
                     <span className="text-ink-faint">
                       {" / "}

@@ -25,7 +25,7 @@ export function PersonFilterNote({
   if (semDono === 0 && !houseWidePanels) return null;
 
   return (
-    <p className="text-[12px] text-ink-faint">
+    <p className="text-legenda text-ink-faint">
       {semDono > 0 ? (
         <>
           {semDono === 1 ? "1 cartão sem dono" : `${semDono} cartões sem dono`}: o que ninguém

@@ -213,7 +213,7 @@ export function VoiceMode({
           aria-label={fase === "pausa" ? "Continuar a conversa" : fase === "falando" ? "Pular a fala" : fase === "ouvindo" ? "Terminei de falar" : "Pensando"}
           className={cn(
             "relative flex size-36 items-center justify-center rounded-full transition-colors",
-            fase === "ouvindo" ? "bg-brand text-white" : fase === "pausa" ? "bg-surface-3 text-ink" : "bg-brand-soft text-brand",
+            fase === "ouvindo" ? "bg-brand text-on-brand" : fase === "pausa" ? "bg-surface-3 text-ink" : "bg-brand-soft text-brand",
           )}
         >
           {fase === "ouvindo" ? <span className="absolute inset-0 animate-ping rounded-full bg-brand/30" aria-hidden /> : null}
@@ -226,7 +226,7 @@ export function VoiceMode({
         {fase === "ouvindo" && ditado.interim ? (
           <p className="max-w-md text-base text-ink">“{ditado.interim}”</p>
         ) : ouvido && fase !== "falando" ? (
-          <p className="max-w-md text-[13px] text-ink-muted">Você: “{ouvido}”</p>
+          <p className="max-w-md text-corpo text-ink-muted">Você: “{ouvido}”</p>
         ) : null}
 
         {resposta && (fase === "falando" || fase === "pausa") ? (
@@ -235,10 +235,10 @@ export function VoiceMode({
 
         {propostas.length > 0 ? (
           <div className="w-full max-w-md rounded-xl border border-line bg-surface px-3 py-2.5 text-left">
-            <p className="text-[12px] text-ink-muted">Esperando a sua resposta — diga “pode” ou “não”:</p>
+            <p className="text-legenda text-ink-muted">Esperando a sua resposta — diga “pode” ou “não”:</p>
             <ul className="mt-1 space-y-0.5">
               {propostas.map((p) => (
-                <li key={p.id} className="text-[13px] font-medium text-ink">
+                <li key={p.id} className="text-corpo font-medium text-ink">
                   {proposalTitle(p)}
                 </li>
               ))}
@@ -255,13 +255,13 @@ export function VoiceMode({
         ) : null}
 
         {ditado.error ? (
-          <p role="alert" className="max-w-md text-[13px] text-danger">
+          <p role="alert" className="max-w-md text-corpo text-danger">
             {ditado.error}
           </p>
         ) : null}
       </div>
 
-      <p className="text-center text-[12px] text-ink-muted">
+      <p className="text-center text-legenda text-ink-muted">
         {fase === "pausa" ? "Toque no círculo para continuar." : "Diga “tchau” para encerrar."} A voz é transcrita pelo
         navegador (no Chrome, pelos servidores do Google).
       </p>

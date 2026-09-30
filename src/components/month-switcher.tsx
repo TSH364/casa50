@@ -69,7 +69,7 @@ export function MonthSwitcher({ month }: { month: string }) {
         aria-label={`${label}. Escolher outro mês`}
         className={cn(
           "min-h-11 min-w-[9.5rem] rounded-[--radius-control] px-2 text-center",
-          "text-[15px] font-semibold tracking-tight text-ink transition-colors",
+          "text-destaque font-semibold tracking-tight text-ink transition-colors",
           "hover:bg-surface-2 disabled:opacity-40",
           isPending && "opacity-50",
         )}

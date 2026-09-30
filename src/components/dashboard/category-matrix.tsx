@@ -100,7 +100,7 @@ export async function CategoryMatrix({
     return (
       <Card>
         <CardHeader title="Mês a mês, por categoria" />
-        <p className="py-6 text-center text-[13px] text-ink-faint">
+        <p className="py-6 text-center text-corpo text-ink-faint">
           Nenhum gasto nos últimos {WINDOW} meses.
         </p>
       </Card>
@@ -129,7 +129,7 @@ export async function CategoryMatrix({
         tornaria a tabela ilegível na primeira rolagem.
       */}
       <div className="-mx-1 overflow-x-auto px-1">
-        <table className="w-max border-separate border-spacing-0.5 text-[12px]">
+        <table className="w-max border-separate border-spacing-0.5 text-legenda">
           <caption className="sr-only">
             Gasto por mês e por categoria nos últimos {WINDOW} meses.
           </caption>
@@ -155,7 +155,7 @@ export async function CategoryMatrix({
                     />
                     <span className="break-words leading-tight text-ink-muted">{c.name}</span>
                   </span>
-                  <span className="tabular mt-0.5 block text-[11px] text-ink-faint">
+                  <span className="tabular mt-0.5 block text-legenda text-ink-faint">
                     {COMPACT.format(c.totalCents / 100)}
                   </span>
                 </th>
@@ -174,7 +174,7 @@ export async function CategoryMatrix({
                     {monthShortLabel(row.month)}
                     <span className="text-ink-faint"> {row.month.slice(2, 4)}</span>
                   </span>
-                  <span className="tabular block text-[11px] text-ink-faint">
+                  <span className="tabular block text-legenda text-ink-faint">
                     {COMPACT.format(row.totalCents / 100)}
                   </span>
                 </th>
@@ -213,7 +213,7 @@ export async function CategoryMatrix({
       </div>
 
       {podeComparar ? (
-        <ul className="mt-3 flex flex-wrap gap-x-4 gap-y-1.5 border-t border-line pt-2.5 text-[12px] text-ink-faint">
+        <ul className="mt-3 flex flex-wrap gap-x-4 gap-y-1.5 border-t border-line pt-2.5 text-legenda text-ink-faint">
           {(
             [
               ["above", "acima do usual"],
@@ -235,7 +235,7 @@ export async function CategoryMatrix({
         </ul>
       ) : null}
 
-      <p className="mt-2 text-[12px] text-ink-faint">
+      <p className="mt-2 text-legenda text-ink-faint">
         Valores em reais, sem centavos. A comparação é dentro da coluna, contra
         a mediana da própria categoria — nunca entre categorias.
       </p>

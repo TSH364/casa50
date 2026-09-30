@@ -82,7 +82,7 @@ export async function SubcategorySuggestions({
       />
 
       {visiveis.length === 0 ? (
-        <p className="text-[13px] text-ink-muted">
+        <p className="text-corpo text-ink-muted">
           Nenhuma proposta nova por enquanto.
         </p>
       ) : (
@@ -102,14 +102,14 @@ export async function SubcategorySuggestions({
 
       {recusadas.length > 0 ? (
         <details className="mt-3 border-t border-line pt-2.5">
-          <summary className="cursor-pointer text-[12px] text-ink-faint">
+          <summary className="cursor-pointer text-legenda text-ink-faint">
             {recusadas.length} proposta(s) recusada(s)
           </summary>
           <ul className="mt-2 space-y-1.5">
             {recusadas.map((p) => (
               <li
                 key={`${p.category.id}-${p.suggestion.key}`}
-                className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px]"
+                className="flex flex-wrap items-center gap-x-2 gap-y-1 text-legenda"
               >
                 <span className="text-ink-muted">
                   {p.category.name} · {p.suggestion.suggestedName}

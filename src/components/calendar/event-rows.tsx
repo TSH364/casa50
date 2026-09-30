@@ -110,7 +110,7 @@ function EventItem({
       >
         <span className="min-w-0 flex-1">
           <span className="block text-sm text-ink">{row.title}</span>
-          <span className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[12px] text-ink-faint">
+          <span className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-legenda text-ink-faint">
             <span className={row.isCostly ? "text-attention" : undefined}>
               {EVENT_KIND_LABEL[row.kind]}
             </span>
@@ -130,7 +130,7 @@ function EventItem({
           </span>
         </span>
         <span className="flex shrink-0 items-center gap-2">
-          <span className="tabular text-[12px] text-ink-faint">{row.periodo}</span>
+          <span className="tabular text-legenda text-ink-faint">{row.periodo}</span>
           <ChevronDown
             aria-hidden
             className={cn(
@@ -144,12 +144,12 @@ function EventItem({
       {isOpen ? (
         <div className="border-t border-line px-3 py-2.5">
           {row.candidates.length === 0 ? (
-            <p className="text-[12px] text-ink-faint">
+            <p className="text-legenda text-ink-faint">
               Nenhum lançamento nos dias deste compromisso.
             </p>
           ) : (
             <>
-              <p className="mb-2 text-[12px] text-ink-faint">
+              <p className="mb-2 text-legenda text-ink-faint">
                 O que saiu nesses dias. Dizer o que é (e o que não é) deste
                 compromisso melhora a estimativa do próximo.
               </p>
@@ -164,12 +164,12 @@ function EventItem({
                   */
                   <li key={c.id} className="rounded-[--radius-control] px-1 py-1">
                     <div className="flex items-baseline gap-2">
-                      <span className="tabular shrink-0 text-[11px] text-ink-faint">
+                      <span className="tabular shrink-0 text-legenda text-ink-faint">
                         {DIA.format(new Date(`${c.date}T00:00:00Z`))}
                       </span>
                       <span
                         className={cn(
-                          "min-w-0 flex-1 break-words text-[13px] leading-snug",
+                          "min-w-0 flex-1 break-words text-corpo leading-snug",
                           c.state === "excluded" || c.autoExcluded
                             ? "text-ink-faint"
                             : "text-ink-muted",
@@ -180,7 +180,7 @@ function EventItem({
                       </span>
                       <span
                         className={cn(
-                          "tabular shrink-0 text-[13px]",
+                          "tabular shrink-0 text-corpo",
                           c.state === "excluded" || c.autoExcluded
                             ? "text-ink-faint"
                             : "text-ink",
@@ -193,7 +193,7 @@ function EventItem({
                     {/* O motivo, escrito. "Isto é parcela" se confere olhando o
                         lançamento; "o app achou melhor" não se confere. */}
                     {c.autoExcluded ? (
-                      <p className="mt-0.5 pl-7 text-[11px] text-ink-faint">
+                      <p className="mt-0.5 pl-7 text-legenda text-ink-faint">
                         {MOTIVO_FORA[c.autoExcluded]}
                       </p>
                     ) : null}
@@ -263,7 +263,7 @@ function Acao({
       title={label}
       disabled={disabled}
       onClick={onClick}
-      className="inline-flex min-h-8 items-center gap-1 rounded-[--radius-control] border border-line px-2 text-[11px] text-ink-muted transition-colors hover:bg-surface-3 disabled:opacity-50 [&_svg]:size-3"
+      className="inline-flex min-h-8 items-center gap-1 rounded-[--radius-control] border border-line px-2 text-legenda text-ink-muted transition-colors hover:bg-surface-3 disabled:opacity-50 [&_svg]:size-3"
     >
       {children}
     </button>

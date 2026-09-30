@@ -163,18 +163,18 @@ export function AiSettings({
             className={temChave ? "mt-0.5 size-4 text-positive" : "mt-0.5 size-4 text-ink-faint"}
             aria-hidden
           />
-          <div className="min-w-0 flex-1 text-[13px]">
+          <div className="min-w-0 flex-1 text-corpo">
             {doServidor ? (
               <p className="text-ink">
                 Chave definida no servidor (Vercel).
-                <span className="block text-[12px] text-ink-faint">
+                <span className="block text-legenda text-ink-faint">
                   É ela que vale. Para trocar, é no painel da Vercel.
                 </span>
               </p>
             ) : temChave ? (
               <p className="text-ink">
                 Chave guardada <span className="tabular text-ink-muted">{status.keyHint}</span>
-                <span className="block text-[12px] text-ink-faint">
+                <span className="block text-legenda text-ink-faint">
                   Criptografada no banco. O app só mostra o final dela.
                 </span>
               </p>
@@ -186,7 +186,7 @@ export function AiSettings({
             )}
 
             {gasto ? (
-              <p className="tabular mt-1 text-[12px] text-ink-muted">
+              <p className="tabular mt-1 text-legenda text-ink-muted">
                 Total da chave: {dinheiro(gasto.usageUsd, fx)}
                 {fx ? ` (${dolar(gasto.usageUsd)})` : ""}
                 {gasto.limitUsd !== null ? (
@@ -198,7 +198,7 @@ export function AiSettings({
                 )}
               </p>
             ) : erroGasto ? (
-              <p className="mt-1 text-[12px] text-attention">{erroGasto}</p>
+              <p className="mt-1 text-legenda text-attention">{erroGasto}</p>
             ) : null}
           </div>
         </div>
@@ -219,7 +219,7 @@ export function AiSettings({
               aria-label="Chave do OpenRouter"
             />
             {chave !== "" && !formatoOk ? (
-              <p className="text-[12px] text-attention">
+              <p className="text-legenda text-attention">
                 A chave do OpenRouter começa com sk-or-.
               </p>
             ) : null}
@@ -233,7 +233,7 @@ export function AiSettings({
                 </Button>
               ) : null}
             </div>
-            <p className="text-[12px] text-ink-faint">
+            <p className="text-legenda text-ink-faint">
               A chave é testada no OpenRouter antes de ser guardada. Chave recusada não entra.
             </p>
           </div>
@@ -260,7 +260,7 @@ export function AiSettings({
             href="https://openrouter.ai/settings/keys"
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex min-h-9 items-center gap-1.5 text-[12px] text-brand underline underline-offset-2"
+            className="inline-flex min-h-9 items-center gap-1.5 text-legenda text-brand underline underline-offset-2"
           >
             Criar chave no OpenRouter
             <ExternalLink className="size-3" aria-hidden />
@@ -270,7 +270,7 @@ export function AiSettings({
           // A conversa usa modelos gratuitos, e o OpenRouter so libera os
           // gratuitos com esta opcao ligada na conta - sem ela, toda pergunta
           // volta com "nenhum modelo disponivel".
-          <p className="text-[12px] text-ink-faint">
+          <p className="text-legenda text-ink-faint">
             Para a Conversa (modelos gratuitos): no OpenRouter, em{" "}
             <a
               href="https://openrouter.ai/settings/privacy"
@@ -284,7 +284,7 @@ export function AiSettings({
           </p>
         ) : null}
         {canManage && !doServidor ? (
-          <p className="text-[12px] text-ink-faint">
+          <p className="text-legenda text-ink-faint">
             Ao criar, ponha um limite de gasto na chave. É o teto que protege a conta se algo
             repetir chamadas — e quem tem acesso à casa consegue usar a chave.
           </p>
@@ -293,7 +293,7 @@ export function AiSettings({
         {/* O modelo só importa com chave, e só quem gerencia troca. */}
         {temChave ? (
           <div className="space-y-1 border-t border-line pt-3">
-            <p className="text-[12px] text-ink-faint">Modelo para ler orçamento</p>
+            <p className="text-legenda text-ink-faint">Modelo para ler orçamento</p>
             <Select
               value={status.quoteModel}
               disabled={!canManage || status.quoteModelLocked || pending}
@@ -307,7 +307,7 @@ export function AiSettings({
               }
               aria-label="Modelo para ler orçamento"
             />
-            <p className="text-[12px] text-ink-faint">
+            <p className="text-legenda text-ink-faint">
               {status.quoteModelLocked
                 ? "Definido no servidor (Vercel)."
                 : "O Claude lê melhor foto torta e letra miúda; o Gemini custa menos."}
@@ -357,13 +357,13 @@ function GastoDeIa({
 
   return (
     <div className="space-y-2 border-t border-line pt-3">
-      <p className="text-[12px] font-medium text-ink">Gasto com IA</p>
+      <p className="text-legenda font-medium text-ink">Gasto com IA</p>
 
       {periodos.length > 0 ? (
         <dl className="grid grid-cols-3 gap-2">
           {periodos.map(([rotulo, valor]) => (
             <div key={rotulo} className="rounded-[--radius-control] bg-surface-2 px-2.5 py-2">
-              <dt className="text-[11px] text-ink-muted">{rotulo}</dt>
+              <dt className="text-legenda text-ink-muted">{rotulo}</dt>
               <dd className="tabular text-sm font-semibold text-ink">{dinheiro(valor!, fx)}</dd>
             </div>
           ))}
@@ -372,12 +372,12 @@ function GastoDeIa({
 
       {mes && mes.byFeature.length > 0 ? (
         <div>
-          <p className="text-[12px] text-ink-muted">Este mês no app, por uso</p>
+          <p className="text-legenda text-ink-muted">Este mês no app, por uso</p>
           <ul className="mt-1 divide-y divide-line">
             {mes.byFeature.map((u) => (
-              <li key={u.feature} className="flex items-baseline gap-2 py-1.5 text-[13px]">
+              <li key={u.feature} className="flex items-baseline gap-2 py-1.5 text-corpo">
                 <span className="min-w-0 flex-1 text-ink">{USO[u.feature] ?? u.feature}</span>
-                <span className="tabular shrink-0 text-[12px] text-ink-muted">
+                <span className="tabular shrink-0 text-legenda text-ink-muted">
                   {u.calls} chamada{u.calls === 1 ? "" : "s"}
                 </span>
                 <span className="tabular w-24 shrink-0 text-right text-ink">{dinheiro(u.costUsd, fx)}</span>
@@ -385,16 +385,16 @@ function GastoDeIa({
             ))}
           </ul>
           {mes.byFeature.some((u) => u.feature === "conversa_gratuita") ? (
-            <p className="mt-1 text-[12px] text-ink-muted">
+            <p className="mt-1 text-legenda text-ink-muted">
               O gratuito não custa, mas conta na cota de 50 chamadas por dia do OpenRouter.
             </p>
           ) : null}
         </div>
       ) : mes ? (
-        <p className="text-[12px] text-ink-muted">Nenhum uso de IA pelo app neste mês.</p>
+        <p className="text-legenda text-ink-muted">Nenhum uso de IA pelo app neste mês.</p>
       ) : null}
 
-      <p className="text-[12px] text-ink-muted">
+      <p className="text-legenda text-ink-muted">
         {fx ? (
           <>
             Em reais pela cotação {fx.source === "PTAX" ? "PTAX do Banco Central" : "comercial"}

@@ -155,7 +155,7 @@ export function TaskBoard({
               }}
             >
               <div className="flex items-center justify-between gap-2 py-1 pl-3 pr-1">
-                <h2 className="min-w-0 truncate text-[13px] font-semibold text-ink">
+                <h2 className="min-w-0 truncate text-corpo font-semibold text-ink">
                   {col.name}
                   <span className="tabular ml-1.5 font-normal text-ink-muted">{col.tasks.length}</span>
                 </h2>
@@ -265,7 +265,7 @@ function TaskCard({
         <span
           className={cn(
             "flex size-5 items-center justify-center rounded-full border",
-            task.done ? "border-positive bg-positive text-white" : "border-line-strong",
+            task.done ? "border-positive bg-positive text-on-brand" : "border-line-strong",
           )}
         >
           {task.done ? <Check className="size-3" strokeWidth={3} aria-hidden /> : null}
@@ -276,7 +276,7 @@ function TaskCard({
           {task.title}
         </span>
         {task.dueDate || quem || temDinheiro ? (
-          <span className="mt-1.5 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[12px] text-ink-muted">
+          <span className="mt-1.5 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-legenda text-ink-muted">
             {task.dueDate ? (
               <span
                 className={cn(
@@ -476,7 +476,7 @@ function ColumnDialog({
         >
           <div className="space-y-4">
             <div className="space-y-1.5">
-              <label htmlFor="coluna-nome" className="block text-[13px] font-medium text-ink-muted">
+              <label htmlFor="coluna-nome" className="block text-corpo font-medium text-ink-muted">
                 Nome
               </label>
               <Input id="coluna-nome" maxLength={60} value={nome} onChange={(e) => setNome(e.target.value)} />

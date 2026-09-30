@@ -37,7 +37,7 @@ export default async function CategoriasPage() {
         <h1 className="text-xl font-semibold tracking-tight text-ink">
           Categorias
         </h1>
-        <p className="mt-1 text-[13px] text-ink-faint">
+        <p className="mt-1 text-corpo text-ink-faint">
           As iniciais são só um ponto de partida. Renomeie, recolora ou apague o
           que não servir — excluir uma categoria não apaga lançamento nenhum.
         </p>

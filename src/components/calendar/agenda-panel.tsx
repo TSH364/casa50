@@ -145,14 +145,14 @@ export async function AgendaPanel({
       />
 
       {doMes.length === 0 ? (
-        <p className="py-4 text-center text-[13px] text-ink-faint">
+        <p className="py-4 text-center text-corpo text-ink-faint">
           Nada marcado neste mês.
         </p>
       ) : (
         <>
           {custosos.length > 0 && !jaPassou ? (
             <div className="mb-4 rounded-[--radius-control] border border-attention/40 bg-attention-soft/30 px-3 py-3">
-              <p className="text-[13px] text-ink">
+              <p className="text-corpo text-ink">
                 {diasComCusto === 1
                   ? "Há 1 dia de compromisso que costuma custar neste mês."
                   : `Há ${diasComCusto} dias de compromisso que costumam custar neste mês.`}
@@ -160,14 +160,14 @@ export async function AgendaPanel({
 
               {pressure.hasEstimate ? (
                 <>
-                  <p className="mt-1 text-[13px] text-ink-muted">
+                  <p className="mt-1 text-corpo text-ink-muted">
                     Pelo que aconteceu nas vezes anteriores, isso aponta{" "}
                     <span className="tabular font-medium text-ink">
                       {formatCents(pressure.extraCents)}
                     </span>{" "}
                     acima de um mês comum.
                   </p>
-                  <dl className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[12px]">
+                  <dl className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-legenda">
                     <div className="flex items-center gap-1.5">
                       <dt className="text-ink-faint">Dia comum da casa:</dt>
                       <dd className="tabular text-ink-muted">
@@ -194,7 +194,7 @@ export async function AgendaPanel({
                   </Button>
                 </>
               ) : (
-                <p className="mt-1 text-[13px] text-ink-muted">
+                <p className="mt-1 text-corpo text-ink-muted">
                   Ainda não houve compromisso parecido no histórico para dizer
                   quanto isso costuma custar
                   {semBase.length > 0
@@ -207,7 +207,7 @@ export async function AgendaPanel({
 
           <EventRows rows={linhas} />
 
-          <p className="mt-3 text-[12px] text-ink-faint">
+          <p className="mt-3 text-legenda text-ink-faint">
             Abra um compromisso para dizer o que é dele e o que não é. Sem essa
             confirmação, o valor ao lado é só o que saiu <em>nos dias</em> — tudo
             que foi lançado naquelas datas, não só o que o compromisso causou.

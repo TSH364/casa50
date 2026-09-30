@@ -28,10 +28,10 @@ function Kpi({
 }) {
   return (
     <div className="rounded-[--radius-control] bg-surface-2 px-3.5 py-3">
-      <p className="text-[12px] uppercase tracking-[0.08em] text-ink-faint">{label}</p>
+      <p className="text-legenda uppercase tracking-[0.08em] text-ink-faint">{label}</p>
       <p
         className={cn(
-          "tabular mt-1 text-[19px] font-semibold",
+          "tabular mt-1 text-titulo font-semibold",
           tone === "positive" && "text-positive",
           tone === "negative" && "text-danger",
           tone === "muted" && "text-ink-muted",
@@ -40,7 +40,7 @@ function Kpi({
       >
         {value}
       </p>
-      {hint ? <p className="mt-0.5 text-[12px] text-ink-faint">{hint}</p> : null}
+      {hint ? <p className="mt-0.5 text-legenda text-ink-faint">{hint}</p> : null}
     </div>
   );
 }

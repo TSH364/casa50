@@ -33,7 +33,7 @@ function Footer({ isEdit }: { isEdit: boolean }) {
         form="recurrence-form"
         disabled={pending}
         aria-busy={pending}
-        className="min-h-11 flex-1 rounded-[--radius-control] bg-brand text-sm font-medium text-white transition-colors hover:bg-brand/90 disabled:opacity-50"
+        className="min-h-11 flex-1 rounded-[--radius-control] bg-brand text-sm font-medium text-on-brand transition-colors hover:bg-brand/90 disabled:opacity-50"
       >
         {pending ? "Salvando…" : isEdit ? "Salvar" : "Criar recorrência"}
       </button>
@@ -81,7 +81,7 @@ export function RecurrenceFormDialog({
           {state.error ? (
             <p
               role="alert"
-              className="rounded-[--radius-control] bg-danger-soft px-3 py-2.5 text-[13px] text-danger"
+              className="rounded-[--radius-control] bg-danger-soft px-3 py-2.5 text-corpo text-danger"
             >
               {state.error}
             </p>

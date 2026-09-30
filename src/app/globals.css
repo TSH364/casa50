@@ -19,17 +19,29 @@
   /* Texto: contraste alto no principal, cinza legivel no secundario. */
   --color-ink: #f3f4f8;
   --color-ink-muted: #9aa0b0;
-  --color-ink-faint: #6b7180;
+  /*
+   * Era #6b7180, que dava 3,8:1 sobre o cartao - abaixo do minimo para texto
+   * pequeno. Este da 5,5 / 5,1 / 4,6 sobre as tres superficies.
+   */
+  --color-ink-faint: #858b9b;
 
   /* Semantica. */
   --color-brand: #7c86ff;
   --color-brand-soft: #2a2d4d;
+  /*
+   * Texto SOBRE o indigo (botao principal). No escuro o indigo e claro, entao
+   * o texto e escuro (6,4:1); branco dava 3,1:1. No claro, o contrario.
+   */
+  --color-on-brand: #08090c;
   --color-positive: #35d29a;
   --color-positive-soft: #12352b;
   --color-attention: #f2b23c;
   --color-attention-soft: #3a2e13;
   --color-danger: #f2686b;
   --color-danger-soft: #3c1c20;
+  /* Preenchimento de botao de perigo: branco sobre ele da 5,1:1 (sobre
+     `danger`, que e tom de texto, dava 3,0). */
+  --color-danger-fill: #c9383c;
 
   /*
    * Escala SEQUENCIAL do calendario de gastos: um matiz so, do claro ao
@@ -85,10 +97,27 @@
   --color-cell-typical: #2a3040;
   --color-cell-above: #a35c0d;
 
-  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI",
+  --font-sans: var(--font-instrument), ui-sans-serif, system-ui, -apple-system, "Segoe UI",
     Roboto, "Helvetica Neue", Arial, sans-serif;
   /* Numeros em tabular para os valores nao dancarem ao atualizar. */
   --font-numeric: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, monospace;
+
+  /*
+   * Escala de tipo: seis passos, e so. Legenda 12, corpo 14, destaque 16,
+   * titulo 20, numero 26, numero principal 38.
+   */
+  --text-legenda: 0.75rem;
+  --text-legenda--line-height: 1rem;
+  --text-corpo: 0.875rem;
+  --text-corpo--line-height: 1.25rem;
+  --text-destaque: 1rem;
+  --text-destaque--line-height: 1.5rem;
+  --text-titulo: 1.25rem;
+  --text-titulo--line-height: 1.75rem;
+  --text-numero: 1.625rem;
+  --text-numero--line-height: 2rem;
+  --text-principal: 2.375rem;
+  --text-principal--line-height: 2.625rem;
 
   --radius-card: 1rem;
   --radius-control: 0.625rem;
@@ -137,6 +166,8 @@
   --color-ink-faint: #5c6271;
   --color-brand: #3d45bd;
   --color-brand-soft: #e5e7ff;
+  --color-on-brand: #ffffff;
+  --color-danger-fill: #9c272c;
   --color-positive: #065c3e;
   --color-positive-soft: #d6f1e5;
   --color-attention: #704600;
@@ -162,6 +193,8 @@
     --color-ink-faint: #5c6271;
     --color-brand: #3d45bd;
     --color-brand-soft: #e5e7ff;
+  --color-on-brand: #ffffff;
+  --color-danger-fill: #9c272c;
     --color-positive: #065c3e;
     --color-positive-soft: #d6f1e5;
     --color-attention: #704600;

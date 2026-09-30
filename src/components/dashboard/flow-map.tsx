@@ -94,14 +94,14 @@ export async function FlowMap({
       />
 
       {!hasAnyData ? (
-        <p className="text-[13px] text-ink-faint">
+        <p className="text-corpo text-ink-faint">
           Ainda não há lançamentos para desenhar o fluxo.
         </p>
       ) : (
         <>
           <FlowBars bars={bars} month={month} />
 
-          <dl className="mt-3 flex flex-wrap gap-x-4 gap-y-1 border-t border-line pt-2.5 text-[12px]">
+          <dl className="mt-3 flex flex-wrap gap-x-4 gap-y-1 border-t border-line pt-2.5 text-legenda">
             <div className="flex items-center gap-1.5">
               <span className="size-2.5 rounded-sm bg-brand" aria-hidden />
               <dt className="text-ink-faint">Realizado</dt>

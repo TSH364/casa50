@@ -36,7 +36,7 @@ export function EmptyState({
     <div className="flex flex-col items-center justify-center rounded-[--radius-control] border border-dashed border-line px-6 py-10 text-center">
       <p className="text-sm font-medium text-ink">{title}</p>
       {description ? (
-        <p className="mt-1 max-w-sm text-[13px] text-ink-faint">{description}</p>
+        <p className="mt-1 max-w-sm text-corpo text-ink-faint">{description}</p>
       ) : null}
       {action ? <div className="mt-4">{action}</div> : null}
     </div>
@@ -59,7 +59,7 @@ export function ErrorState({
     >
       <p className="text-sm font-medium text-ink">{title}</p>
       {description ? (
-        <p className="mt-1 max-w-sm text-[13px] text-ink-muted">{description}</p>
+        <p className="mt-1 max-w-sm text-corpo text-ink-muted">{description}</p>
       ) : null}
       {onRetry ? (
         <Button variant="outline" size="sm" className="mt-4" onClick={onRetry}>

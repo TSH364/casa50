@@ -72,7 +72,7 @@ export function AppNav() {
         aria-label="Navegação principal"
         className="hidden w-56 shrink-0 border-r border-line px-3 py-6 md:block"
       >
-        <p className="px-3 pb-6 text-[13px] font-semibold uppercase tracking-[0.18em] text-brand">
+        <p className="px-3 pb-6 text-corpo font-semibold uppercase tracking-[0.18em] text-brand">
           Fluxo
         </p>
         <ul className="space-y-1">

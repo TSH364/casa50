@@ -146,7 +146,7 @@ export default async function AnalisePage({
             <p className="mt-3 text-sm text-ink">
               {depth < 2 ? "Ainda não dá para comparar." : "Nada fora do comum neste mês."}
             </p>
-            <p className="mx-auto mt-1 max-w-sm text-[13px] text-ink-faint">
+            <p className="mx-auto mt-1 max-w-sm text-corpo text-ink-faint">
               {depth < 2
                 ? `Há ${depth} ${depth === 1 ? "mês" : "meses"} de histórico. Comparar com um mês só produziria alarme falso, então o app prefere ficar calado até ter base.`
                 : "Os gastos ficaram dentro do padrão dos meses anteriores, e nenhum orçamento passou de 80%."}
@@ -154,7 +154,7 @@ export default async function AnalisePage({
           </div>
         )}
         {insights.length > 0 ? (
-          <p className="mt-3 text-[12px] text-ink-faint">
+          <p className="mt-3 text-legenda text-ink-faint">
             Comparações usam até 6 meses de histórico. Variações abaixo de R$ 50 não geram observação — seriam
             ruído, não informação.
           </p>

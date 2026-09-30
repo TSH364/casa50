@@ -147,7 +147,7 @@ export function RecurrencesPanel({
                     <p className="truncate text-sm text-ink">
                       {match.recurrence.description}
                     </p>
-                    <p className="truncate text-[12px] text-ink-faint">
+                    <p className="truncate text-legenda text-ink-faint">
                       {match.status === "to_confirm"
                         ? `${formatCents(match.expectedCents)} combinados — não chega pela fatura`
                         : match.status === "missing"
@@ -231,12 +231,12 @@ export function RecurrencesPanel({
                     <p className="truncate text-sm text-ink">
                       {r.description}
                       {r.source === "detected" ? (
-                        <span className="ml-1.5 text-[11px] text-ink-faint">
+                        <span className="ml-1.5 text-legenda text-ink-faint">
                           detectada
                         </span>
                       ) : null}
                     </p>
-                    <p className="truncate text-[12px] text-ink-faint">
+                    <p className="truncate text-legenda text-ink-faint">
                       {formatCents(match.expectedCents)}
                       {r.expectedDay ? ` · dia ${r.expectedDay}` : ""}
                     </p>
@@ -244,7 +244,7 @@ export function RecurrencesPanel({
 
                   <span
                     className={cn(
-                      "shrink-0 rounded-full px-2 py-0.5 text-[11px]",
+                      "shrink-0 rounded-full px-2 py-0.5 text-legenda",
                       meta.chip,
                     )}
                   >
@@ -314,7 +314,7 @@ export function RecurrencesPanel({
                   <p className="truncate text-sm text-ink">
                     {candidate.description}
                   </p>
-                  <p className="truncate text-[12px] text-ink-faint">
+                  <p className="truncate text-legenda text-ink-faint">
                     {formatCents(candidate.amountCents)} em{" "}
                     {candidate.months.length} meses seguidos
                     {candidate.expectedDay

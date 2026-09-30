@@ -46,7 +46,7 @@ export default async function AppLayout({
       */}
       <a
         href="#conteudo"
-        className="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-50 focus:rounded-[--radius-control] focus:bg-brand focus:px-4 focus:py-2.5 focus:text-sm focus:text-white"
+        className="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-50 focus:rounded-[--radius-control] focus:bg-brand focus:px-4 focus:py-2.5 focus:text-sm focus:text-on-brand"
       >
         Pular para o conteúdo
       </a>
@@ -69,7 +69,7 @@ export default async function AppLayout({
             */}
             <span
               title={buildLabel(build)}
-              className="tabular text-[11px] text-ink-faint"
+              className="tabular text-legenda text-ink-faint"
             >
               {versionLabel(build)}
             </span>

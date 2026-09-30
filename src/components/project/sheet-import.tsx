@@ -165,7 +165,7 @@ export function SheetImport({ projectId }: { projectId: string }) {
         />
         <label
           htmlFor="planilha-projeto"
-          className="inline-flex min-h-11 cursor-pointer items-center gap-1.5 text-[13px] text-brand underline underline-offset-2"
+          className="inline-flex min-h-11 cursor-pointer items-center gap-1.5 text-corpo text-brand underline underline-offset-2"
         >
           {lendo ? (
             <Loader2 className="size-4 animate-spin" aria-hidden />
@@ -174,7 +174,7 @@ export function SheetImport({ projectId }: { projectId: string }) {
           )}
           {lendo ? "Lendo a planilha…" : "Subir uma planilha de itens"}
         </label>
-        {erro ? <p className="mt-1 text-[12px] text-attention">{erro}</p> : null}
+        {erro ? <p className="mt-1 text-legenda text-attention">{erro}</p> : null}
       </div>
     );
   }
@@ -183,7 +183,7 @@ export function SheetImport({ projectId }: { projectId: string }) {
     <div className="space-y-3">
       {abas !== null && abas.length > 1 ? (
         <div>
-          <p className="mb-1 text-[12px] text-ink-faint">Aba da planilha</p>
+          <p className="mb-1 text-legenda text-ink-faint">Aba da planilha</p>
           <div className="flex flex-wrap gap-1.5">
             {abas.map((a, i) => {
               const quantos = readProjectSheet(a.grid).items.length;
@@ -198,7 +198,7 @@ export function SheetImport({ projectId }: { projectId: string }) {
                   }}
                   aria-pressed={i === aba}
                   className={cn(
-                    "min-h-9 rounded-[--radius-control] px-2.5 py-1.5 text-[12px]",
+                    "min-h-9 rounded-[--radius-control] px-2.5 py-1.5 text-legenda",
                     i === aba ? "bg-brand/15 text-brand" : "bg-surface-2 text-ink-faint",
                   )}
                 >
@@ -216,7 +216,7 @@ export function SheetImport({ projectId }: { projectId: string }) {
           três é a que vai ser comprada. O palpite é a última; trocar é um toque. */}
       {leitura.quantityOptions.length > 1 ? (
         <div>
-          <p className="mb-1 text-[12px] text-ink-faint">Qual coluna é a quantidade</p>
+          <p className="mb-1 text-legenda text-ink-faint">Qual coluna é a quantidade</p>
           <div className="flex flex-wrap gap-1.5">
             {leitura.quantityOptions.map((o) => {
               const ativa =
@@ -231,7 +231,7 @@ export function SheetImport({ projectId }: { projectId: string }) {
                   onClick={() => setColunaQtd(o.column)}
                   aria-pressed={ativa}
                   className={cn(
-                    "min-h-9 rounded-[--radius-control] px-2.5 py-1.5 text-[12px]",
+                    "min-h-9 rounded-[--radius-control] px-2.5 py-1.5 text-legenda",
                     ativa ? "bg-brand/15 text-brand" : "bg-surface-2 text-ink-faint",
                   )}
                 >
@@ -244,7 +244,7 @@ export function SheetImport({ projectId }: { projectId: string }) {
       ) : null}
 
       {leitura.items.length === 0 ? (
-        <p className="text-[13px] text-ink-faint">
+        <p className="text-corpo text-ink-faint">
           Não encontrei itens nesta aba. Tente outra, ou monte a lista à mão.
         </p>
       ) : (
@@ -275,7 +275,7 @@ export function SheetImport({ projectId }: { projectId: string }) {
           <button
             type="button"
             onClick={() => setVerDescartes((v) => !v)}
-            className="min-h-9 text-[12px] text-ink-faint underline underline-offset-2"
+            className="min-h-9 text-legenda text-ink-faint underline underline-offset-2"
           >
             {leitura.skipped.length} linhas fora da lista
             {verDescartes ? " — esconder" : " — ver por quê"}
@@ -283,7 +283,7 @@ export function SheetImport({ projectId }: { projectId: string }) {
           {verDescartes ? (
             <ul className="mt-1 space-y-0.5">
               {leitura.skipped.map((s) => (
-                <li key={s.row} className="text-[11px] text-ink-faint">
+                <li key={s.row} className="text-legenda text-ink-faint">
                   <span className="tabular opacity-60">L{s.row}</span> {s.reason}:{" "}
                   <span className="opacity-80">{s.text.slice(0, 60)}</span>
                 </li>
@@ -327,12 +327,12 @@ function LinhaDoItem({
         />
         <span className="min-w-0 flex-1">
           <span className="flex flex-wrap items-baseline gap-x-1.5">
-            <span className="text-[13px] text-ink">{item.name}</span>
+            <span className="text-corpo text-ink">{item.name}</span>
             {item.stage ? (
-              <span className="text-[11px] text-ink-faint">{item.stage}</span>
+              <span className="text-legenda text-ink-faint">{item.stage}</span>
             ) : null}
           </span>
-          <span className="mt-0.5 flex flex-wrap items-baseline gap-x-2 text-[12px] text-ink-faint">
+          <span className="mt-0.5 flex flex-wrap items-baseline gap-x-2 text-legenda text-ink-faint">
             {item.quantity !== null ? (
               <span className="tabular">
                 {QTD.format(item.quantity)} {item.unit ?? ""}

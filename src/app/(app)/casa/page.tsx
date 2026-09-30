@@ -109,7 +109,7 @@ export default async function CasaPage() {
         Versão por extenso. O cabeçalho mostra só o commit, e `title` não abre
         no toque - num app usado no celular, o detalhe precisa estar escrito.
       */}
-      <p className="pb-2 text-center text-[12px] text-ink-faint">
+      <p className="pb-2 text-center text-legenda text-ink-faint">
         {buildLabel(buildInfo())}
       </p>
     </div>

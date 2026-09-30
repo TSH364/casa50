@@ -41,7 +41,7 @@ export function JevSubcategories({ rows }: { rows: JevCategoryRow[] }) {
           <JevCategory key={r.id} row={r} />
         ))}
       </div>
-      <p className="mt-3 text-[12px] text-ink-faint">
+      <p className="mt-3 text-legenda text-ink-faint">
         Vão ao OpenRouter só o nome da loja, o valor típico e os dias da semana — e a conta é a
         da chave da casa (centavos de milésimo por loja).
       </p>
@@ -111,9 +111,9 @@ function JevCategory({ row }: { row: JevCategoryRow }) {
     <div className="rounded-[--radius-control] bg-surface-2 px-3 py-3">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
         <span className="size-2 shrink-0 rounded-full" style={{ backgroundColor: row.color }} aria-hidden />
-        <span className="min-w-0 flex-1 text-[13px] text-ink">
+        <span className="min-w-0 flex-1 text-corpo text-ink">
           {row.name}
-          <span className="tabular block text-[12px] text-ink-faint">
+          <span className="tabular block text-legenda text-ink-faint">
             {row.pending} lançamento(s) sem subcategoria
           </span>
         </span>
@@ -127,7 +127,7 @@ function JevCategory({ row }: { row: JevCategoryRow }) {
       {sugestoes !== null ? (
         <div className="mt-3">
           {sugestoes.length === 0 ? (
-            <p className="text-[12px] text-ink-muted">
+            <p className="text-legenda text-ink-muted">
               O Jev não viu nada que se encaixe com segurança nas subcategorias de {row.name}.
             </p>
           ) : (
@@ -142,13 +142,13 @@ function JevCategory({ row }: { row: JevCategoryRow }) {
                       onChange={() => alternar(s.merchant)}
                       disabled={pending}
                     />
-                    <span className="min-w-0 flex-1 text-[13px]">
+                    <span className="min-w-0 flex-1 text-corpo">
                       <span className="block break-words text-ink">{s.label}</span>
-                      <span className="tabular block text-[12px] text-ink-faint">
+                      <span className="tabular block text-legenda text-ink-faint">
                         {s.count}× · {formatCents(s.medianCents)} · {Math.round(s.weekdayShare * 100)}% em dia{"\u00a0"}útil
                       </span>
                     </span>
-                    <span className="shrink-0 text-right text-[12px]">
+                    <span className="shrink-0 text-right text-legenda">
                       <span className="block text-ink">{s.subcategoryName}</span>
                       <span
                         className={
@@ -163,7 +163,7 @@ function JevCategory({ row }: { row: JevCategoryRow }) {
               ))}
             </ul>
           )}
-          {aviso ? <p className="mt-2 text-[12px] text-attention">{aviso}</p> : null}
+          {aviso ? <p className="mt-2 text-legenda text-attention">{aviso}</p> : null}
           <div className="mt-3 flex flex-wrap gap-2">
             {sugestoes.length > 0 ? (
               <Button size="sm" disabled={pending || nMarcadas === 0} onClick={aplicar}>
@@ -174,7 +174,7 @@ function JevCategory({ row }: { row: JevCategoryRow }) {
               Fechar
             </Button>
           </div>
-          <p className="mt-2 text-[12px] text-ink-faint">
+          <p className="mt-2 text-legenda text-ink-faint">
             O que você aplicar vira regra: a próxima fatura já chega separada.
           </p>
         </div>

@@ -169,7 +169,7 @@ export async function MonthCalendar({
       {/* Qual mes esta na tela, dito sempre - nao so quando difere.
           A fatura de um mes cobra compras do mes anterior, e um calendario que
           nao diz de quando sao os dias faz o casal procurar no dia errado. */}
-      <p className="mb-2.5 text-[12px] text-ink-faint">
+      <p className="mb-2.5 text-legenda text-ink-faint">
         Compras de <span className="text-ink-muted">{monthLabel(gridMonth)}</span>
         {gridMonth === month ? null : (
           <> — é o que a fatura de {monthLabel(month)} cobra.</>
@@ -183,7 +183,7 @@ export async function MonthCalendar({
           anterior entrou na MESMA fatura porque o cartao fecha no meio do mes;
           a de um ano atras e parcela, que guarda a data da compra original. */}
       {diario.outsideCount > 0 || diario.fixedCount > 0 ? (
-        <ul className="mt-2.5 space-y-1 border-t border-line pt-2.5 text-[12px] text-ink-faint">
+        <ul className="mt-2.5 space-y-1 border-t border-line pt-2.5 text-legenda text-ink-faint">
           {/* A assinatura sai da grade mas é DECLARADA, e com o porquê junto.
               Um número que encolhe sem explicação vira desconfiança na tela
               inteira; dito assim, o casal sabe exatamente o que está vendo. */}

@@ -103,7 +103,7 @@ async function History({
                 {entry.summary ??
                   `${ACTION_LABEL[entry.action]?.toLowerCase() ?? entry.action} um registro`}
               </p>
-              <p className="mt-0.5 text-[12px] text-ink-faint">
+              <p className="mt-0.5 text-legenda text-ink-faint">
                 <span className={ACTION_TONE[entry.action] ?? "text-ink-faint"}>
                   {ACTION_LABEL[entry.action] ?? entry.action}
                 </span>
@@ -142,7 +142,7 @@ export default async function HistoricoPage({
         <h1 className="text-xl font-semibold tracking-tight text-ink">
           Histórico
         </h1>
-        <p className="mt-1 text-[13px] text-ink-faint">
+        <p className="mt-1 text-corpo text-ink-faint">
           Quem lançou, editou ou excluiu cada informação. O registro é feito
           pelo banco, então pega até alteração feita fora do app.
         </p>

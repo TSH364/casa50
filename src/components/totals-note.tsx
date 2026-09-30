@@ -83,10 +83,10 @@ export function TotalsNote({
       </Link>
 
       <span className="min-w-0 flex-1">
-        <span className="block text-[13px] text-ink">
+        <span className="block text-corpo text-ink">
           {ligado ? "Mostrando tudo" : "Só o gasto da casa"}
         </span>
-        <span className="mt-0.5 block break-words text-[12px] text-ink-faint">
+        <span className="mt-0.5 block break-words text-legenda text-ink-faint">
           {ligado ? (
             <>
               <span className="text-ink-muted">{nomes}</span>{" "}

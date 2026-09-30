@@ -132,7 +132,7 @@ export function NovaCompra({
       {/* A pergunta que organiza o resto. Quatro botões e não um menu: são
           quatro, cabem, e um toque é menos que abrir-escolher-fechar. */}
       <div>
-        <p className="mb-1 text-[12px] text-ink-faint">Como pagou</p>
+        <p className="mb-1 text-legenda text-ink-faint">Como pagou</p>
         <div className="flex flex-wrap gap-1.5">
           {PAYMENT_METHODS.map((m) => (
             <button
@@ -149,7 +149,7 @@ export function NovaCompra({
               }}
               aria-pressed={metodo === m}
               className={cn(
-                "min-h-9 rounded-[--radius-control] px-2.5 py-1.5 text-[12px]",
+                "min-h-9 rounded-[--radius-control] px-2.5 py-1.5 text-legenda",
                 metodo === m
                   ? "bg-brand/15 text-brand"
                   : "bg-surface-2 text-ink-faint",
@@ -208,7 +208,7 @@ export function NovaCompra({
       {gap !== null && gap.diffCents !== 0 ? (
         <p
           className={cn(
-            "text-[12px]",
+            "text-legenda",
             gap.diffCents > 0 ? "text-attention" : "text-positive",
           )}
         >
@@ -249,17 +249,17 @@ function ForaDoCartao({
 }) {
   return (
     <div className="space-y-1.5 rounded-[--radius-control] bg-surface-2 p-2.5">
-      <label className="flex items-center justify-between gap-2 text-[12px] text-ink-muted">
+      <label className="flex items-center justify-between gap-2 text-legenda text-ink-muted">
         <span>Mês em que sai do bolso</span>
         <input
           type="month"
           value={mes}
           onChange={(e) => e.target.value && setMes(e.target.value)}
-          className="min-h-9 rounded-[--radius-control] border border-line bg-surface px-2 text-[13px] text-ink"
+          className="min-h-9 rounded-[--radius-control] border border-line bg-surface px-2 text-corpo text-ink"
           aria-label="Mês da despesa"
         />
       </label>
-      <label className="flex items-start gap-2 text-[12px] text-ink-muted">
+      <label className="flex items-start gap-2 text-legenda text-ink-muted">
         <input
           type="checkbox"
           checked={lancar}
@@ -319,7 +319,7 @@ function VincularLancamento({
   if (escolhido !== null) {
     const compra = purchaseFromTransaction(escolhido);
     return (
-      <div className="rounded-[--radius-control] bg-surface-2 p-2.5 text-[12px]">
+      <div className="rounded-[--radius-control] bg-surface-2 p-2.5 text-legenda">
         <div className="flex items-baseline justify-between gap-2">
           <span className="min-w-0 break-words text-ink-muted">
             {escolhido.merchant ?? escolhido.description}
@@ -358,7 +358,7 @@ function VincularLancamento({
           setAberto(true);
           procurar("");
         }}
-        className="inline-flex min-h-9 items-center gap-1.5 text-[12px] text-brand underline underline-offset-2"
+        className="inline-flex min-h-9 items-center gap-1.5 text-legenda text-brand underline underline-offset-2"
       >
         <Link2 className="size-3.5" aria-hidden />
         Vincular a um gasto do cartão
@@ -389,7 +389,7 @@ function VincularLancamento({
       </div>
 
       {lista === null ? null : lista.length === 0 ? (
-        <p className="text-[12px] text-ink-faint">
+        <p className="text-legenda text-ink-faint">
           Nenhum gasto encontrado no último ano.
         </p>
       ) : (
@@ -401,7 +401,7 @@ function VincularLancamento({
                 <button
                   type="button"
                   onClick={() => onEscolher(t)}
-                  className="flex w-full items-baseline gap-2 py-2 text-left text-[12px]"
+                  className="flex w-full items-baseline gap-2 py-2 text-left text-legenda"
                 >
                   <span className="min-w-0 flex-1 break-words text-ink-muted">
                     {t.merchant ?? t.description}
@@ -426,7 +426,7 @@ function VincularLancamento({
       <button
         type="button"
         onClick={() => setAberto(false)}
-        className="min-h-9 text-[12px] text-ink-faint underline underline-offset-2"
+        className="min-h-9 text-legenda text-ink-faint underline underline-offset-2"
       >
         Deixar sem vínculo
       </button>

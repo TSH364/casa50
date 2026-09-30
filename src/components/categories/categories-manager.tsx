@@ -130,7 +130,7 @@ export function CategoriesManager({ categories }: { categories: Category[] }) {
                     <span className="min-w-0 flex-1 truncate text-sm text-ink">
                       {parent.name}
                       {parent.excludedFromTotals ? (
-                        <span className="ml-2 rounded-full bg-surface-3 px-2 py-0.5 align-middle text-[11px] font-normal text-ink-faint">
+                        <span className="ml-2 rounded-full bg-surface-3 px-2 py-0.5 align-middle text-legenda font-normal text-ink-faint">
                           fora dos totais
                         </span>
                       ) : null}
@@ -203,7 +203,7 @@ export function CategoriesManager({ categories }: { categories: Category[] }) {
                             style={{ backgroundColor: child.color }}
                             aria-hidden
                           />
-                          <span className="min-w-0 flex-1 truncate text-[13px] text-ink-muted">
+                          <span className="min-w-0 flex-1 truncate text-corpo text-ink-muted">
                             {child.name}
                           </span>
                           <div className="flex shrink-0 items-center">

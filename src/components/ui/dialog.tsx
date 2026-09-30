@@ -58,11 +58,11 @@ export function DialogContent({
       >
         <header className="flex shrink-0 items-start justify-between gap-3 border-b border-line px-5 py-4">
           <div className="min-w-0">
-            <DialogPrimitive.Title className="text-[15px] font-semibold tracking-tight">
+            <DialogPrimitive.Title className="text-destaque font-semibold tracking-tight">
               {title}
             </DialogPrimitive.Title>
             {description ? (
-              <DialogPrimitive.Description className="mt-0.5 text-[13px] text-ink-faint">
+              <DialogPrimitive.Description className="mt-0.5 text-corpo text-ink-faint">
                 {description}
               </DialogPrimitive.Description>
             ) : (
@@ -141,7 +141,7 @@ export function ConfirmDialog({
               onClick={onConfirm}
               disabled={pending}
               aria-busy={pending}
-              className="min-h-11 flex-1 rounded-[--radius-control] bg-danger text-sm font-medium text-white transition-colors hover:bg-danger/90 disabled:opacity-50"
+              className="min-h-11 flex-1 rounded-[--radius-control] bg-danger-fill text-sm font-medium text-white transition-colors hover:bg-danger/90 disabled:opacity-50"
             >
               {pending ? "Excluindo…" : confirmLabel}
             </button>
@@ -155,7 +155,7 @@ export function ConfirmDialog({
           {itemLabel}
         </p>
         {error ? (
-          <p role="alert" className="mt-3 text-[13px] text-danger">
+          <p role="alert" className="mt-3 text-corpo text-danger">
             {error}
           </p>
         ) : null}
