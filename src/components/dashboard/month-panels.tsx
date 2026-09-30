@@ -275,19 +275,22 @@ export async function MonthPanels({
                     </span>
                   </span>
                 </div>
+                {/* A cor e a da categoria, como em todo o app; a situacao vem
+                    escrita, e o vermelho fica so para quem passou. */}
                 <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-surface-3">
                   <span
-                    className={cn(
-                      "block h-full rounded-full",
-                      row.progress.isOver
-                        ? "bg-danger"
-                        : row.progress.isWarning
-                          ? "bg-attention"
-                          : "bg-positive",
-                    )}
-                    style={{ width: `${Math.min(100, row.progress.ratio * 100)}%` }}
+                    className={cn("block h-full rounded-full", row.progress.isOver && "bg-danger-fill")}
+                    style={{
+                      width: `${Math.min(100, row.progress.ratio * 100)}%`,
+                      ...(row.progress.isOver ? {} : { backgroundColor: row.color }),
+                    }}
                   />
                 </div>
+                {row.progress.isOver ? (
+                  <p className="mt-1 text-legenda font-semibold text-danger">Passou do limite</p>
+                ) : row.progress.isWarning ? (
+                  <p className="mt-1 text-legenda font-semibold text-attention">Perto do limite</p>
+                ) : null}
               </li>
             ))}
           </ul>

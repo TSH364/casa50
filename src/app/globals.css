@@ -48,6 +48,11 @@
    * indigo escuro do tema claro a apagaria.
    */
   --color-doria: #7c86ff;
+  /* O trilho da barra da Dori. No escuro, claro o bastante para a Dori preta
+     aparecer sem contorno (3,2:1 contra ela). */
+  --color-dori-trilho: #5c6271;
+  /* Contorno da Dori: no escuro, o corpo preto sumiria no cartao escuro. */
+  --color-dori-contorno: #6b7180;
 
   /*
    * Escala SEQUENCIAL do calendario de gastos: um matiz so, do claro ao
@@ -174,6 +179,8 @@
   --color-brand-soft: #e5e7ff;
   --color-on-brand: #ffffff;
   --color-danger-fill: #9c272c;
+  --color-dori-trilho: #e2e5ec;
+  --color-dori-contorno: transparent;
   --color-positive: #065c3e;
   --color-positive-soft: #d6f1e5;
   --color-attention: #704600;
@@ -201,6 +208,8 @@
     --color-brand-soft: #e5e7ff;
   --color-on-brand: #ffffff;
   --color-danger-fill: #9c272c;
+  --color-dori-trilho: #e2e5ec;
+  --color-dori-contorno: transparent;
     --color-positive: #065c3e;
     --color-positive-soft: #d6f1e5;
     --color-attention: #704600;

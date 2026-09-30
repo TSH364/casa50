@@ -26,26 +26,22 @@ export interface BudgetRow {
   suggestionCents: number | null;
 }
 
-function ProgressBar({ progress }: { progress: BudgetProgress }) {
+/** A cor e a da categoria; a situacao vem escrita logo abaixo, e o vermelho so para quem passou. */
+function ProgressBar({ progress, color }: { progress: BudgetProgress; color: string }) {
   const width = Math.min(100, progress.ratio * 100);
   return (
-    <div
-      className="mt-2 h-1.5 overflow-hidden rounded-full bg-surface-3"
-      role="img"
-      aria-label={`${Math.round(progress.ratio * 100)}% do limite usado`}
-    >
-      <span
-        className={cn(
-          "block h-full rounded-full transition-all",
-          progress.isOver
-            ? "bg-danger"
-            : progress.isWarning
-              ? "bg-attention"
-              : "bg-positive",
-        )}
-        style={{ width: `${width}%` }}
-      />
-    </div>
+    <>
+      <div
+        className="mt-2 h-1.5 overflow-hidden rounded-full bg-surface-3"
+        role="img"
+        aria-label={`${Math.round(progress.ratio * 100)}% do limite usado`}
+      >
+        <span
+          className={cn("block h-full rounded-full transition-all", progress.isOver && "bg-danger-fill")}
+          style={{ width: `${width}%`, ...(progress.isOver ? {} : { backgroundColor: color }) }}
+        />
+      </div>
+    </>
   );
 }
 
@@ -184,7 +180,7 @@ export function BudgetsManager({
 
         {row.progress ? (
           <>
-            <ProgressBar progress={row.progress} />
+            <ProgressBar progress={row.progress} color={row.category.color} />
             <p className="mt-1.5 text-legenda">
               {row.progress.isOver ? (
                 <span className="text-danger">
