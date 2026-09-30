@@ -21,12 +21,14 @@ import { recordAiUsage } from "@/lib/ai-usage";
 import { JEV_MODEL } from "@/domain/ai-models";
 import {
   loadCategoryMaps,
+  loadMerchantHistory,
   resolveCategory,
   resolveCategoryId,
   resolveSubcategoryId,
 } from "@/lib/category-rules";
 import type { CategoryMaps } from "@/lib/category-rules";
 import { loadJevContext } from "@/lib/jev-context";
+import { historicoParaJev, regrasDoJev, type MerchantHistory } from "@/domain/merchant-history";
 import { runJev } from "@/lib/jev-run";
 import {
   buildQuestions,
@@ -60,6 +62,10 @@ const draftSchema = z.object({
    * na gravacao: tem de ser filha da categoria da linha, nesta casa.
    */
   subcategoryId: z.string().uuid().nullable().optional(),
+  /** De onde veio a categoria; gravado no lancamento. */
+  categorySource: z.enum(["regra", "loja", "historico", "banco", "tipo", "jev"]).nullable().optional(),
+  /** Certeza do Jev na categoria; decide se o palpite confirmado vira regra. */
+  jevProbability: z.number().min(0).max(1).optional(),
   cardLastFour: z.string().regex(/^\d{4}$/).nullable(),
   cardId: z.string().uuid().nullable(),
   installmentCurrent: z.number().int().min(1).max(99).nullable(),
@@ -183,6 +189,7 @@ async function jevDecisions(
   houseId: string,
   rows: readonly JevRow[],
   maps: CategoryMaps,
+  historico?: MerchantHistory,
 ): Promise<{ byKey: Map<string, JevDecision>; stoppedBy: string | null; merchants: number }> {
   const vazio = { byKey: new Map<string, JevDecision>(), stoppedBy: null, merchants: 0 };
   if (rows.length === 0) return vazio;
@@ -195,6 +202,9 @@ async function jevDecisions(
       ...r,
       ruleDecidesSubcategory:
         resolveSubcategoryId(r.merchantNormalized, r.categoryId, maps) !== null,
+      // Loja que a casa ja pos em lugares diferentes: o historico vai como
+      // pista, e o Jev decide.
+      history: historicoParaJev(historico?.porLoja.get(r.merchantNormalized), maps.nameById),
     })),
     ctx.subsByParent,
   );
@@ -251,6 +261,7 @@ async function classifyWithJev(
   reviewed: ReviewedDraft[],
   fonteFraca: ReadonlySet<number>,
   maps: CategoryMaps,
+  historico: MerchantHistory,
 ): Promise<{ note: string | null }> {
   const candidatas = reviewed.filter(
     (d) => d.decision === "new" && d.type === "expense",
@@ -260,6 +271,7 @@ async function classifyWithJev(
     houseId,
     candidatas.map((d) => ({ ...d, key: String(d.row), weak: fonteFraca.has(d.row) })),
     maps,
+    historico,
   );
 
   let linhas = 0;
@@ -270,6 +282,7 @@ async function classifyWithJev(
       d.categoryId = dec.categoryId;
       d.categoryName = maps.nameById.get(dec.categoryId) ?? null;
       d.categoryVia = "jev";
+      d.categorySource = "jev";
       d.jevProbability = dec.categoryProbability;
     }
     if (dec.subcategoryId) {
@@ -341,7 +354,10 @@ export async function reviewImport(
     if (!existingByKey.has(key)) existingByKey.set(key, row.id as string);
   }
 
-  const maps = await loadCategoryMaps(supabase, houseId);
+  const [maps, historico] = await Promise.all([
+    loadCategoryMaps(supabase, houseId),
+    loadMerchantHistory(supabase, houseId),
+  ]);
 
   // Repetições dentro do próprio arquivo também precisam aparecer.
   const seenInFile = new Set<string>();
@@ -364,9 +380,11 @@ export async function reviewImport(
     });
 
     let categoryId = draft.categoryId;
+    let categorySource: ReviewedDraft["categorySource"] = null;
     if (categoryId === null) {
-      const resolvida = resolveCategory(draft, maps);
+      const resolvida = resolveCategory(draft, maps, historico);
       categoryId = resolvida.id;
+      categorySource = resolvida.source;
       if (categoryId !== null) autoCategorized += 1;
       // Guardado para o Jev: so onde a fonte e fraca ele pode trocar.
       if (resolvida.source === null || resolvida.source === "banco") {
@@ -385,6 +403,7 @@ export async function reviewImport(
       // O nome vai junto para a revisão mostrar em que categoria cada linha
       // vai cair: palpite que ninguém vê é palpite que ninguém corrige.
       categoryName: categoryId ? (maps.nameById.get(categoryId) ?? null) : null,
+      categorySource,
       cardId: rowCardId,
       duplicateKey: key,
       decision: existingId || repeatedInFile ? "duplicate" : "new",
@@ -392,7 +411,7 @@ export async function reviewImport(
     };
   });
 
-  const jev = await classifyWithJev(supabase, houseId, reviewed, fonteFraca, maps);
+  const jev = await classifyWithJev(supabase, houseId, reviewed, fonteFraca, maps, historico);
   if (jev.note) notes.push(jev.note);
 
   if (autoCategorized > 0) {
@@ -518,6 +537,39 @@ async function ensureCardsForLastFours(
   }
 
   return { byLastFour, createdIds };
+}
+
+/**
+ * Importar sem mexer confirma os palpites do Jev; os de certeza alta viram
+ * regra (ver `regrasDoJev`). A regra leva `confidence` < 1 - a marca de que
+ * veio do Jev -, e nunca passa por cima de uma regra que ja exista: essa foi
+ * a casa que disse. Falhar aqui nao desfaz a importacao, que ja esta gravada.
+ */
+async function regrasDoJevConfirmadas(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  houseId: string,
+  userId: string | null,
+  linhas: readonly { merchantNormalized: string; categoryId: string | null; categorySource?: string | null; jevProbability?: number; decision: string }[],
+  maps: CategoryMaps,
+): Promise<void> {
+  const regras = regrasDoJev(
+    linhas.map((l) => ({
+      ...l,
+      categorySource: l.categorySource as "jev" | null | undefined,
+    })),
+  ).filter((r) => maps.nameById.has(r.categoryId) && !maps.ruleByPattern.has(r.pattern));
+  if (regras.length === 0) return;
+  const { error } = await supabase.from("learned_rules").upsert(
+    regras.map((r) => ({
+      house_id: houseId,
+      pattern: r.pattern,
+      category_id: r.categoryId,
+      confidence: r.confidence,
+      created_by: userId,
+    })),
+    { onConflict: "house_id,normalized_pattern", ignoreDuplicates: true },
+  );
+  if (error) console.error("[importacao] falha ao guardar regras do Jev", { code: error.code });
 }
 
 /** Grava a importação. Só as linhas marcadas como `new` viram lançamento. */
@@ -656,6 +708,7 @@ export async function commitImport(input: unknown): Promise<CommitResult> {
     origin: "invoice" as const,
     status: "confirmed" as const,
     category_id: d.categoryId,
+    category_source: d.categoryId === null ? null : (d.categorySource ?? null),
     subcategory_id:
       resolveSubcategoryId(d.merchantNormalized, d.categoryId, maps) ??
       proposedSubcategoryId(d, maps),
@@ -689,6 +742,8 @@ export async function commitImport(input: unknown): Promise<CommitResult> {
     }
     return { error: "Não foi possível gravar os lançamentos. Nada foi importado." };
   }
+
+  await regrasDoJevConfirmadas(supabase, houseId, user?.id ?? null, toImport, maps);
 
   revalidatePath("/inicio");
   revalidatePath("/extratos");
@@ -822,7 +877,10 @@ export async function reclassifyInvoice(
   // importacao - regra aprendida, loja conhecida, e so entao o Jev -, pelo
   // mesmo motor (`jevDecisions`), para a loja nao cair num lugar na
   // importacao e em outro na releitura.
-  const maps = await loadCategoryMaps(supabase, houseId);
+  const [maps, historico] = await Promise.all([
+    loadCategoryMaps(supabase, houseId),
+    loadMerchantHistory(supabase, houseId),
+  ]);
   const semCategoria = rows.filter((r) => r.category_id === null);
   const semSub = rows.filter(
     (r) => r.category_id !== null && r.subcategory_id === null && r.type === "expense",
@@ -838,6 +896,7 @@ export async function reclassifyInvoice(
           type: String(r.type),
         },
         maps,
+        historico,
       ),
     ]),
   );
@@ -858,7 +917,7 @@ export async function reclassifyInvoice(
         weak: resolvida !== undefined && (resolvida.source === null || resolvida.source === "banco"),
       };
     });
-  const jev = await jevDecisions(supabase, houseId, paraJev, maps);
+  const jev = await jevDecisions(supabase, houseId, paraJev, maps, historico);
   let byJev = 0;
 
   // Agrupa por categoria para gravar em algumas chamadas, e não uma por
@@ -873,7 +932,8 @@ export async function reclassifyInvoice(
     const subcategoryId =
       resolveSubcategoryId(merchant, categoryId, maps) ?? dec?.subcategoryId ?? null;
     if (dec?.categoryId || (dec?.subcategoryId && subcategoryId === dec.subcategoryId)) byJev += 1;
-    const key = `${categoryId}|${subcategoryId ?? ""}`;
+    const source = dec?.categoryId ? "jev" : (regra.get(row.id as string)?.source ?? "");
+    const key = `${categoryId}|${subcategoryId ?? ""}|${source}`;
     const list = idsByCategory.get(key) ?? [];
     list.push(row.id as string);
     idsByCategory.set(key, list);
@@ -881,10 +941,10 @@ export async function reclassifyInvoice(
 
   let updated = 0;
   for (const [key, ids] of idsByCategory) {
-    const [categoryId, sub] = key.split("|");
+    const [categoryId, sub, source] = key.split("|");
     const { error } = await supabase
       .from("transactions")
-      .update({ category_id: categoryId, subcategory_id: sub || null })
+      .update({ category_id: categoryId, subcategory_id: sub || null, category_source: source || null })
       // O `is null` continua no update: entre a leitura e a gravação alguém
       // pode ter categorizado a linha à mão, e ela tem prioridade.
       .in("id", ids)

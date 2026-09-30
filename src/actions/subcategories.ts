@@ -129,6 +129,8 @@ export async function acceptSubcategorySuggestion(
       pattern,
       category_id: categoryId,
       subcategory_id: subcategoryId,
+      // Regra da casa: passa por cima de regra do Jev.
+      confidence: 1,
       created_by: user?.id ?? null,
     })),
     { onConflict: "house_id,normalized_pattern" },

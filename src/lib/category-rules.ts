@@ -6,6 +6,7 @@ import {
   normalizeMerchant,
 } from "@/importers/detect";
 import type { createClient } from "@/lib/supabase/server";
+import { montarHistorico, type CategorySourceDb, type MerchantHistory } from "@/domain/merchant-history";
 
 /**
  * Em que categoria um estabelecimento cai, pelas regras da casa.
@@ -121,7 +122,7 @@ export async function loadCategoryMaps(
  * Uma função só, usada pela importação e pela reanálise, para as duas não
  * divergirem - foi assim que o total da fatura já saiu errado antes.
  */
-export type CategorySource = "regra" | "loja" | "banco" | "tipo";
+export type CategorySource = "regra" | "loja" | "historico" | "banco" | "tipo";
 
 export function resolveCategory(
   input: {
@@ -130,6 +131,11 @@ export function resolveCategory(
     type: string;
   },
   maps: CategoryMaps,
+  /**
+   * O historico da casa (`loadMerchantHistory`). Opcional: quem nao carrega
+   * (a sugestao ao digitar) decide como antes.
+   */
+  historico?: MerchantHistory,
 ): { id: string | null; source: CategorySource | null } {
   /** Nome canônico da tabela -> categoria da casa, mesmo renomeada. */
   const canonical = (name: string | null) =>
@@ -142,6 +148,10 @@ export function resolveCategory(
   if (fromRule) return { id: fromRule, source: "regra" };
   const fromMerchant = canonical(categoryFromMerchant(input.merchantNormalized));
   if (fromMerchant) return { id: fromMerchant, source: "loja" };
+  // A loja que a casa sempre pos no mesmo lugar vence a dica do banco e
+  // dispensa o Jev. A categoria tem de continuar ativa na casa.
+  const fromHistory = historico?.consistente.get(input.merchantNormalized);
+  if (fromHistory && maps.nameById.has(fromHistory)) return { id: fromHistory, source: "historico" };
   const fromHint = input.categoryHint
     ? (literal(input.categoryHint) ??
        canonical(categoryFromHint(input.categoryHint)))
@@ -180,4 +190,40 @@ export function resolveSubcategoryId(
   const rule = maps.ruleByPattern.get(merchantNormalized);
   if (!rule || rule.categoryId !== categoryId) return null;
   return rule.subcategoryId;
+}
+
+/**
+ * O historico da casa por loja (ver `domain/merchant-history.ts`).
+ *
+ * Paginado como `loadJevContext`: o PostgREST corta em 1.000 linhas, e a casa
+ * real passa disso. Falhar nao derruba nada - sem historico, a decisao volta
+ * a ser a de antes.
+ */
+const PAGINA_HISTORICO = 1000;
+const MAX_PAGINAS_HISTORICO = 10;
+
+export async function loadMerchantHistory(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  houseId: string,
+): Promise<MerchantHistory> {
+  const linhas: { merchant: string | null; categoryId: string | null; source: CategorySourceDb | null }[] = [];
+  for (let pagina = 0; pagina < MAX_PAGINAS_HISTORICO; pagina += 1) {
+    const { data, error } = await supabase
+      .from("transactions")
+      .select("merchant_normalized, category_id, category_source")
+      .eq("house_id", houseId)
+      .eq("type", "expense")
+      .order("id")
+      .range(pagina * PAGINA_HISTORICO, pagina * PAGINA_HISTORICO + PAGINA_HISTORICO - 1);
+    if (error || !data) break;
+    for (const t of data) {
+      linhas.push({
+        merchant: (t.merchant_normalized as string | null) ?? null,
+        categoryId: (t.category_id as string | null) ?? null,
+        source: (t.category_source as CategorySourceDb | null) ?? null,
+      });
+    }
+    if (data.length < PAGINA_HISTORICO) break;
+  }
+  return montarHistorico(linhas);
 }

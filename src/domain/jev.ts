@@ -160,6 +160,11 @@ export interface MerchantEvidence {
   weekdayShare: number;
   /** A categoria que o banco mandou no arquivo, se mandou. */
   bankHint: string | null;
+  /**
+   * O que a casa ja fez com esta loja, quando variou ("TSH 3 vezes, Casa 2").
+   * Pista forte: e a casa falando, nao o banco.
+   */
+  history?: string | null;
 }
 
 /**
@@ -185,6 +190,7 @@ export function merchantState(e: MerchantEvidence): string {
     // e ja chamou supermercado de "Associacao".
     linhas.push(`O banco classificou como "${e.bankHint}" (costuma errar).`);
   }
+  if (e.history) linhas.push(e.history);
   return linhas.join("\n");
 }
 
@@ -394,6 +400,8 @@ export interface ImportRowForJev {
   weak: boolean;
   /** Uma regra aprendida ja decide a subcategoria desta loja. */
   ruleDecidesSubcategory: boolean;
+  /** O historico da casa com esta loja, em texto (`historicoParaJev`). */
+  history?: string | null;
 }
 
 /**
@@ -434,6 +442,7 @@ export function importAsks(
         medianCents: medianCents(g.map((r) => r.amountCents)),
         weekdayShare: weekdayShare(g.map((r) => r.date)),
         bankHint: g.find((r) => r.categoryHint)?.categoryHint ?? null,
+        history: primeira.history ?? null,
       },
     });
   }

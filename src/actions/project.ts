@@ -467,6 +467,7 @@ export async function addPurchase(input: unknown): Promise<PurchaseResult> {
       house_id: houseId,
       project_purchase_id: compra.id,
       category_id: categoriaDoProjeto,
+      category_source: categoriaDoProjeto === null ? null : "casa",
       card_id: null,
       date: parsed.data.date,
       invoice_month: `${mes}-01`,

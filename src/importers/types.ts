@@ -81,6 +81,12 @@ export interface ReviewedDraft extends DraftTransaction {
   categoryName?: string | null;
   /** "jev" quando a categoria veio do palpite do Jev, e não de regra. */
   categoryVia?: "jev";
+  /**
+   * De onde veio a categoria (regra, loja, histórico, banco, tipo ou Jev).
+   * Vai gravada no lançamento: é o que separa, depois, o que a casa decidiu
+   * do que foi palpite.
+   */
+  categorySource?: "regra" | "loja" | "historico" | "banco" | "tipo" | "jev" | null;
   /** Certeza do Jev na categoria, 0 a 1. */
   jevProbability?: number;
   /** Subcategoria proposta na revisão; conferida de novo ao gravar. */

@@ -117,7 +117,7 @@ describe("reclassifyInvoice com o Jev", () => {
     vi.stubGlobal("fetch", jev());
     const r = await reclassifyInvoice(FATURA);
     const e = escritaDe("t-uber")!;
-    expect(e.payload).toEqual({ category_id: TRA, subcategory_id: UBER });
+    expect(e.payload).toEqual({ category_id: TRA, subcategory_id: UBER, category_source: "jev" });
     expect(e.filtros).toContainEqual(["is", "category_id", null]);
     expect(r).toMatchObject({ updated: 2, remaining: 0 });
   });
@@ -128,7 +128,7 @@ describe("reclassifyInvoice com o Jev", () => {
     await reclassifyInvoice(FATURA);
     const estados = fetch.mock.calls.map((c) => JSON.parse(String((c[1] as RequestInit).body)).state).join("\n");
     expect(estados).not.toMatch(/SUBITO RICE/);
-    expect(escritaDe("t-regra")!.payload).toEqual({ category_id: ALI, subcategory_id: TRAB });
+    expect(escritaDe("t-regra")!.payload).toEqual({ category_id: ALI, subcategory_id: TRAB, category_source: "regra" });
   });
 
   it("tem categoria e falta sub: preenche só a sub, com a categoria travada", async () => {
