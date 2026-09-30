@@ -59,7 +59,7 @@ function tabela(nome: string) {
     return { data: [], error: null };
   };
   const b: Record<string, unknown> = {};
-  for (const m of ["eq", "is", "in", "order", "range", "limit", "single", "maybeSingle"]) {
+  for (const m of ["eq", "is", "in", "gte", "lte", "order", "range", "limit", "single", "maybeSingle"]) {
     b[m] = () => b;
   }
   b.select = (c?: string) => {
