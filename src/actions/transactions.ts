@@ -22,6 +22,8 @@ function toRow(input: Parsed) {
     amount: input.amount,
     type: input.type,
     category_id: input.categoryId,
+    // Salvar o formulario e a casa decidindo a categoria que esta nele.
+    category_source: input.categoryId === null ? null : "casa",
     subcategory_id: input.subcategoryId,
     member_id: input.memberId === DOS_DOIS ? null : input.memberId,
     is_joint: input.memberId === DOS_DOIS,
@@ -109,6 +111,8 @@ async function learnCategoryRule(
       pattern: input.description,
       category_id: input.categoryId,
       subcategory_id: input.subcategoryId,
+      // 1 e a marca de regra da casa: passa por cima de regra do Jev.
+      confidence: 1,
       created_by: user?.id ?? null,
     },
     { onConflict: "house_id,normalized_pattern" },
@@ -229,7 +233,7 @@ export async function setTransactionCategory(
 
   const { data: updated, error } = await supabase
     .from("transactions")
-    .update({ category_id: parentId, subcategory_id: childId })
+    .update({ category_id: parentId, subcategory_id: childId, category_source: "casa" })
     .eq("id", parsed.data.transactionId)
     .select("description")
     .maybeSingle();

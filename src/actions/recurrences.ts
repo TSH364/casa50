@@ -334,6 +334,8 @@ export async function confirmRecurrencePayment(
     origin: "recurrence" as const,
     status: "confirmed" as const,
     category_id: (recorrencia.category_id as string | null) ?? null,
+    // A categoria vem do cadastro da conta fixa, feito pela casa.
+    category_source: recorrencia.category_id ? ("casa" as const) : null,
     visibility: "shared" as const,
     created_by: user?.id ?? null,
   });

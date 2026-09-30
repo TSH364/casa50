@@ -464,7 +464,7 @@ export async function applyProposal(input: unknown): Promise<ApplyProposalResult
     if (!(await categoriaOk(p.categoryId, p.subcategoryId))) return { error: "Categoria não encontrada." };
     const { data: marcados, error } = await supabase
       .from("transactions")
-      .update({ category_id: p.categoryId, subcategory_id: p.subcategoryId })
+      .update({ category_id: p.categoryId, subcategory_id: p.subcategoryId, category_source: "casa" })
       .eq("house_id", houseId)
       .in("id", p.transactionIds)
       .select("id");
@@ -481,6 +481,8 @@ export async function applyProposal(input: unknown): Promise<ApplyProposalResult
           pattern: p.learnMerchant,
           category_id: p.categoryId,
           subcategory_id: p.subcategoryId,
+          // Regra da casa: passa por cima de regra do Jev.
+          confidence: 1,
           created_by: user?.id ?? null,
         },
         { onConflict: "house_id,normalized_pattern" },
@@ -641,6 +643,7 @@ export async function applyProposal(input: unknown): Promise<ApplyProposalResult
     date: f.date,
     invoice_month: fromMonthKey(f.invoiceMonth),
     category_id: f.categoryId,
+    category_source: f.categoryId === null ? null : "casa",
     subcategory_id: f.subcategoryId,
     member_id: f.memberId,
     is_joint: f.isJoint,
