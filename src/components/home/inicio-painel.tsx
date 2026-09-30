@@ -1,8 +1,9 @@
 import Link from "next/link";
 import { listBudgets, listGoals, listRecurrences, listTransactions } from "@/data/queries";
-import { budgetProgress, summarizeMonth, totalsByCategory } from "@/domain/finance";
+import { budgetProgress, spendingCents, summarizeMonth, totalsByCategory } from "@/domain/finance";
 import { forecastMonths, goalProgress, reconcileRecurrences, recurrencesFor } from "@/domain/forecast";
 import { doriBarra, escolherAvisos, montarRamos } from "@/domain/home";
+import { ehProvisorio } from "@/domain/provisorios";
 import { addMonths, currentMonth, monthLabel } from "@/domain/month";
 import { formatCents, formatCentsCompact, toCents } from "@/lib/money";
 import { Skeleton } from "@/components/states";
@@ -101,6 +102,12 @@ export async function InicioPainel({
   const esperado = previsao && previsao.totalCents > 0 ? previsao.totalCents : null;
   const barra = doriBarra({ spentCents: resumo.spentCents, expectedCents: esperado, month, hasData, now: agora });
 
+  // O que entrou durante o mes e ainda espera a fatura: o numero do dia 15
+  // depende disso, e a casa precisa saber que ele ainda vai ser conferido.
+  const aguardandoCents = txs
+    .filter((t) => t.invoiceMonth === month && (cardId === null || t.cardId === cardId) && ehProvisorio(t))
+    .reduce((soma, t) => soma + Math.max(0, spendingCents(t)), 0);
+
   const byId = new Map(categories.map((c) => [c.id, c]));
   const totais = totalsByCategory(txs, month, { memberId, cardId });
   const porCategoria = new Map(totais.map((t) => [t.categoryId, t.totalCents]));
@@ -180,6 +187,11 @@ export async function InicioPainel({
           <p className="text-corpo text-ink-muted">
             de <span className="tabular font-medium text-ink">{formatCents(esperado)}</span> previstos.
             {barra.ritmo !== null ? " A setinha marca onde ela deveria estar hoje." : null}
+          </p>
+        ) : null}
+        {aguardandoCents > 0 ? (
+          <p className="text-legenda text-ink-faint">
+            Inclui <span className="tabular">{formatCents(aguardandoCents)}</span> lançados no mês, aguardando a fatura.
           </p>
         ) : null}
         <dl className="grid grid-cols-3 gap-2 border-t border-line pt-3.5">
