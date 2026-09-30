@@ -2,7 +2,8 @@
 
 /* ===========================================================================
    Fluxo - direcao visual
-   Dark mode como padrao, grafite e preto, tipografia limpa, acento indigo.
+   Grafite e preto no escuro, tipografia limpa, acento indigo. O tema padrao
+   e o claro (ver `lib/theme.ts`); os tokens abaixo sao os do escuro.
    Vermelho e reservado para excesso e erro - nunca e cor decorativa.
    =========================================================================== */
 
@@ -100,8 +101,8 @@
 /* ===========================================================================
    Tema claro.
 
-   O escuro continua o padrao: e o que esta em `@theme` acima. O claro so
-   redefine os tokens, entao nenhum componente sabe que tema e - quem pinta
+   O claro e o padrao do app, mas os tokens de base sao os do escuro, em
+   `@theme` acima. O claro so redefine os tokens, entao nenhum componente sabe que tema e - quem pinta
    com `bg-surface` e `text-ink` ja funciona nos dois.
 
    Escolha por aparelho (`data-theme` no <html>, vindo de um cookie; ver

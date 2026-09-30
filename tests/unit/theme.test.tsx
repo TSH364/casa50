@@ -6,7 +6,7 @@ import { nextTheme, parseTheme, themeAttribute } from "@/lib/theme";
 /**
  * O tema.
  *
- * O que guarda: o padrao continua escuro (ninguem abre o app mudado); cookie
+ * O que guarda: o padrao e o claro, e o escuro e opcao; cookie
  * estranho nao vira tema; o botao troca na hora e grava a escolha; e o CSS
  * claro redefine TODOS os tokens de cor do escuro - um esquecido ficaria
  * escuro no meio da tela clara.
@@ -17,17 +17,17 @@ vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh }) }));
 vi.mock("sonner", () => ({ toast: vi.fn() }));
 
 describe("preferência", () => {
-  it("sem cookie, ou com lixo, é escuro", () => {
-    expect(parseTheme(undefined)).toBe("escuro");
-    expect(parseTheme("roxo")).toBe("escuro");
-    expect(parseTheme("claro")).toBe("claro");
+  it("sem cookie, ou com lixo, é claro; quem escolheu o escuro continua nele", () => {
+    expect(parseTheme(undefined)).toBe("claro");
+    expect(parseTheme("roxo")).toBe("claro");
+    expect(parseTheme("escuro")).toBe("escuro");
   });
 
   it("o ciclo passa pelos três e volta", () => {
-    expect([nextTheme("escuro"), nextTheme("claro"), nextTheme("sistema")]).toEqual([
-      "claro",
-      "sistema",
+    expect([nextTheme("claro"), nextTheme("escuro"), nextTheme("sistema")]).toEqual([
       "escuro",
+      "sistema",
+      "claro",
     ]);
     expect(themeAttribute("sistema")).toBe("system");
   });
@@ -36,11 +36,11 @@ describe("preferência", () => {
 describe("ThemeToggle", () => {
   it("troca o <html> na hora, grava o cookie e diz o que fez", async () => {
     const { ThemeToggle } = await import("@/components/theme-toggle");
-    render(<ThemeToggle initial="escuro" />);
-    fireEvent.click(screen.getByRole("button", { name: /Tema escuro/ }));
-    expect(document.documentElement.dataset.theme).toBe("light");
-    expect(document.cookie).toContain("fluxo-tema=claro");
-    expect(screen.getByRole("button", { name: /Tema claro\. Tocar muda para seguir o celular/ })).toBeTruthy();
+    render(<ThemeToggle initial="claro" />);
+    fireEvent.click(screen.getByRole("button", { name: /Tema claro/ }));
+    expect(document.documentElement.dataset.theme).toBe("dark");
+    expect(document.cookie).toContain("fluxo-tema=escuro");
+    expect(screen.getByRole("button", { name: /Tema escuro\. Tocar muda para seguir o celular/ })).toBeTruthy();
     expect(refresh).toHaveBeenCalled();
   });
 });

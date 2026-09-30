@@ -15,7 +15,7 @@ import {
 /**
  * O botao do tema, na barra de cima de toda tela.
  *
- * Um toque passa para o proximo: escuro -> claro -> seguir o celular. O
+ * Um toque passa para o proximo: claro -> escuro -> seguir o celular. O
  * icone mostra o tema ATUAL, e o nome dele vai no rotulo acessivel e no aviso
  * - tres estados num botao so precisam dizer onde se esta.
  *
