@@ -10,7 +10,7 @@ import { createClient, getCurrentUser } from "@/lib/supabase/server";
  * conversa. A falha vai para o log e a tela fica com um numero a menos.
  */
 
-export type AiFeature = "orcamento" | "jev" | "conversa_gratuita" | "conversa_paga" | "insights" | "pesquisa";
+export type AiFeature = "orcamento" | "jev" | "conversa_gratuita" | "conversa_paga" | "insights" | "pesquisa" | "voz";
 
 export async function recordAiUsage(
   houseId: string,

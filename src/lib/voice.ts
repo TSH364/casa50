@@ -151,42 +151,176 @@ export function speakable(text: string): string {
     .slice(0, 900);
 }
 
-/** Ler em voz alta, em portugues do Brasil. */
+/**
+ * Pedacos para falar: a primeira frase sozinha (e o audio dela que chega
+ * primeiro e comeca a tocar), o resto em blocos de ate ~280 caracteres.
+ */
+export function speechChunks(text: string): string[] {
+  const frases = text.split(/(?<=[.!?…])\s+/).map((f) => f.trim()).filter(Boolean);
+  if (frases.length === 0) return [];
+  let primeira = frases.shift()!;
+  // Frase curta demais ("Pronto.") sozinha soa picotada: junta com a proxima.
+  while (primeira.length < 25 && frases.length > 0) primeira = `${primeira} ${frases.shift()!}`;
+  const blocos = [primeira];
+  let atual = "";
+  for (const f of frases) {
+    if (atual && atual.length + f.length + 1 > 280) {
+      blocos.push(atual);
+      atual = f;
+    } else atual = atual ? `${atual} ${f}` : f;
+  }
+  if (atual) blocos.push(atual);
+  return blocos.map((b) => b.slice(0, 600));
+}
+
+/** A voz do navegador mais natural que houver em pt-BR (as "Google"/"Natural" soam menos robo). */
+function melhorVoz(vozes: SpeechSynthesisVoice[]): SpeechSynthesisVoice | undefined {
+  const pt = vozes.filter((v) => v.lang.toLowerCase().replace("_", "-").startsWith("pt-br"));
+  const boas = /google|natural|neural|online|premium|enhanced|francisca|thalita|luciana/i;
+  return pt.find((v) => boas.test(v.name)) ?? pt[0] ?? vozes.find((v) => v.lang.toLowerCase().startsWith("pt"));
+}
+
+/**
+ * A voz neural falhou uma vez nesta pagina (sem chave, rota recusou, rede):
+ * nao tenta de novo a cada frase - cada tentativa seria uma espera a mais
+ * antes de falar.
+ */
+let neuralDesligada = false;
+
+/** Rejeita se a promessa nao resolver no prazo - sem deixar o relogio vivo. */
+function comPrazo<T>(p: Promise<T>, ms: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const t = setTimeout(() => reject(new Error("lenta")), ms);
+    p.then(
+      (v) => {
+        clearTimeout(t);
+        resolve(v);
+      },
+      (e) => {
+        clearTimeout(t);
+        reject(e);
+      },
+    );
+  });
+}
+
+async function audioDe(texto: string, sinal: AbortSignal): Promise<Blob> {
+  const r = await fetch("/api/voz", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text: texto }),
+    signal: sinal,
+  });
+  const tipo = r.headers.get("content-type") ?? "";
+  if (!r.ok || !tipo.startsWith("audio/")) throw new Error("voz indisponivel");
+  return r.blob();
+}
+
+/**
+ * Ler em voz alta, em portugues do Brasil.
+ *
+ * Primeiro a voz neural (rota /api/voz, pelo OpenRouter): os pedacos sao
+ * pedidos todos de uma vez e tocados em ordem - a primeira frase comeca a
+ * tocar enquanto o resto ainda esta sendo gerado. Se a voz neural nao
+ * responder a tempo (4 s) ou falhar, a fala segue na voz do navegador,
+ * escolhendo a mais natural que o aparelho tiver.
+ */
 export function useSpeech() {
   const [supported, setSupported] = useState(false);
   const [speaking, setSpeaking] = useState(false);
+  const atual = useRef<{ cancelar: () => void } | null>(null);
 
-  useEffect(() => setSupported(typeof window !== "undefined" && "speechSynthesis" in window), []);
-  useEffect(() => () => {
-    if (typeof window !== "undefined" && "speechSynthesis" in window) window.speechSynthesis.cancel();
-  }, []);
+  useEffect(() => setSupported(typeof window !== "undefined" && ("speechSynthesis" in window || "Audio" in window)), []);
+  useEffect(
+    () => () => {
+      atual.current?.cancelar();
+      if (typeof window !== "undefined" && "speechSynthesis" in window) window.speechSynthesis.cancel();
+    },
+    [],
+  );
 
-  /** Fala e resolve quando termina (ou e interrompida) - o modo conversa espera. */
-  const speak = useCallback((text: string): Promise<void> => {
-    if (typeof window === "undefined" || !("speechSynthesis" in window)) return Promise.resolve();
+  const pelaVozDoNavegador = useCallback((texto: string, cancelado: () => boolean): Promise<void> => {
+    if (typeof window === "undefined" || !("speechSynthesis" in window) || cancelado()) return Promise.resolve();
     const s = window.speechSynthesis;
     s.cancel();
-    const falar = speakable(text);
-    if (!falar) return Promise.resolve();
     return new Promise((resolve) => {
-      const u = new SpeechSynthesisUtterance(falar);
+      const u = new SpeechSynthesisUtterance(texto);
       u.lang = "pt-BR";
-      const vozes = s.getVoices();
-      const voz = vozes.find((v) => v.lang.toLowerCase().startsWith("pt-br")) ?? vozes.find((v) => v.lang.toLowerCase().startsWith("pt"));
+      u.rate = 1.05;
+      const voz = melhorVoz(s.getVoices());
       if (voz) u.voice = voz;
-      const fim = () => {
-        setSpeaking(false);
-        resolve();
-      };
-      u.onend = fim;
-      u.onerror = fim;
-      setSpeaking(true);
+      u.onend = () => resolve();
+      u.onerror = () => resolve();
       s.speak(u);
     });
   }, []);
 
+  /** Fala e resolve quando termina (ou e interrompida) - o modo conversa espera. */
+  const speak = useCallback(
+    async (text: string): Promise<void> => {
+      atual.current?.cancelar();
+      const falar = speakable(text);
+      if (!falar || typeof window === "undefined") return;
+
+      let cancelado = false;
+      let tocando: HTMLAudioElement | null = null;
+      let acordar: (() => void) | null = null;
+      const controle = new AbortController();
+      atual.current = {
+        cancelar: () => {
+          cancelado = true;
+          controle.abort();
+          tocando?.pause();
+          if ("speechSynthesis" in window) window.speechSynthesis.cancel();
+          acordar?.();
+        },
+      };
+      setSpeaking(true);
+      try {
+        const pedacos = speechChunks(falar);
+        let feitos = 0;
+        if (!neuralDesligada && "Audio" in window) {
+          // Todos pedidos juntos; cada um toca quando o anterior acaba.
+          const audios = pedacos.map((p) => audioDe(p, controle.signal));
+          audios.forEach((a) => a.catch(() => {}));
+          try {
+            for (let i = 0; i < audios.length; i += 1) {
+              const blob = i === 0 ? await comPrazo(audios[0]!, 4_000) : await audios[i]!;
+              if (cancelado) return;
+              const url = URL.createObjectURL(blob);
+              try {
+                tocando = new Audio(url);
+                await new Promise<void>((resolve, reject) => {
+                  acordar = resolve;
+                  tocando!.onended = () => resolve();
+                  tocando!.onerror = () => reject(new Error("audio"));
+                  tocando!.play().catch(reject);
+                });
+              } finally {
+                URL.revokeObjectURL(url);
+              }
+              feitos += 1;
+            }
+            return;
+          } catch {
+            if (cancelado) return;
+            // Falhou antes de tocar qualquer pedaco: desliga para as proximas.
+            if (feitos === 0) neuralDesligada = true;
+            controle.abort();
+          }
+        }
+        // O que faltou falar, pela voz do navegador.
+        await pelaVozDoNavegador(pedacos.slice(feitos).join(" "), () => cancelado);
+      } finally {
+        setSpeaking(false);
+      }
+    },
+    [pelaVozDoNavegador],
+  );
+
   const stop = useCallback(() => {
-    if (typeof window !== "undefined" && "speechSynthesis" in window) window.speechSynthesis.cancel();
+    atual.current?.cancelar();
+    atual.current = null;
     setSpeaking(false);
   }, []);
 

@@ -652,3 +652,47 @@ function lerEscolha(bruto: unknown, pergunta: ChoiceQuestion): ChoiceAnswer | nu
 function talvez(bruto: unknown): number | null {
   return typeof bruto === "number" && Number.isFinite(bruto) && bruto >= 0 ? bruto : null;
 }
+
+// ---------------------------------------------------------------------------
+// Voz (texto para fala)
+// ---------------------------------------------------------------------------
+
+const SPEECH_ENDPOINT = "https://openrouter.ai/api/v1/audio/speech";
+
+/**
+ * Texto -> audio, pelo endpoint de fala do OpenRouter (compativel com o da
+ * OpenAI). Devolve os bytes do audio e o tipo; erro vira `OpenRouterError`,
+ * e quem chama volta para a voz do navegador.
+ */
+export async function textToSpeech(
+  text: string,
+  options: { apiKey: string; model: string; voice: string; timeoutMs?: number; fetchImpl?: typeof fetch },
+): Promise<{ audio: ArrayBuffer; contentType: string }> {
+  const fetchImpl = options.fetchImpl ?? fetch;
+  const controle = new AbortController();
+  const relogio = setTimeout(() => controle.abort(), options.timeoutMs ?? 15_000);
+  try {
+    const r = await fetchImpl(SPEECH_ENDPOINT, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${options.apiKey}`,
+        "Content-Type": "application/json",
+        "HTTP-Referer": process.env.NEXT_PUBLIC_SITE_URL || "https://fluxo.app",
+        "X-Title": "Fluxo",
+      },
+      body: JSON.stringify({ model: options.model, input: text, voice: options.voice, response_format: "mp3" }),
+      signal: controle.signal,
+    });
+    if (!r.ok) {
+      const corpo = await r.text().catch(() => "");
+      console.error("[openrouter] voz falhou", { status: r.status, modelo: options.model, corpo: corpo.slice(0, 200) });
+      throw new OpenRouterError("A voz não respondeu.", r.status);
+    }
+    return { audio: await r.arrayBuffer(), contentType: r.headers.get("content-type") || "audio/mpeg" };
+  } catch (e) {
+    if (e instanceof OpenRouterError) throw e;
+    throw new OpenRouterError("A voz não respondeu.", 0);
+  } finally {
+    clearTimeout(relogio);
+  }
+}

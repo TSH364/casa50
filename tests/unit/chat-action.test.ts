@@ -57,10 +57,10 @@ vi.mock("@/actions/shared", () => ({
   },
 }));
 vi.mock("@/lib/ai-config", () => ({ getAiKey: async () => estado.chave }));
-const gastos: { feature: string; calls: number; costUsd: number }[] = [];
+const gastos: { feature: string; calls: number; costUsd: number; details?: unknown }[] = [];
 vi.mock("@/lib/ai-usage", () => ({
-  recordAiUsage: async (_h: string, feature: string, u: { calls: number; costUsd: number }) => {
-    if (u.calls > 0) gastos.push({ feature, calls: u.calls, costUsd: u.costUsd });
+  recordAiUsage: async (_h: string, feature: string, u: { calls: number; costUsd: number; details?: unknown }) => {
+    if (u.calls > 0) gastos.push({ feature, calls: u.calls, costUsd: u.costUsd, details: u.details });
   },
 }));
 vi.mock("next/cache", () => ({ revalidatePath: () => {} }));
@@ -331,7 +331,7 @@ describe("askHouse — gasto anotado", () => {
   it("uma consulta e a resposta: o Jev da rota e duas rodadas no gratuito", async () => {
     estado.roteiro = [pede("resumo_do_mes", {}), responde("ok")];
     await askHouse({ messages: [{ role: "user", content: "Quanto gastamos?" }] });
-    expect(gastos).toEqual([
+    expect(gastos.map(({ details: _d, ...g }) => g)).toEqual([
       { feature: "jev", calls: 1, costUsd: 0 },
       { feature: "conversa_gratuita", calls: 2, costUsd: 0.003 },
     ]);
@@ -349,3 +349,47 @@ describe("askHouse — gasto anotado", () => {
   });
 });
 
+
+describe("mais rápido", () => {
+  beforeEach(() => {
+    estado.casa = true;
+    estado.chave = "sk-or-da-casa";
+    estado.roteiro = [];
+    estado.chamadas = [];
+    estado.rota = { choice: "simples", p: 0.9 };
+    estado.gratuitoFalha = null;
+    estado.estados = [];
+    gastos.length = 0;
+  });
+
+  it("pela voz: não pergunta ao Jev, vai direto ao pago, com resposta curta; os tempos vão no registro", async () => {
+    estado.roteiro = [responde("Setembro está em R$ 320,00.")];
+    const r = await askHouse({ ...PERGUNTA, modo: "voz" });
+    expect(r).toMatchObject({ answer: "Setembro está em R$ 320,00.", tier: "pago", route: "voz" });
+    expect(estado.estados).toEqual([]);
+    expect(estado.chamadas[0]!.options).toMatchObject({ model: "google/gemini-3.6-flash", maxTokens: 400 });
+    const conversa = gastos.find((g) => g.feature === "conversa_paga")!;
+    expect(conversa.details).toMatchObject({ modo: "voz", ms: { contexto: expect.any(Number), total: expect.any(Number) } });
+  });
+
+  it("ferramentas da mesma rodada rodam juntas, e voltam na ordem pedida", async () => {
+    estado.roteiro = [
+      {
+        content: null,
+        toolCalls: [
+          { id: "a", type: "function", function: { name: "resumo_do_mes", arguments: "{}" } },
+          { id: "b", type: "function", function: { name: "parcelas_futuras", arguments: "{}" } },
+        ],
+        servedBy: "m",
+        costUsd: 0,
+      },
+      responde("ok"),
+    ];
+    await askHouse(PERGUNTA);
+    const segunda = estado.chamadas[1]!.messages;
+    const tools = segunda.filter((m) => m.role === "tool") as { tool_call_id: string }[];
+    expect(tools.map((t) => t.tool_call_id)).toEqual(["a", "b"]);
+    const detalhes = gastos.find((g) => g.feature.startsWith("conversa"))!.details as { ms: { rodadas: { nomes?: string[] }[] } };
+    expect(detalhes.ms.rodadas[0]!.nomes).toEqual(["resumo_do_mes", "parcelas_futuras"]);
+  });
+});

@@ -23,7 +23,7 @@ export type Tier = "gratuito" | "pago";
 export interface Route {
   tier: Tier;
   /** Por que: o Jev decidiu, o piso de acao obrigou, ou o Jev nao respondeu. */
-  reason: "jev" | "acao" | "sem-jev";
+  reason: "jev" | "acao" | "sem-jev" | "voz";
   /** Certeza do Jev em "simples", quando ele respondeu. */
   probability?: number;
 }

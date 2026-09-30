@@ -122,6 +122,28 @@ export async function askHouse(input: z.input<typeof schema>): Promise<ChatReply
     };
   }
 
+  const t0 = Date.now();
+  const tempos: Record<string, number> = {};
+  const modo = parsed.data.modo ?? "texto";
+  const historico = trimHistory(parsed.data.messages);
+  const pergunta = historico[historico.length - 1]!.content;
+  const anterior = historico.length >= 2 ? historico[historico.length - 2]!.content : null;
+
+  // O Jev decide a rota - EM PARALELO com a leitura do banco, que nao depende
+  // dele. Pela voz nem pergunta: quem fala espera a resposta em silencio, e o
+  // pago rapido responde antes do que o Jev leva para decidir.
+  const jevPromessa =
+    modo === "voz"
+      ? Promise.resolve(null)
+      : runJev(
+          [{ key: "rota", state: routeState(pergunta, anterior), questions: { complexidade: ROUTE_QUESTION } }],
+          { apiKey, maxJobs: 1, deadlineMs: 6_000 },
+        )
+          .catch(() => null)
+          .finally(() => {
+            tempos.jev = Date.now() - t0;
+          });
+
   const today = currentMonth();
   const [{ active }, members, view, months] = await Promise.all([
     getActiveHouse(),
@@ -148,6 +170,7 @@ export async function askHouse(input: z.input<typeof schema>): Promise<ChatReply
   // futuro (meses futuros so tem parcela, e resumir isso engana).
   const mesDoRetrato = months.find((m) => m <= today) ?? today;
   const snapshot = await snapshotFor(ctx, mesDoRetrato);
+  tempos.contexto = Date.now() - t0;
 
   const system = buildSystemPrompt({
     houseName: active?.name ?? "a casa",
@@ -166,21 +189,14 @@ export async function askHouse(input: z.input<typeof schema>): Promise<ChatReply
     // nao mandar.
     monthsWithData: months,
     snapshot,
-    mode: parsed.data.modo ?? "texto",
+    mode: modo,
   });
 
-  const historico = trimHistory(parsed.data.messages);
-  const pergunta = historico[historico.length - 1]!.content;
-  const anterior = historico.length >= 2 ? historico[historico.length - 2]!.content : null;
-
-  // O Jev decide a rota. Uma chamada curta (so a pergunta), com prazo curto:
-  // se ele nao responder a tempo, a pergunta vai ao pago e a conversa segue.
-  const jev = await runJev(
-    [{ key: "rota", state: routeState(pergunta, anterior), questions: { complexidade: ROUTE_QUESTION } }],
-    { apiKey, maxJobs: 1, deadlineMs: 6_000 },
-  ).catch(() => null);
+  const jev = await jevPromessa;
   if (jev) await recordAiUsage(houseId, "jev", { calls: jev.calls, costUsd: jev.costUsd, model: JEV_MODEL });
-  const route = decideRoute(pergunta, jev?.answers.get("rota")?.complexidade ?? null);
+  const route: Route =
+    modo === "voz" ? { tier: "pago", reason: "voz" } : decideRoute(pergunta, jev?.answers.get("rota")?.complexidade ?? null);
+  tempos.antesDoModelo = Date.now() - t0;
 
   const modelos: Record<Tier, { model: string; allowDataCollection: boolean }> = {
     // O gratuito aceita provedor que guarda: sem isso, nenhum gratuito atende.
@@ -193,11 +209,25 @@ export async function askHouse(input: z.input<typeof schema>): Promise<ChatReply
   // O gasto de cada tentativa e anotado mesmo quando ela falha no meio: as
   // chamadas feitas ate ali ja contaram na cota e no credito.
   const conversar = async (tier: Tier) => {
-    const gasto: Gasto = { calls: 0, costUsd: 0, model: null };
+    const gasto: Gasto = { calls: 0, costUsd: 0, model: null, rodadas: [] };
     try {
-      return await runConversation(ctx, apiKey, system, historico, modelos[tier], PRAZO_MS - (Date.now() - inicio), gasto);
+      return await runConversation(
+        ctx,
+        apiKey,
+        system,
+        historico,
+        modelos[tier],
+        PRAZO_MS - (Date.now() - inicio),
+        gasto,
+        modo === "voz" ? 400 : undefined,
+      );
     } finally {
-      await recordAiUsage(houseId, tier === "pago" ? "conversa_paga" : "conversa_gratuita", gasto);
+      // Os tempos de cada etapa vao junto com o gasto: e onde se descobre,
+      // com uso real, o que deixa a resposta lenta. So milissegundos.
+      await recordAiUsage(houseId, tier === "pago" ? "conversa_paga" : "conversa_gratuita", {
+        ...gasto,
+        details: { modo, ms: { ...tempos, rodadas: gasto.rodadas, total: Date.now() - t0 } },
+      });
     }
   };
 
@@ -244,6 +274,8 @@ interface Gasto {
   calls: number;
   costUsd: number;
   model: string | null;
+  /** Por rodada: ms do modelo e ms das ferramentas pedidas. */
+  rodadas: { modelo: number; ferramentas?: number; nomes?: string[] }[];
 }
 
 async function runConversation(
@@ -254,6 +286,7 @@ async function runConversation(
   alvo: { model: string; allowDataCollection: boolean },
   prazoMs: number,
   gasto: Gasto,
+  maxTokens?: number,
 ): Promise<ChatReply> {
   const conversa: TurnMessage[] = [{ role: "system", content: system }, ...historico];
   const consultadas = new Set<ToolName>();
@@ -270,13 +303,17 @@ async function runConversation(
 
     gasto.calls += 1;
     gasto.model ??= alvo.model;
+    const t = Date.now();
     const turn = await chatTurn(conversa, {
       apiKey,
       model: alvo.model,
       tools: ultima ? [] : TOOL_DEFINITIONS,
       allowDataCollection: alvo.allowDataCollection,
       timeoutMs: Math.min(25_000, resta),
+      maxTokens,
     });
+    const medida: Gasto["rodadas"][number] = { modelo: Date.now() - t };
+    gasto.rodadas.push(medida);
     gasto.costUsd += turn.costUsd;
     if (turn.servedBy) gasto.model = turn.servedBy;
 
@@ -294,11 +331,17 @@ async function runConversation(
 
     const chamadas = turn.toolCalls.slice(0, MAX_CALLS_PER_ROUND);
     conversa.push({ role: "assistant", content: turn.content, tool_calls: chamadas });
-    for (const c of chamadas) {
-      const r = await runTool(ctx, c.function.name, c.function.arguments);
+    // As ferramentas de uma rodada rodam juntas: cada uma e uma leitura do
+    // banco, e em fila o tempo delas somava.
+    const tf = Date.now();
+    const resultados = await Promise.all(chamadas.map((c) => runTool(ctx, c.function.name, c.function.arguments)));
+    medida.ferramentas = Date.now() - tf;
+    medida.nomes = chamadas.map((c) => c.function.name);
+    chamadas.forEach((c, i) => {
+      const r = resultados[i]!;
       if (r.tool) consultadas.add(r.tool);
       conversa.push({ role: "tool", tool_call_id: c.id, content: r.output });
-    }
+    });
   }
   return { error: "A IA não chegou a uma resposta. Tente perguntar de um jeito mais direto." };
 }
