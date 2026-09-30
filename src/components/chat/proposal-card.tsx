@@ -6,6 +6,7 @@ import { applyProposal } from "@/actions/chat";
 import type { Proposal } from "@/domain/chat";
 import { Button } from "@/components/ui/button";
 import { formatCents } from "@/lib/money";
+import { descrever, proposalDoneNote, proposalPayload, proposalTitle } from "./proposal-apply";
 
 /**
  * Uma mudanca que a IA propos, esperando o toque (secao 16).
@@ -38,40 +39,17 @@ export function ProposalCard({
   function confirmar() {
     setErro(null);
     startTransition(async () => {
-      const r =
-        proposal.kind === "classificar"
-          ? await applyProposal({
-              kind: "classificar",
-              transactionIds: proposal.transactionIds,
-              categoryId: proposal.categoryId,
-              subcategoryId: proposal.subcategoryId,
-              learnMerchant: proposal.learnMerchant,
-              learn: aprender,
-            })
-          : proposal.kind === "lancar"
-            ? await applyProposal({ kind: "lancar", fields: proposal.fields })
-            : await applyProposal({ kind: "tarefa", fields: proposal.fields });
+      const r = await applyProposal(proposalPayload(proposal, aprender));
       if (r.error) {
         setErro(r.error);
         return;
       }
-      onResolve(
-        "feito",
-        proposal.kind === "classificar"
-          ? `${r.count ?? 0} lançamento(s) classificados em ${proposal.summary.categoryLabel}.`
-          : proposal.kind === "lancar"
-            ? `Lançado: ${proposal.fields.description}, ${formatCents(proposal.fields.amountCents)}.`
-            : `Tarefa criada: ${proposal.fields.title}.`,
-      );
+      onResolve("feito", proposalDoneNote(proposal, r.count));
     });
   }
 
-  const titulo =
-    proposal.kind === "classificar"
-      ? `Classificar ${proposal.summary.count} lançamento(s) em ${proposal.summary.categoryLabel}`
-      : proposal.kind === "lancar"
-        ? `Lançar ${proposal.fields.description}`
-        : `Nova tarefa: ${proposal.fields.title}`;
+  const simples = proposal.kind === "classificar" || proposal.kind === "lancar" ? null : descrever(proposal);
+  const titulo = proposalTitle(proposal);
 
   return (
     <div className="mt-2 rounded-xl border border-line bg-surface px-3 py-2.5 text-[13px] text-ink">
@@ -102,19 +80,21 @@ export function ProposalCard({
             </label>
           ) : null}
         </>
-      ) : proposal.kind === "tarefa" ? (
-        <p className="tabular break-words text-[12px] text-ink-muted">
-          {proposal.fields.expectedCents !== null ? `Previsto ${formatCents(proposal.fields.expectedCents)} · ` : ""}
-          na primeira coluna do quadro de Tarefas
-          {proposal.fields.notes ? ` · ${proposal.fields.notes}` : ""}
-        </p>
-      ) : (
+      ) : simples ? (
+        <>
+          {simples.linhas.filter(Boolean).map((l, i) => (
+            <p key={i} className="tabular break-words text-[12px] text-ink-muted">
+              {l}
+            </p>
+          ))}
+        </>
+      ) : proposal.kind === "lancar" ? (
         <p className="tabular text-[12px] text-ink-muted">
           {formatCents(proposal.fields.amountCents)} · {dia(proposal.fields.date)}
           {proposal.summary.categoryLabel ? ` · ${proposal.summary.categoryLabel}` : " · sem categoria"}
           {proposal.summary.personLabel ? ` · ${proposal.summary.personLabel}` : ""}
         </p>
-      )}
+      ) : null}
 
       {erro ? <p className="mt-1 text-[12px] text-danger">{erro}</p> : null}
 

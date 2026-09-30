@@ -1,5 +1,6 @@
 import "server-only";
 import {
+  getTaskBoard,
   listBudgets,
   listGoals,
   listProjectItems,
@@ -41,6 +42,7 @@ import { recordAiUsage } from "@/lib/ai-usage";
 import { DEFAULT_CHAT_PAID_MODEL } from "@/domain/ai-models";
 import { normalizeMerchant } from "@/importers/detect";
 import { formatCents, toCents } from "@/lib/money";
+import { DOS_DOIS } from "@/domain/schemas";
 import type { Category, MonthKey, Transaction } from "@/domain/types";
 import type { MemberSummary } from "@/lib/houses";
 
@@ -761,6 +763,192 @@ function proporTarefa(ctx: ToolContext, a: { titulo: string; valor_previsto?: nu
   return `Proposta criada: tarefa "${a.titulo}"${expectedCents ? `, previsto ${R(expectedCents)}` : ""}. Peça para confirmar no cartão.`;
 }
 
+// ---------------------------------------------------------------------------
+// Metas, orcamentos, contas fixas, tarefas
+// ---------------------------------------------------------------------------
+
+/** "os dois", um primeiro nome, ou "ninguem" - o mesmo jeito de dizer em todo lugar. */
+function resolverPessoa(
+  ctx: ToolContext,
+  pessoa: string | undefined,
+): { who: string; label: string } | string | null {
+  if (!pessoa) return null;
+  const p = pessoa.trim();
+  if (/^(ningu[eé]m|nenhum[a]?|sem pessoa)$/i.test(p)) return { who: "", label: "ninguém" };
+  if (/^(os dois|os 2|ambos|todos|nos dois|n[oó]s)$/i.test(p)) {
+    if (ctx.members.length < 2) return "A casa tem uma pessoa só.";
+    return { who: DOS_DOIS, label: ctx.members.length === 2 ? "os dois" : "todos" };
+  }
+  const m = findMember(p, ctx.members);
+  if (!m) return `Não achei a pessoa "${pessoa}". Pessoas: ${ctx.members.map((x) => firstName(x.fullName)).join(", ")}.`;
+  return { who: m.userId, label: firstName(m.fullName) };
+}
+
+function proporMeta(
+  ctx: ToolContext,
+  a: { nome: string; valor_alvo: number; prazo?: string; guardar_por_mes?: number; pessoa?: string },
+): string {
+  if (a.prazo && a.prazo <= ctx.todayIso) return `O prazo ${a.prazo} já passou.`;
+  const p = resolverPessoa(ctx, a.pessoa);
+  if (typeof p === "string") return p;
+  if (p && p.who === DOS_DOIS) return "Meta é da casa ou de uma pessoa: para os dois, deixe sem pessoa.";
+  ctx.proposals.push({
+    kind: "meta",
+    id: novoId(),
+    fields: {
+      name: a.nome,
+      targetCents: toCents(a.valor_alvo),
+      targetDate: a.prazo ?? null,
+      monthlyCents: a.guardar_por_mes ? toCents(a.guardar_por_mes) : null,
+      ownerId: p && p.who ? p.who : null,
+    },
+    summary: { ownerLabel: p && p.who ? p.label : null },
+  });
+  return `Proposta criada: meta "${a.nome}" de ${R(toCents(a.valor_alvo))}${a.prazo ? ` até ${a.prazo}` : ""}. Peça para confirmar no cartão.`;
+}
+
+async function proporOrcamento(ctx: ToolContext, a: { categoria: string; valor: number; mes?: string }): Promise<string> {
+  const r = resolveRange({ mes: a.mes }, ctx.today);
+  if ("error" in r) return r.error;
+  const mes = r.range.to;
+  const c = findCategory(a.categoria, ctx.categories);
+  if (!c) return `Não achei a categoria "${a.categoria}".`;
+  if (c.parentId !== null) {
+    const mae = ctx.categories.find((x) => x.id === c.parentId);
+    return `Orçamento é por categoria principal: "${c.name}" é subcategoria de ${mae?.name ?? "outra"}. Proponha para ${mae?.name ?? "a principal"}.`;
+  }
+  const [budgets, txs] = await Promise.all([
+    listBudgets(ctx.houseId, mes),
+    listTransactions(ctx.houseId, {
+      fromMonth: addMonths(mes, -3),
+      toMonth: addMonths(mes, -1),
+      excludeCategoryIds: ctx.excludeCategoryIds,
+      limit: 5000,
+    }),
+  ]);
+  const atual = budgets.find((b) => b.categoryId === c.id);
+  const meses = monthRange(addMonths(mes, -3), addMonths(mes, -1)).filter((m) => txs.some((t) => t.invoiceMonth === m));
+  const media =
+    meses.length > 0
+      ? Math.round(meses.reduce((s, m) => s + (totalsByCategory(txs, m).find((x) => x.categoryId === c.id)?.totalCents ?? 0), 0) / meses.length)
+      : null;
+  const limitCents = toCents(a.valor);
+  if (limitCents === 0 && !atual) return `${c.name} não tem orçamento em ${monthLabel(mes)}: não há o que remover.`;
+  ctx.proposals.push({
+    kind: "orcamento",
+    id: novoId(),
+    fields: { categoryId: c.id, month: mes, limitCents },
+    summary: { categoryLabel: c.name, currentCents: atual ? toCents(atual.limitAmount) : null, averageCents: media },
+  });
+  return [
+    `Proposta criada: orçamento de ${c.name} em ${monthLabel(mes)} ${limitCents === 0 ? "removido" : `de ${R(limitCents)}`}.`,
+    atual ? `Limite atual: ${R(toCents(atual.limitAmount))}.` : "Hoje não há limite.",
+    media !== null ? `Gasto médio dos ${meses.length} meses anteriores: ${R(media)}.` : "",
+    "Peça para confirmar no cartão.",
+  ]
+    .filter(Boolean)
+    .join(" ");
+}
+
+function proporContaFixa(
+  ctx: ToolContext,
+  a: { descricao: string; valor: number; dia?: number; frequencia?: "mensal" | "semanal" | "anual"; categoria?: string; loja?: string },
+): string {
+  const cat = resolverCategoria(ctx, a.categoria, undefined);
+  if (typeof cat === "string") return cat;
+  const interval = a.frequencia === "semanal" ? "weekly" : a.frequencia === "anual" ? "yearly" : "monthly";
+  ctx.proposals.push({
+    kind: "conta_fixa",
+    id: novoId(),
+    fields: {
+      description: a.descricao,
+      merchant: a.loja?.trim() || null,
+      amountCents: toCents(a.valor),
+      interval,
+      expectedDay: interval === "monthly" ? (a.dia ?? null) : null,
+      categoryId: cat.categoryId,
+    },
+    summary: { categoryLabel: cat.label },
+  });
+  return `Proposta criada: conta fixa "${a.descricao}" de ${R(toCents(a.valor))}${a.dia && interval === "monthly" ? ` todo dia ${a.dia}` : ""}. Peça para confirmar no cartão.`;
+}
+
+async function listarTarefas(ctx: ToolContext, a: { coluna?: string; so_pendentes?: boolean }): Promise<string> {
+  const quadro = await getTaskBoard(ctx.houseId);
+  if (quadro.length === 0) return "A casa ainda não tem quadro de tarefas.";
+  const alvo = a.coluna ? quadro.filter((c) => c.name.toLowerCase().includes(a.coluna!.toLowerCase())) : quadro;
+  if (alvo.length === 0) return `Não achei a coluna "${a.coluna}". Colunas: ${quadro.map((c) => c.name).join(", ")}.`;
+  const nomeDe = (t: { memberId: string | null; isJoint: boolean }) =>
+    t.isJoint
+      ? ctx.members.length === 2 ? "os dois" : "todos"
+      : (ctx.members.find((m) => m.userId === t.memberId) ? firstName(ctx.members.find((m) => m.userId === t.memberId)!.fullName) : null);
+  const linhas = [`Colunas: ${quadro.map((c) => c.name).join(", ")}.`];
+  for (const col of alvo) {
+    const tarefas = a.so_pendentes ? col.tasks.filter((t) => !t.done) : col.tasks;
+    linhas.push(`${col.name} (${tarefas.length}):`);
+    for (const t of tarefas.slice(0, 30)) {
+      const quem = nomeDe(t);
+      const gasto = t.linked.reduce((s, l) => s + l.cents, 0);
+      linhas.push(
+        `- ${refOf(t.id)} ${t.title}${t.done ? " [feita]" : ""}${quem ? ` · ${quem}` : ""}${t.dueDate ? ` · prazo ${t.dueDate}` : ""}${
+          t.expectedCents !== null ? ` · previsto ${R(t.expectedCents)}` : ""
+        }${t.linked.length ? ` · gasto ${R(gasto)}` : ""}`,
+      );
+    }
+    if (tarefas.length > 30) linhas.push(`- e mais ${tarefas.length - 30}`);
+  }
+  return linhas.join("\n");
+}
+
+async function proporMudarTarefa(
+  ctx: ToolContext,
+  a: { codigo: string; coluna?: string; feita?: boolean; pessoa?: string; prazo?: string; valor_previsto?: number },
+): Promise<string> {
+  const quadro = await getTaskBoard(ctx.houseId);
+  const todas = quadro.flatMap((c) => c.tasks);
+  const achadas = todas.filter((t) => t.id.startsWith(refPrefix(a.codigo)));
+  if (achadas.length === 0) return `Não achei a tarefa ${a.codigo}. Use listar_tarefas para ver os códigos.`;
+  if (achadas.length > 1) return `O código ${a.codigo} aponta para mais de uma tarefa.`;
+  const t = achadas[0]!;
+  const fields: Extract<Proposal, { kind: "mudar_tarefa" }>["fields"] = { taskId: t.id };
+  const mudancas: string[] = [];
+
+  if (a.coluna) {
+    const col = quadro.find((c) => c.name.toLowerCase() === a.coluna!.toLowerCase()) ??
+      quadro.find((c) => c.name.toLowerCase().includes(a.coluna!.toLowerCase()));
+    if (!col) return `Não achei a coluna "${a.coluna}". Colunas: ${quadro.map((c) => c.name).join(", ")}.`;
+    if (col.id !== t.listId) {
+      fields.listId = col.id;
+      mudancas.push(`mover para ${col.name}`);
+    }
+  }
+  if (a.feita !== undefined && a.feita !== t.done) {
+    fields.done = a.feita;
+    mudancas.push(a.feita ? "marcar como feita" : "reabrir");
+  }
+  if (a.pessoa) {
+    const p = resolverPessoa(ctx, a.pessoa);
+    if (typeof p === "string") return p;
+    if (p) {
+      fields.who = p.who;
+      mudancas.push(`quem faz: ${p.label}`);
+    }
+  }
+  if (a.prazo) {
+    fields.dueDate = a.prazo === "sem" ? null : a.prazo;
+    mudancas.push(a.prazo === "sem" ? "sem prazo" : `prazo ${a.prazo}`);
+  }
+  if (a.valor_previsto !== undefined) {
+    const cents = toCents(a.valor_previsto);
+    fields.expectedCents = cents === 0 ? null : cents;
+    mudancas.push(cents === 0 ? "sem valor previsto" : `previsto ${R(cents)}`);
+  }
+  if (mudancas.length === 0) return `Nada a mudar em "${t.title}": diga o que mudar (coluna, feita, pessoa, prazo ou previsto).`;
+
+  ctx.proposals.push({ kind: "mudar_tarefa", id: novoId(), fields, summary: { title: t.title, changes: mudancas } });
+  return `Proposta criada: "${t.title}" — ${mudancas.join(", ")}. Peça para confirmar no cartão.`;
+}
+
 /**
  * Executa uma ferramenta pedida pelo modelo.
  *
@@ -826,6 +1014,21 @@ export async function runTool(
       break;
     case "propor_tarefa":
       output = proporTarefa(ctx, a);
+      break;
+    case "propor_meta":
+      output = proporMeta(ctx, a);
+      break;
+    case "propor_orcamento":
+      output = await proporOrcamento(ctx, a);
+      break;
+    case "propor_conta_fixa":
+      output = proporContaFixa(ctx, a);
+      break;
+    case "listar_tarefas":
+      output = await listarTarefas(ctx, a);
+      break;
+    case "propor_mudar_tarefa":
+      output = await proporMudarTarefa(ctx, a);
       break;
   }
   return { output: capToolOutput(output), tool: name };

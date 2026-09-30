@@ -13,6 +13,7 @@ const enviados: { messages: { role: string; content: string }[] }[] = [];
 let resposta: Record<string, unknown> = { answer: "Gastaram **R$ 320,00**.", consulted: ["resumo do mês"], model: "x:free" };
 
 vi.mock("@/actions/chat", () => ({
+  chatGreeting: async () => null,
   askHouse: async (input: { messages: { role: string; content: string }[] }) => {
     enviados.push(input);
     return resposta;

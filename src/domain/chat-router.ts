@@ -23,7 +23,7 @@ export type Tier = "gratuito" | "pago";
 export interface Route {
   tier: Tier;
   /** Por que: o Jev decidiu, o piso de acao obrigou, ou o Jev nao respondeu. */
-  reason: "jev" | "acao" | "sem-jev";
+  reason: "jev" | "acao" | "sem-jev" | "voz";
   /** Certeza do Jev em "simples", quando ele respondeu. */
   probability?: number;
 }
@@ -51,7 +51,7 @@ export const ROUTE_QUESTION = {
  * pago sem precisar); falso negativo custa um dado errado.
  */
 const ACAO =
-  /\b(classifi\w*|categoriz\w*|recategoriz\w*|lan[cç]\w*|registr\w*|gastei|paguei|comprei|coloc\w*|mud\w*|troc\w*|marc\w*|corrig\w*|apag\w*|exclu\w*|grafico|gr[aá]fico\w*|pdf|export\w*|desenh\w*|plot\w*|comprar\w*|pesquis\w*|pre[cç]o\w*|ofert\w*)\b/i;
+  /\b(classifi\w*|categoriz\w*|recategoriz\w*|lan[cç]\w*|registr\w*|gastei|paguei|comprei|coloc\w*|mud\w*|troc\w*|marc\w*|corrig\w*|apag\w*|exclu\w*|grafico|gr[aá]fico\w*|pdf|export\w*|desenh\w*|plot\w*|comprar\w*|pesquis\w*|pre[cç]o\w*|ofert\w*|cri[ae]r?|defin\w*|conclu\w*|mov[ae]r?|adicion\w*)\b/i;
 
 export function isActionRequest(text: string): boolean {
   return ACAO.test(text.normalize("NFC"));

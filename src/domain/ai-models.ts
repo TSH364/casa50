@@ -74,3 +74,15 @@ export const DEFAULT_CHAT_MODEL = "openrouter/free";
  * `data_collection: deny`. `OPENROUTER_CHAT_PAID_MODEL` troca.
  */
 export const DEFAULT_CHAT_PAID_MODEL = "google/gemini-3.6-flash";
+
+/**
+ * A voz da Conversa (texto para fala), pelo OpenRouter. A Lite responde mais
+ * rapido - e numa conversa falada, esperar e o que mais parece robo. Troca-se
+ * por OPENROUTER_TTS_MODEL / OPENROUTER_TTS_VOICE sem mexer no codigo.
+ */
+export const DEFAULT_TTS_MODEL = "google/gemini-3.8-flash-lite-tts";
+export const DEFAULT_TTS_VOICE = "Aoede";
+
+/** Se a voz principal recusar: outra casa, outro formato (mp3). */
+export const FALLBACK_TTS_MODEL = "openai/gpt-4o-mini-tts";
+export const FALLBACK_TTS_VOICE = "coral";

@@ -1,8 +1,11 @@
 "use client";
 
 import { useEffect, useRef, useState, useTransition } from "react";
-import { ArrowUp, FileDown, Trash2 } from "lucide-react";
-import { askHouse } from "@/actions/chat";
+import { ArrowUp, AudioLines, FileDown, Mic, Sparkles, Square, Trash2, Volume2, VolumeX } from "lucide-react";
+import { VoiceMode, type PendingProposals } from "./voice-mode";
+import type { Greeting } from "@/domain/greeting";
+import { useDictation, useSpeech } from "@/lib/voice";
+import { askHouse, chatGreeting } from "@/actions/chat";
 import type { ChartSpec, ChatMessage, Proposal } from "@/domain/chat";
 import { ChatChart } from "./chat-chart";
 import { ProposalCard } from "./proposal-card";
@@ -34,7 +37,12 @@ interface Entry extends ChatMessage {
   pdf?: "esta" | "anterior";
   /** id da proposta -> o que a casa fez com ela, e a frase do resultado. */
   resolved?: Record<string, { status: ProposalStatus; note: string }>;
+  /** Quando foi (ms) - decide se o resumo do dia aparece de novo. */
+  at?: number;
 }
+
+/** Depois de tanto tempo parado, a Conversa volta a puxar assunto. */
+const RESUMO_DEPOIS_DE_MS = 3 * 60 * 60 * 1000;
 
 /**
  * O texto que volta ao modelo por uma resposta: a propria resposta, e o que
@@ -65,6 +73,8 @@ function conteudoParaModelo(e: Entry): string {
 }
 
 const SUGESTOES = [
+  "Cria uma meta de R$ 5.000 para a viagem até dezembro",
+  "Define o orçamento de Mercado em R$ 1.500 este mês",
   "Quanto gastamos este mês?",
   "O que falta classificar?",
   "Onde mais gastamos com alimentação nos últimos 3 meses?",
@@ -126,61 +136,117 @@ export function ChatPanel({ houseId }: { houseId: string }) {
   const [pergunta, setPergunta] = useState("");
   const [pending, startTransition] = useTransition();
   const fim = useRef<HTMLDivElement>(null);
+  // Pergunta falada, resposta falada: quem pediu por voz provavelmente nao
+  // esta olhando para a tela.
+  const falou = useRef(false);
+  const voz = useSpeech();
+  const ditado = useDictation((texto) => {
+    falou.current = true;
+    enviar(texto);
+  });
 
-  useEffect(() => setEntradas(ler(chave)), [chave]);
+  // O estado mais recente, para o modo voz (que vive em callbacks) e para
+  // perguntas em sequencia nao se atropelarem.
+  const entradasRef = useRef<Entry[]>([]);
+  const [saudacao, setSaudacao] = useState<Greeting | null>(null);
+  const [conversando, setConversando] = useState(false);
+
+  useEffect(() => {
+    const lidas = ler(chave);
+    entradasRef.current = lidas;
+    setEntradas(lidas);
+  }, [chave]);
+  useEffect(() => {
+    let vivo = true;
+    chatGreeting()
+      .then((g) => {
+        if (vivo) setSaudacao(g);
+      })
+      .catch(() => {});
+    return () => {
+      vivo = false;
+    };
+  }, []);
   useEffect(() => {
     fim.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [entradas.length, pending]);
 
+  function trocar(nova: Entry[]) {
+    entradasRef.current = nova;
+    setEntradas(nova);
+    gravar(chave, nova);
+  }
+
+  /** Manda a pergunta e devolve a entrada da resposta (ou do erro). */
+  async function perguntar(limpo: string, modo: "texto" | "voz"): Promise<Entry> {
+    const comPergunta: Entry[] = [...entradasRef.current, { role: "user", content: limpo, at: Date.now() }];
+    trocar(comPergunta);
+    // As respostas de erro nao voltam para o modelo: sao da tela, nao da
+    // conversa.
+    const historico = comPergunta
+      .filter((e) => !e.error)
+      .map((e) => ({ role: e.role, content: e.role === "assistant" ? conteudoParaModelo(e) : e.content }));
+    let r: Awaited<ReturnType<typeof askHouse>>;
+    try {
+      r = await askHouse({ messages: historico, modo });
+    } catch {
+      r = { error: "Não consegui falar com o servidor. Confira a internet e tente de novo." };
+    }
+    const resposta: Entry = r.answer
+      ? {
+          role: "assistant",
+          content: r.answer,
+          at: Date.now(),
+          consulted: r.consulted,
+          model: r.model,
+          tier: r.tier,
+          fellBack: r.fellBack,
+          ...(r.proposals?.length ? { proposals: r.proposals } : {}),
+          ...(r.charts?.length ? { charts: r.charts } : {}),
+          ...(r.searches?.length ? { searches: r.searches } : {}),
+          ...(r.pdf ? { pdf: r.pdf } : {}),
+        }
+      : { role: "assistant", content: r.error ?? "A conversa falhou.", error: true, at: Date.now() };
+    trocar([...entradasRef.current, resposta]);
+    return resposta;
+  }
+
   function enviar(texto: string) {
     const limpo = texto.trim();
     if (!limpo || pending) return;
-    const comPergunta: Entry[] = [...entradas, { role: "user", content: limpo }];
-    setEntradas(comPergunta);
-    gravar(chave, comPergunta);
     setPergunta("");
-
+    const porVoz = falou.current;
+    falou.current = false;
     startTransition(async () => {
-      // As respostas de erro nao voltam para o modelo: sao da tela, nao da
-      // conversa.
-      const historico = comPergunta
-        .filter((e) => !e.error)
-        .map((e) => ({ role: e.role, content: e.role === "assistant" ? conteudoParaModelo(e) : e.content }));
-      let r: Awaited<ReturnType<typeof askHouse>>;
-      try {
-        r = await askHouse({ messages: historico });
-      } catch {
-        r = { error: "Não consegui falar com o servidor. Confira a internet e tente de novo." };
-      }
-      const resposta: Entry = r.answer
-        ? {
-            role: "assistant",
-            content: r.answer,
-            consulted: r.consulted,
-            model: r.model,
-            tier: r.tier,
-            fellBack: r.fellBack,
-            ...(r.proposals?.length ? { proposals: r.proposals } : {}),
-            ...(r.charts?.length ? { charts: r.charts } : {}),
-            ...(r.searches?.length ? { searches: r.searches } : {}),
-            ...(r.pdf ? { pdf: r.pdf } : {}),
-          }
-        : { role: "assistant", content: r.error ?? "A conversa falhou.", error: true };
-      const nova = [...comPergunta, resposta];
-      setEntradas(nova);
-      gravar(chave, nova);
+      const resposta = await perguntar(limpo, porVoz ? "voz" : "texto");
+      if (porVoz && voz.supported) void voz.speak(resposta.content);
     });
   }
 
   function resolver(indice: number, proposalId: string, status: ProposalStatus, note: string) {
-    setEntradas((atual) => {
-      const nova = atual.map((e, i) =>
+    trocar(
+      entradasRef.current.map((e, i) =>
         i === indice ? { ...e, resolved: { ...e.resolved, [proposalId]: { status, note } } } : e,
-      );
-      gravar(chave, nova);
-      return nova;
-    });
+      ),
+    );
   }
+
+  /** As propostas da ultima resposta que ainda esperam a casa. */
+  function pendentes(): PendingProposals | null {
+    const lista = entradasRef.current;
+    for (let i = lista.length - 1; i >= 0; i -= 1) {
+      const e = lista[i]!;
+      if (e.role !== "assistant" || e.error) continue;
+      const ps = (e.proposals ?? []).filter((p) => !e.resolved?.[p.id]);
+      return ps.length > 0 ? { index: i, proposals: ps } : null;
+    }
+    return null;
+  }
+
+  const ultima = entradas.at(-1);
+  const mostrarResumo =
+    saudacao !== null && (entradas.length === 0 || !ultima?.at || Date.now() - ultima.at > RESUMO_DEPOIS_DE_MS);
+  const podeConversar = ditado.supported && voz.supported;
 
   // Exportar em PDF: a resposta escolhida vai para um bloco que so aparece na
   // impressao, e o dialogo do navegador tem "Salvar como PDF" em todo lugar -
@@ -230,7 +296,7 @@ export function ChatPanel({ houseId }: { houseId: string }) {
             pago assume sozinho.
           </p>
           <div className="flex flex-wrap gap-2">
-            {SUGESTOES.map((s) => (
+            {(saudacao ? [] : SUGESTOES).map((s) => (
               <button
                 key={s}
                 type="button"
@@ -276,6 +342,15 @@ export function ChatPanel({ houseId }: { houseId: string }) {
                   {e.tier ? ` · ${e.tier === "pago" ? "Pago" : "Gratuito"}` : ""}
                   {e.fellBack ? " (o gratuito não respondeu)" : ""}
                   {e.model ? ` · ${e.model}` : ""}
+                  {voz.supported ? (
+                    <button
+                      type="button"
+                      onClick={() => voz.speak(e.content)}
+                      className="ml-1 inline-flex items-center gap-1 align-middle text-brand underline-offset-2 hover:underline"
+                    >
+                      <Volume2 className="size-3" aria-hidden /> Ouvir
+                    </button>
+                  ) : null}
                 </p>
               ) : null}
               {/* So quando a pergunta pediu PDF (ver `isPdfRequest`). */}
@@ -301,7 +376,46 @@ export function ChatPanel({ houseId }: { houseId: string }) {
           </li>
         ) : null}
       </ol>
+      {/* A Conversa puxa assunto: o resumo do dia, feito pelo app (sem IA). */}
+      {mostrarResumo && saudacao ? (
+        <div className="space-y-2">
+          <div className="max-w-[88%] rounded-2xl rounded-bl-md bg-surface-2 px-3.5 py-2.5 text-sm text-ink">
+            <p className="mb-1 flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wide text-ink-muted">
+              <Sparkles className="size-3" aria-hidden /> Resumo do dia
+            </p>
+            <p>{saudacao.text.replace(/R\$ /g, "R$\u00a0")}</p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {saudacao.suggestions.map((s) => (
+              <button
+                key={s}
+                type="button"
+                onClick={() => enviar(s)}
+                disabled={pending}
+                className="min-h-9 rounded-full border border-line bg-surface-2 px-3.5 text-left text-[13px] text-ink-muted transition-colors hover:text-ink disabled:opacity-50"
+              >
+                {s}
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : null}
       <div ref={fim} />
+
+      {podeConversar ? (
+        <Button
+          variant="secondary"
+          className="self-center"
+          disabled={pending}
+          onClick={() => {
+            ditado.cancel();
+            voz.stop();
+            setConversando(true);
+          }}
+        >
+          <AudioLines aria-hidden /> Conversar por voz
+        </Button>
+      ) : null}
 
       <form
         className="sticky bottom-20 flex items-end gap-2 rounded-2xl border border-line bg-surface p-2 md:bottom-4"
@@ -311,7 +425,8 @@ export function ChatPanel({ houseId }: { houseId: string }) {
         }}
       >
         <textarea
-          value={pergunta}
+          value={ditado.listening ? ditado.interim : pergunta}
+          readOnly={ditado.listening}
           onChange={(ev) => setPergunta(ev.target.value)}
           onKeyDown={(ev) => {
             // Enter envia; Shift+Enter quebra linha, como em qualquer chat.
@@ -322,14 +437,65 @@ export function ChatPanel({ houseId }: { houseId: string }) {
           }}
           rows={1}
           maxLength={2000}
-          placeholder="Pergunte sobre os gastos…"
+          placeholder={ditado.listening ? "Ouvindo… pode falar" : "Pergunte ou peça algo…"}
           aria-label="Pergunta"
           className="max-h-40 min-h-11 flex-1 resize-none bg-transparent px-2 py-2.5 text-sm text-ink outline-none placeholder:text-ink-faint"
         />
-        <Button type="submit" size="icon" disabled={pending || !pergunta.trim()} aria-label="Enviar">
+        {ditado.supported ? (
+          <Button
+            type="button"
+            size="icon"
+            variant={ditado.listening ? "danger" : "secondary"}
+            disabled={pending}
+            aria-label={ditado.listening ? "Parar e enviar" : "Falar o pedido"}
+            aria-pressed={ditado.listening}
+            onClick={() => {
+              if (ditado.listening) ditado.stop();
+              else {
+                voz.stop();
+                ditado.start();
+              }
+            }}
+          >
+            {ditado.listening ? <Square aria-hidden /> : <Mic aria-hidden />}
+          </Button>
+        ) : null}
+        <Button
+          type="submit"
+          size="icon"
+          disabled={pending || ditado.listening || !pergunta.trim()}
+          aria-label="Enviar"
+        >
           <ArrowUp aria-hidden />
         </Button>
       </form>
+      {ditado.error ? (
+        <p role="alert" className="px-1 text-[12px] text-danger">
+          {ditado.error}
+        </p>
+      ) : ditado.listening ? (
+        <p className="px-1 text-[12px] text-ink-muted" aria-live="polite">
+          Ouvindo. Ao parar de falar, o pedido é enviado. A voz é transcrita pelo navegador (no Chrome, pelos
+          servidores do Google).
+        </p>
+      ) : null}
+      {voz.speaking ? (
+        <div className="flex justify-center">
+          <Button variant="secondary" size="sm" onClick={voz.stop}>
+            <VolumeX aria-hidden /> Parar a leitura
+          </Button>
+        </div>
+      ) : null}
+
+      {conversando ? (
+        <VoiceMode
+          greeting={mostrarResumo && saudacao ? saudacao.text : null}
+          ask={async (texto) => (await perguntar(texto, "voz")).content}
+          pending={pendentes}
+          resolve={resolver}
+          onClose={() => setConversando(false)}
+        />
+      ) : null}
 
       {imprimindo !== null && entradas[imprimindo] ? (
         <ImpressaoDaResposta

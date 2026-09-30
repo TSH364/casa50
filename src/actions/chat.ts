@@ -38,7 +38,17 @@ import {
 import type { ChartSpec, Proposal, ToolName } from "@/domain/chat";
 import type { ShoppingSearch } from "@/domain/shopping";
 import { DEFAULT_LISTS } from "@/domain/tasks";
-import { currentMonth } from "@/domain/month";
+import { DOS_DOIS } from "@/domain/schemas";
+import { isMonthKey } from "@/domain/month";
+import { createGoal } from "./goals";
+import { setBudget } from "./budgets";
+import { createRecurrence } from "./recurrences";
+import { moveTask, updateTask } from "./tasks";
+import { addMonths, currentMonth, monthLabel, monthRange } from "@/domain/month";
+import { buildGreeting } from "@/domain/greeting";
+import type { Greeting } from "@/domain/greeting";
+import { getTaskBoard, listBudgets, listTransactions } from "@/data/queries";
+import { projectMonthEnd, summarizeMonth, spendingCents, totalsByCategory } from "@/domain/finance";
 
 /**
  * Uma pergunta a conversa (secao 16).
@@ -63,6 +73,8 @@ const schema = z.object({
     .min(1)
     .max(60)
     .refine((m) => m[m.length - 1]?.role === "user", "A última mensagem tem de ser a pergunta."),
+  /** "voz": a resposta vai ser falada (ver `buildSystemPrompt`). */
+  modo: z.enum(["texto", "voz"]).optional(),
 });
 
 export interface ChatReply {
@@ -110,6 +122,28 @@ export async function askHouse(input: z.input<typeof schema>): Promise<ChatReply
     };
   }
 
+  const t0 = Date.now();
+  const tempos: Record<string, number> = {};
+  const modo = parsed.data.modo ?? "texto";
+  const historico = trimHistory(parsed.data.messages);
+  const pergunta = historico[historico.length - 1]!.content;
+  const anterior = historico.length >= 2 ? historico[historico.length - 2]!.content : null;
+
+  // O Jev decide a rota - EM PARALELO com a leitura do banco, que nao depende
+  // dele. Pela voz nem pergunta: quem fala espera a resposta em silencio, e o
+  // pago rapido responde antes do que o Jev leva para decidir.
+  const jevPromessa =
+    modo === "voz"
+      ? Promise.resolve(null)
+      : runJev(
+          [{ key: "rota", state: routeState(pergunta, anterior), questions: { complexidade: ROUTE_QUESTION } }],
+          { apiKey, maxJobs: 1, deadlineMs: 6_000 },
+        )
+          .catch(() => null)
+          .finally(() => {
+            tempos.jev = Date.now() - t0;
+          });
+
   const today = currentMonth();
   const [{ active }, members, view, months] = await Promise.all([
     getActiveHouse(),
@@ -136,6 +170,7 @@ export async function askHouse(input: z.input<typeof schema>): Promise<ChatReply
   // futuro (meses futuros so tem parcela, e resumir isso engana).
   const mesDoRetrato = months.find((m) => m <= today) ?? today;
   const snapshot = await snapshotFor(ctx, mesDoRetrato);
+  tempos.contexto = Date.now() - t0;
 
   const system = buildSystemPrompt({
     houseName: active?.name ?? "a casa",
@@ -154,20 +189,14 @@ export async function askHouse(input: z.input<typeof schema>): Promise<ChatReply
     // nao mandar.
     monthsWithData: months,
     snapshot,
+    mode: modo,
   });
 
-  const historico = trimHistory(parsed.data.messages);
-  const pergunta = historico[historico.length - 1]!.content;
-  const anterior = historico.length >= 2 ? historico[historico.length - 2]!.content : null;
-
-  // O Jev decide a rota. Uma chamada curta (so a pergunta), com prazo curto:
-  // se ele nao responder a tempo, a pergunta vai ao pago e a conversa segue.
-  const jev = await runJev(
-    [{ key: "rota", state: routeState(pergunta, anterior), questions: { complexidade: ROUTE_QUESTION } }],
-    { apiKey, maxJobs: 1, deadlineMs: 6_000 },
-  ).catch(() => null);
+  const jev = await jevPromessa;
   if (jev) await recordAiUsage(houseId, "jev", { calls: jev.calls, costUsd: jev.costUsd, model: JEV_MODEL });
-  const route = decideRoute(pergunta, jev?.answers.get("rota")?.complexidade ?? null);
+  const route: Route =
+    modo === "voz" ? { tier: "pago", reason: "voz" } : decideRoute(pergunta, jev?.answers.get("rota")?.complexidade ?? null);
+  tempos.antesDoModelo = Date.now() - t0;
 
   const modelos: Record<Tier, { model: string; allowDataCollection: boolean }> = {
     // O gratuito aceita provedor que guarda: sem isso, nenhum gratuito atende.
@@ -180,11 +209,25 @@ export async function askHouse(input: z.input<typeof schema>): Promise<ChatReply
   // O gasto de cada tentativa e anotado mesmo quando ela falha no meio: as
   // chamadas feitas ate ali ja contaram na cota e no credito.
   const conversar = async (tier: Tier) => {
-    const gasto: Gasto = { calls: 0, costUsd: 0, model: null };
+    const gasto: Gasto = { calls: 0, costUsd: 0, model: null, rodadas: [] };
     try {
-      return await runConversation(ctx, apiKey, system, historico, modelos[tier], PRAZO_MS - (Date.now() - inicio), gasto);
+      return await runConversation(
+        ctx,
+        apiKey,
+        system,
+        historico,
+        modelos[tier],
+        PRAZO_MS - (Date.now() - inicio),
+        gasto,
+        modo === "voz" ? 400 : undefined,
+      );
     } finally {
-      await recordAiUsage(houseId, tier === "pago" ? "conversa_paga" : "conversa_gratuita", gasto);
+      // Os tempos de cada etapa vao junto com o gasto: e onde se descobre,
+      // com uso real, o que deixa a resposta lenta. So milissegundos.
+      await recordAiUsage(houseId, tier === "pago" ? "conversa_paga" : "conversa_gratuita", {
+        ...gasto,
+        details: { modo, ms: { ...tempos, rodadas: gasto.rodadas, total: Date.now() - t0 } },
+      });
     }
   };
 
@@ -231,6 +274,8 @@ interface Gasto {
   calls: number;
   costUsd: number;
   model: string | null;
+  /** Por rodada: ms do modelo e ms das ferramentas pedidas. */
+  rodadas: { modelo: number; ferramentas?: number; nomes?: string[] }[];
 }
 
 async function runConversation(
@@ -241,6 +286,7 @@ async function runConversation(
   alvo: { model: string; allowDataCollection: boolean },
   prazoMs: number,
   gasto: Gasto,
+  maxTokens?: number,
 ): Promise<ChatReply> {
   const conversa: TurnMessage[] = [{ role: "system", content: system }, ...historico];
   const consultadas = new Set<ToolName>();
@@ -257,13 +303,17 @@ async function runConversation(
 
     gasto.calls += 1;
     gasto.model ??= alvo.model;
+    const t = Date.now();
     const turn = await chatTurn(conversa, {
       apiKey,
       model: alvo.model,
       tools: ultima ? [] : TOOL_DEFINITIONS,
       allowDataCollection: alvo.allowDataCollection,
       timeoutMs: Math.min(25_000, resta),
+      maxTokens,
     });
+    const medida: Gasto["rodadas"][number] = { modelo: Date.now() - t };
+    gasto.rodadas.push(medida);
     gasto.costUsd += turn.costUsd;
     if (turn.servedBy) gasto.model = turn.servedBy;
 
@@ -281,11 +331,17 @@ async function runConversation(
 
     const chamadas = turn.toolCalls.slice(0, MAX_CALLS_PER_ROUND);
     conversa.push({ role: "assistant", content: turn.content, tool_calls: chamadas });
-    for (const c of chamadas) {
-      const r = await runTool(ctx, c.function.name, c.function.arguments);
+    // As ferramentas de uma rodada rodam juntas: cada uma e uma leitura do
+    // banco, e em fila o tempo delas somava.
+    const tf = Date.now();
+    const resultados = await Promise.all(chamadas.map((c) => runTool(ctx, c.function.name, c.function.arguments)));
+    medida.ferramentas = Date.now() - tf;
+    medida.nomes = chamadas.map((c) => c.function.name);
+    chamadas.forEach((c, i) => {
+      const r = resultados[i]!;
       if (r.tool) consultadas.add(r.tool);
       conversa.push({ role: "tool", tool_call_id: c.id, content: r.output });
-    }
+    });
   }
   return { error: "A IA não chegou a uma resposta. Tente perguntar de um jeito mais direto." };
 }
@@ -316,6 +372,46 @@ const proposalSchema = z.discriminatedUnion("kind", [
       subcategoryId: uuid.nullable(),
       memberId: uuid.nullable(),
       isJoint: z.boolean(),
+    }),
+  }),
+  z.object({
+    kind: z.literal("meta"),
+    fields: z.object({
+      name: z.string().trim().min(1).max(120),
+      targetCents: z.number().int().positive().max(9_999_999_900),
+      targetDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable(),
+      monthlyCents: z.number().int().min(0).max(9_999_999_900).nullable(),
+      ownerId: uuid.nullable(),
+    }),
+  }),
+  z.object({
+    kind: z.literal("orcamento"),
+    fields: z.object({
+      categoryId: uuid,
+      month: z.string().refine(isMonthKey),
+      limitCents: z.number().int().min(0).max(9_999_999_999),
+    }),
+  }),
+  z.object({
+    kind: z.literal("conta_fixa"),
+    fields: z.object({
+      description: z.string().trim().min(1).max(120),
+      merchant: z.string().trim().max(120).nullable(),
+      amountCents: z.number().int().min(0).max(9_999_999_900),
+      interval: z.enum(["weekly", "monthly", "yearly"]),
+      expectedDay: z.number().int().min(1).max(31).nullable(),
+      categoryId: uuid.nullable(),
+    }),
+  }),
+  z.object({
+    kind: z.literal("mudar_tarefa"),
+    fields: z.object({
+      taskId: uuid,
+      listId: uuid.optional(),
+      done: z.boolean().optional(),
+      who: z.union([uuid, z.literal(DOS_DOIS), z.literal("")]).optional(),
+      dueDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
+      expectedCents: z.number().int().min(0).max(1_000_000_000).nullable().optional(),
     }),
   }),
   z.object({
@@ -393,6 +489,91 @@ export async function applyProposal(input: unknown): Promise<ApplyProposalResult
     }
     revalidarLancamentos();
     return { ok: true, count: marcados?.length ?? 0 };
+  }
+
+  // Metas, orcamentos, contas fixas e tarefas: pelas MESMAS acoes das telas,
+  // com as mesmas validacoes - a conversa nao ganha um caminho mais frouxo.
+  const reais = (c: number) => (c / 100).toFixed(2).replace(".", ",");
+  const form = (o: Record<string, string>) => {
+    const f = new FormData();
+    for (const [k, v] of Object.entries(o)) f.set(k, v);
+    return f;
+  };
+
+  if (p.kind === "meta") {
+    const f = p.fields;
+    if (f.ownerId !== null && !(await listMembers(houseId)).some((m) => m.userId === f.ownerId)) {
+      return { error: "Essa pessoa não é da casa." };
+    }
+    const r = await createGoal(
+      {},
+      form({
+        name: f.name,
+        targetAmount: reais(f.targetCents),
+        targetDate: f.targetDate ?? "",
+        monthlyContribution: f.monthlyCents === null ? "" : reais(f.monthlyCents),
+        ownerId: f.ownerId ?? "",
+      }),
+    );
+    return r.error ? { error: r.error } : { ok: true, count: 1 };
+  }
+
+  if (p.kind === "orcamento") {
+    if (!(await categoriaOk(p.fields.categoryId, null))) return { error: "Categoria não encontrada." };
+    const r = await setBudget(p.fields);
+    if (r.error) return { error: r.error };
+    revalidatePath("/analise");
+    return { ok: true, count: 1 };
+  }
+
+  if (p.kind === "conta_fixa") {
+    const f = p.fields;
+    if (!(await categoriaOk(f.categoryId, null))) return { error: "Categoria não encontrada." };
+    const r = await createRecurrence(
+      {},
+      form({
+        description: f.description,
+        merchant: f.merchant ?? "",
+        amount: reais(f.amountCents),
+        interval: f.interval,
+        expectedDay: f.expectedDay === null ? "" : String(f.expectedDay),
+        categoryId: f.categoryId ?? "",
+      }),
+    );
+    return r.error ? { error: r.error } : { ok: true, count: 1 };
+  }
+
+  if (p.kind === "mudar_tarefa") {
+    const f = p.fields;
+    const { data: t } = await supabase
+      .from("tasks")
+      .select("id, list_id, title, notes, member_id, is_joint, due_date, expected_amount, done")
+      .eq("house_id", houseId)
+      .eq("id", f.taskId)
+      .maybeSingle();
+    if (!t) return { error: "Tarefa não encontrada." };
+    const atual = t.is_joint ? DOS_DOIS : ((t.member_id as string | null) ?? "");
+    const r = await updateTask({
+      id: f.taskId,
+      title: String(t.title),
+      notes: (t.notes as string | null) ?? null,
+      who: f.who ?? atual,
+      dueDate: f.dueDate !== undefined ? f.dueDate : ((t.due_date as string | null) ?? null),
+      expectedCents:
+        f.expectedCents !== undefined
+          ? f.expectedCents
+          : t.expected_amount === null
+            ? null
+            : Math.round(Number(t.expected_amount) * 100),
+      done: f.done ?? t.done === true,
+    });
+    if (r.error) return { error: r.error };
+    if (f.listId && f.listId !== t.list_id) {
+      // No fim da coluna de destino - como arrastar e soltar no fim.
+      const m = await moveTask({ id: f.taskId, listId: f.listId, index: Number.MAX_SAFE_INTEGER });
+      if (m.error) return { error: m.error };
+    }
+    return { ok: true, count: 1 };
   }
 
   if (p.kind === "tarefa") {
@@ -477,4 +658,79 @@ function revalidarLancamentos() {
   revalidatePath("/inicio");
   revalidatePath("/extratos");
   revalidatePath("/analise");
+}
+
+// ---------------------------------------------------------------------------
+// O resumo do dia, ao abrir a Conversa
+// ---------------------------------------------------------------------------
+
+/**
+ * A Conversa puxa assunto: o resumo do dia, calculado pelo app (ver
+ * `domain/greeting.ts`). Sem IA e sem chave - sai para qualquer pessoa da
+ * casa, na hora, com os mesmos numeros das telas.
+ */
+export async function chatGreeting(): Promise<Greeting | null> {
+  const houseId = await requireHouseId();
+  try {
+    const hoje = currentMonth();
+    const [user, members, view] = await Promise.all([getCurrentUser(), listMembers(houseId), houseView(houseId)]);
+    const [txs, budgets, quadro] = await Promise.all([
+      listTransactions(houseId, {
+        fromMonth: addMonths(hoje, -3),
+        toMonth: hoje,
+        excludeCategoryIds: view.excludeCategoryIds,
+        limit: 8000,
+      }),
+      listBudgets(houseId, hoje),
+      getTaskBoard(houseId),
+    ]);
+
+    const agora = new Date();
+    const fuso = { timeZone: "America/Sao_Paulo" } as const;
+    const hojeIso = agora.toLocaleDateString("sv-SE", fuso);
+    const ontemIso = new Date(agora.getTime() - 86_400_000).toLocaleDateString("sv-SE", fuso);
+    const hora = Number(agora.toLocaleString("en-US", { ...fuso, hour: "numeric", hourCycle: "h23" }));
+
+    const gastos = txs.filter(
+      (t) => t.type === "expense" && !t.isHidden && (t.status === "confirmed" || t.status === "divergent"),
+    );
+    const deOntem = gastos.filter((t) => t.date === ontemIso);
+    const fechados = monthRange(addMonths(hoje, -3), addMonths(hoje, -1)).filter((m) => txs.some((t) => t.invoiceMonth === m));
+    const media =
+      fechados.length > 0
+        ? Math.round(fechados.reduce((s, m) => s + summarizeMonth(txs, m).spentCents, 0) / fechados.length)
+        : null;
+    const gastoMes = summarizeMonth(txs, hoje).spentCents;
+    const porCategoria = new Map(totalsByCategory(txs, hoje).map((c) => [c.categoryId, c.totalCents]));
+    const dias = (iso: string) =>
+      Math.round((new Date(`${iso}T12:00:00Z`).getTime() - new Date(`${hojeIso}T12:00:00Z`).getTime()) / 86_400_000);
+    const eu = members.find((m) => m.userId === user?.id);
+
+    return buildGreeting({
+      firstName: eu ? firstName(eu.fullName) : null,
+      hour: Number.isFinite(hora) ? hora : 12,
+      yesterday: { cents: deOntem.reduce((s, t) => s + spendingCents(t), 0), count: deOntem.length },
+      month: {
+        label: monthLabel(hoje).split(" ")[0]!,
+        spentCents: gastoMes,
+        projectionCents: gastoMes > 0 ? projectMonthEnd(gastoMes, hoje, agora) : null,
+        averageCents: media,
+      },
+      budgets: budgets
+        .filter((b) => b.limitAmount > 0)
+        .map((b) => ({
+          name: view.categories.find((c) => c.id === b.categoryId)?.name ?? "Categoria",
+          ratio: (porCategoria.get(b.categoryId) ?? 0) / Math.round(b.limitAmount * 100),
+        })),
+      tasks: quadro
+        .flatMap((c) => c.tasks)
+        .filter((t) => !t.done && t.dueDate !== null)
+        .map((t) => ({ title: t.title, daysLeft: dias(t.dueDate!) })),
+      uncategorized: gastos.filter((t) => t.categoryId === null).length,
+    });
+  } catch (e) {
+    // O resumo e um extra: falhou, a Conversa abre sem ele.
+    console.error("[conversa] falha no resumo do dia", { erro: e instanceof Error ? e.name : "?" });
+    return null;
+  }
 }
