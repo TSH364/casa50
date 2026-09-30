@@ -1,13 +1,14 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Check, Loader2, Mic, Volume2, X } from "lucide-react";
+import { Check, Keyboard, Loader2, Mic, Volume2, X } from "lucide-react";
 import { applyProposal } from "@/actions/chat";
 import type { Proposal } from "@/domain/chat";
 import { voiceIntent } from "@/domain/voice-intent";
 import { playBlob, synthesize, useDictation, useSpeech } from "@/lib/voice";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { DoriMark } from "@/components/doria/dori-mark";
 import { proposalDoneNote, proposalPayload, proposalTitle } from "./proposal-apply";
 import type { ProposalStatus } from "./proposal-card";
 
@@ -51,6 +52,7 @@ export function VoiceMode({
   pending,
   resolve,
   onClose,
+  onEscrever,
 }: {
   /** O resumo do dia, falado ao abrir. */
   greeting: string | null;
@@ -60,6 +62,8 @@ export function VoiceMode({
   pending: () => PendingProposals | null;
   resolve: (index: number, proposalId: string, status: ProposalStatus, note: string) => void;
   onClose: () => void;
+  /** "Prefiro escrever": fecha a voz e leva ao campo de texto. */
+  onEscrever?: () => void;
 }) {
   const [fase, setFase] = useState<Fase>("falando");
   const [ouvido, setOuvido] = useState("");
@@ -192,7 +196,14 @@ export function VoiceMode({
       className="fixed inset-0 z-50 flex flex-col bg-canvas px-4 pb-6 pt-4"
       style={{ paddingBottom: "max(1.5rem, env(safe-area-inset-bottom))" }}
     >
-      <div className="flex justify-end">
+      <div className="flex items-center justify-between">
+        {onEscrever ? (
+          <Button variant="ghost" onClick={onEscrever}>
+            <Keyboard aria-hidden /> Prefiro escrever
+          </Button>
+        ) : (
+          <span />
+        )}
         <Button variant="ghost" onClick={onClose}>
           <X aria-hidden /> Encerrar
         </Button>
@@ -212,12 +223,15 @@ export function VoiceMode({
           }}
           aria-label={fase === "pausa" ? "Continuar a conversa" : fase === "falando" ? "Pular a fala" : fase === "ouvindo" ? "Terminei de falar" : "Pensando"}
           className={cn(
-            "relative flex size-36 items-center justify-center rounded-full transition-colors",
-            fase === "ouvindo" ? "bg-brand text-on-brand" : fase === "pausa" ? "bg-surface-3 text-ink" : "bg-brand-soft text-brand",
+            "relative flex size-40 items-center justify-center rounded-full transition-colors",
+            fase === "pausa" ? "bg-surface-3" : "bg-doria",
           )}
         >
-          {fase === "ouvindo" ? <span className="absolute inset-0 animate-ping rounded-full bg-brand/30" aria-hidden /> : null}
-          <Icone className={cn("relative size-12", fase === "pensando" && "animate-spin")} aria-hidden />
+          {fase === "ouvindo" ? <span className="absolute inset-0 animate-ping rounded-full bg-doria/30" aria-hidden /> : null}
+          <DoriMark size={116} className="relative" />
+          <span className="absolute bottom-1 right-1 flex size-10 items-center justify-center rounded-full border-4 border-canvas bg-ink text-canvas">
+            <Icone className={cn("size-4", fase === "pensando" && "animate-spin")} aria-hidden />
+          </span>
         </button>
         <p className="text-sm font-medium text-ink" aria-live="polite">
           {ROTULO[fase]}

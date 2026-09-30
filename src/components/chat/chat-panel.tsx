@@ -14,6 +14,8 @@ import type { ShoppingSearch } from "@/domain/shopping";
 import type { ProposalStatus } from "./proposal-card";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { DoriaIntro } from "./doria-intro";
+import { lembrarModo, marcarVozApresentada, vozApresentada, type DoriaModo } from "@/lib/doria-mode";
 
 /**
  * A conversa com os dados da casa (secao 16).
@@ -130,7 +132,14 @@ function Texto({ texto }: { texto: string }) {
   );
 }
 
-export function ChatPanel({ houseId }: { houseId: string }) {
+export function ChatPanel({
+  houseId,
+  modo = null,
+}: {
+  houseId: string;
+  /** Como a Dor.IA foi aberta pelo botao central: ja na voz, ou no texto. */
+  modo?: DoriaModo | null;
+}) {
   const chave = `fluxo-conversa:${houseId}`;
   const [entradas, setEntradas] = useState<Entry[]>([]);
   const [pergunta, setPergunta] = useState("");
@@ -150,6 +159,8 @@ export function ChatPanel({ houseId }: { houseId: string }) {
   const entradasRef = useRef<Entry[]>([]);
   const [saudacao, setSaudacao] = useState<Greeting | null>(null);
   const [conversando, setConversando] = useState(false);
+  const [apresentando, setApresentando] = useState(false);
+  const campo = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
     const lidas = ler(chave);
@@ -247,6 +258,41 @@ export function ChatPanel({ houseId }: { houseId: string }) {
   const mostrarResumo =
     saudacao !== null && (entradas.length === 0 || !ultima?.at || Date.now() - ultima.at > RESUMO_DEPOIS_DE_MS);
   const podeConversar = ditado.supported && voz.supported;
+
+  function abrirVoz() {
+    ditado.cancel();
+    voz.stop();
+    lembrarModo("voz");
+    marcarVozApresentada();
+    setApresentando(false);
+    setConversando(true);
+  }
+
+  function escrever() {
+    lembrarModo("texto");
+    setApresentando(false);
+    setConversando(false);
+    // Depois de a sobreposicao sair, o campo recebe o foco.
+    setTimeout(() => campo.current?.focus(), 0);
+  }
+
+  // Aberta pelo botao central: pela voz (a primeira vez explica antes de o
+  // navegador pedir o microfone) ou direto no texto. So ao montar.
+  const abriu = useRef(false);
+  useEffect(() => {
+    if (abriu.current || modo === null) return;
+    if (modo === "texto") {
+      abriu.current = true;
+      campo.current?.focus();
+      return;
+    }
+    // O suporte a voz so e conhecido depois de montar; sem ele, fica o texto.
+    if (!podeConversar) return;
+    abriu.current = true;
+    if (vozApresentada()) abrirVoz();
+    else setApresentando(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [modo, podeConversar]);
 
   // Exportar em PDF: a resposta escolhida vai para um bloco que so aparece na
   // impressao, e o dialogo do navegador tem "Salvar como PDF" em todo lugar -
@@ -407,11 +453,7 @@ export function ChatPanel({ houseId }: { houseId: string }) {
           variant="secondary"
           className="self-center"
           disabled={pending}
-          onClick={() => {
-            ditado.cancel();
-            voz.stop();
-            setConversando(true);
-          }}
+          onClick={abrirVoz}
         >
           <AudioLines aria-hidden /> Conversar por voz
         </Button>
@@ -421,10 +463,12 @@ export function ChatPanel({ houseId }: { houseId: string }) {
         className="sticky bottom-20 flex items-end gap-2 rounded-2xl border border-line bg-surface p-2 md:bottom-4"
         onSubmit={(ev) => {
           ev.preventDefault();
+          lembrarModo("texto");
           enviar(pergunta);
         }}
       >
         <textarea
+          ref={campo}
           value={ditado.listening ? ditado.interim : pergunta}
           readOnly={ditado.listening}
           onChange={(ev) => setPergunta(ev.target.value)}
@@ -432,6 +476,7 @@ export function ChatPanel({ houseId }: { houseId: string }) {
             // Enter envia; Shift+Enter quebra linha, como em qualquer chat.
             if (ev.key === "Enter" && !ev.shiftKey) {
               ev.preventDefault();
+              lembrarModo("texto");
               enviar(pergunta);
             }
           }}
@@ -494,7 +539,12 @@ export function ChatPanel({ houseId }: { houseId: string }) {
           pending={pendentes}
           resolve={resolver}
           onClose={() => setConversando(false)}
+          onEscrever={escrever}
         />
+      ) : null}
+
+      {apresentando ? (
+        <DoriaIntro onPermitir={abrirVoz} onEscrever={escrever} onFechar={() => setApresentando(false)} />
       ) : null}
 
       {imprimindo !== null && entradas[imprimindo] ? (

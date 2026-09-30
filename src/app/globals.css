@@ -42,6 +42,12 @@
   /* Preenchimento de botao de perigo: branco sobre ele da 5,1:1 (sobre
      `danger`, que e tom de texto, dava 3,0). */
   --color-danger-fill: #c9383c;
+  /*
+   * O fundo da Dori (botao central, avatar da Dor.IA). Igual nos dois temas,
+   * de proposito: ela e preta, e precisa do indigo claro para aparecer - o
+   * indigo escuro do tema claro a apagaria.
+   */
+  --color-doria: #7c86ff;
 
   /*
    * Escala SEQUENCIAL do calendario de gastos: um matiz so, do claro ao
