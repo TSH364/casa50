@@ -217,6 +217,44 @@ async function audioDe(texto: string, sinal: AbortSignal): Promise<Blob> {
 }
 
 /**
+ * Gera o audio de uma frase pela voz neural, para tocar depois (as falas de
+ * espera do modo conversa). Sem voz neural, `null` - e a espera fica em
+ * silencio, como antes.
+ */
+export async function synthesize(text: string): Promise<Blob | null> {
+  if (neuralDesligada || typeof window === "undefined") return null;
+  try {
+    return await audioDe(text, new AbortController().signal);
+  } catch {
+    return null;
+  }
+}
+
+/** Toca um audio pronto; `done` resolve ao terminar (ou ao parar). */
+export function playBlob(blob: Blob): { done: Promise<void>; stop: () => void } {
+  if (typeof window === "undefined" || !("Audio" in window)) return { done: Promise.resolve(), stop: () => {} };
+  const url = URL.createObjectURL(blob);
+  const a = new Audio(url);
+  let fim: () => void = () => {};
+  const done = new Promise<void>((resolve) => {
+    fim = () => {
+      URL.revokeObjectURL(url);
+      resolve();
+    };
+    a.onended = fim;
+    a.onerror = fim;
+    a.play().catch(fim);
+  });
+  return {
+    done,
+    stop: () => {
+      a.pause();
+      fim();
+    },
+  };
+}
+
+/**
  * Ler em voz alta, em portugues do Brasil.
  *
  * Primeiro a voz neural (rota /api/voz, pelo OpenRouter): os pedacos sao
@@ -257,7 +295,11 @@ export function useSpeech() {
 
   /** Fala e resolve quando termina (ou e interrompida) - o modo conversa espera. */
   const speak = useCallback(
-    async (text: string): Promise<void> => {
+    /**
+     * `after`: o audio ja comeca a ser gerado, mas so toca depois disso - a
+     * fala de espera ("deixa eu ver") termina antes de a resposta entrar.
+     */
+    async (text: string, opts?: { after?: Promise<unknown> }): Promise<void> => {
       atual.current?.cancelar();
       const falar = speakable(text);
       if (!falar || typeof window === "undefined") return;
@@ -286,6 +328,7 @@ export function useSpeech() {
           try {
             for (let i = 0; i < audios.length; i += 1) {
               const blob = i === 0 ? await comPrazo(audios[0]!, 7_000) : await audios[i]!;
+              if (i === 0 && opts?.after) await opts.after.catch(() => {});
               if (cancelado) return;
               const url = URL.createObjectURL(blob);
               try {
@@ -311,6 +354,7 @@ export function useSpeech() {
           }
         }
         // O que faltou falar, pela voz do navegador.
+        if (opts?.after) await opts.after.catch(() => {});
         await pelaVozDoNavegador(pedacos.slice(feitos).join(" "), () => cancelado);
       } finally {
         setSpeaking(false);

@@ -85,6 +85,26 @@ describe("useSpeech", () => {
     expect(tocados).toEqual(["blob:1", "blob:2"]);
   });
 
+  it("com `after`: o áudio já é pedido durante a fala de espera, e só toca depois dela", async () => {
+    globalThis.fetch = (async (_u: string, init: RequestInit) => {
+      pedidos.push(JSON.parse(String(init.body)).text);
+      return new Response(new Blob(["wav"]), { headers: { "Content-Type": "audio/wav" } });
+    }) as typeof fetch;
+    const { useSpeech } = await import("@/lib/voice");
+    const { result } = renderHook(() => useSpeech());
+    let fimDaEspera!: () => void;
+    const espera = new Promise<void>((r) => (fimDaEspera = r));
+    let fala!: Promise<void>;
+    act(() => {
+      fala = result.current.speak("Setembro está em 320,00.", { after: espera });
+    });
+    await vi.waitFor(() => expect(pedidos).toEqual(["Setembro está em 320,00."]));
+    expect(tocados).toEqual([]);
+    fimDaEspera();
+    await act(() => fala);
+    expect(tocados).toEqual(["blob:1"]);
+  });
+
   it("voz neural falhou: fala pela melhor voz do navegador, e não tenta de novo na página", async () => {
     globalThis.fetch = (async (_u: string, init: RequestInit) => {
       pedidos.push(JSON.parse(String(init.body)).text);

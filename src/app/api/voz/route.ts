@@ -44,6 +44,7 @@ export async function POST(req: Request) {
   );
 
   const falhas: { modelo: string; status: number; detalhe: string }[] = [];
+  const t0 = Date.now();
   for (const t of tentativas) {
     try {
       const { audio, contentType } = await textToSpeech(parsed.data.text, { apiKey, ...t, timeoutMs: 12_000 });
@@ -56,6 +57,7 @@ export async function POST(req: Request) {
         details: {
           caracteres: parsed.data.text.length,
           bytes: audio.byteLength,
+          ms: Date.now() - t0,
           ...(falhas.length ? { falhas } : {}),
         },
       });

@@ -5,7 +5,7 @@ import { Check, Loader2, Mic, Volume2, X } from "lucide-react";
 import { applyProposal } from "@/actions/chat";
 import type { Proposal } from "@/domain/chat";
 import { voiceIntent } from "@/domain/voice-intent";
-import { useDictation, useSpeech } from "@/lib/voice";
+import { playBlob, synthesize, useDictation, useSpeech } from "@/lib/voice";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { proposalDoneNote, proposalPayload, proposalTitle } from "./proposal-apply";
@@ -30,6 +30,13 @@ export interface PendingProposals {
 }
 
 type Fase = "falando" | "ouvindo" | "pensando" | "pausa";
+
+/**
+ * O que se diz enquanto pensa. A voz neural leva uns 4 s para comecar a
+ * falar; em silencio isso parece travado, com um "deixa eu ver" parece
+ * conversa. Geradas uma vez, ao abrir o modo, e tocadas na hora.
+ */
+const ESPERAS = ["Hum, deixa eu ver.", "Um instante, vou olhar aqui.", "Tá, só um segundo.", "Deixa eu conferir."];
 
 const ROTULO: Record<Fase, string> = {
   falando: "Falando…",
@@ -60,6 +67,8 @@ export function VoiceMode({
   const [propostas, setPropostas] = useState<Proposal[]>([]);
   const vivo = useRef(true);
   const silencios = useRef(0);
+  const esperas = useRef<Blob[]>([]);
+  const esperaTocando = useRef<{ stop: () => void } | null>(null);
   const voz = useSpeech();
   const ditado = useDictation(
     (texto) => void aoOuvir(texto),
@@ -83,12 +92,23 @@ export function VoiceMode({
     ditado.start();
   }
 
-  async function dizer(texto: string) {
+  async function dizer(texto: string, depoisDe?: Promise<void>) {
     if (!vivo.current) return;
     setResposta(texto);
     setFase("falando");
-    await voz.speak(texto);
+    await voz.speak(texto, depoisDe ? { after: depoisDe } : undefined);
     ouvir();
+  }
+
+  /** Uma fala de espera, se ja houver alguma pronta. */
+  function tocarEspera(): Promise<void> {
+    const prontas = esperas.current;
+    if (prontas.length === 0) return Promise.resolve();
+    const t = playBlob(prontas[Math.floor(Math.random() * prontas.length)]!);
+    esperaTocando.current = t;
+    return t.done.finally(() => {
+      if (esperaTocando.current === t) esperaTocando.current = null;
+    });
   }
 
   async function aplicar(p: PendingProposals, status: "feito" | "descartado") {
@@ -127,18 +147,26 @@ export function VoiceMode({
       await dizer(await aplicar(p, intencao === "confirmar" ? "feito" : "descartado"));
       return;
     }
+    // A espera toca enquanto a IA pensa; o audio da resposta ja e gerado
+    // enquanto ela termina, e entra logo depois.
+    const espera = tocarEspera();
     const r = await ask(texto);
     atualizarPropostas();
-    await dizer(r);
+    await dizer(r, espera);
   }
 
   useEffect(() => {
     vivo.current = true;
+    // As falas de espera sao geradas ja, em paralelo com o resumo do dia.
+    void Promise.all(ESPERAS.map((t) => synthesize(t))).then((bs) => {
+      esperas.current = bs.filter((b): b is Blob => b !== null);
+    });
     atualizarPropostas();
     if (greeting) void dizer(greeting);
     else ouvir();
     return () => {
       vivo.current = false;
+      esperaTocando.current?.stop();
       ditado.cancel();
       voz.stop();
     };
@@ -179,6 +207,7 @@ export function VoiceMode({
               silencios.current = 0;
               ouvir();
             } else if (fase === "falando") voz.stop();
+            else if (fase === "pensando") esperaTocando.current?.stop();
             else if (fase === "ouvindo") ditado.stop();
           }}
           aria-label={fase === "pausa" ? "Continuar a conversa" : fase === "falando" ? "Pular a fala" : fase === "ouvindo" ? "Terminei de falar" : "Pensando"}
