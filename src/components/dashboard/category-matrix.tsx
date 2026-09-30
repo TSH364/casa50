@@ -187,7 +187,7 @@ export async function CategoryMatrix({
                       title={`${column.name} · ${monthLabel(row.month)} · ${formatCents(cell.totalCents)} — ${TONE_TEXT[cell.tone]}`}
                       style={{ backgroundColor: BACKGROUND[cell.tone] }}
                       className={cn(
-                        "tabular rounded-[--radius-control] px-1.5 py-2 text-right",
+                        "tabular rounded-(--radius-control) px-1.5 py-2 text-right",
                         cell.tone === "empty" ? "text-ink-faint" : "text-ink",
                       )}
                     >

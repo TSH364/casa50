@@ -331,7 +331,7 @@ export function ChatPanel({
     <div className="flex flex-col gap-3">
       {entradas.length === 0 ? (
         <div className="space-y-3">
-          <p className="rounded-[--radius-control] bg-attention-soft px-3.5 py-2.5 text-corpo text-attention">
+          <p className="rounded-(--radius-control) bg-attention-soft px-3.5 py-2.5 text-corpo text-attention">
             O Jev escolhe quem responde. Perguntas simples vão a modelos{" "}
             <strong className="font-semibold">gratuitos</strong>, e o provedor pode guardar e usar
             o que recebe (lojas, valores, nomes) para treinar modelos. Análises e pedidos de mudar

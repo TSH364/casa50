@@ -37,7 +37,7 @@ export default async function ConversaPage({
       </header>
 
       {ai.source === null ? (
-        <p className="rounded-[--radius-control] bg-surface-2 px-3.5 py-3 text-corpo text-ink-muted">
+        <p className="rounded-(--radius-control) bg-surface-2 px-3.5 py-3 text-corpo text-ink-muted">
           A conversa usa a chave do OpenRouter da casa.{" "}
           <Link href="/casa" className="text-brand underline underline-offset-2">
             Guardar a chave na tela Casa

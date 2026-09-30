@@ -139,7 +139,7 @@ export function CalendarsManager({
             {sources.map((source) => (
               <li
                 key={source.id}
-                className="rounded-[--radius-control] bg-surface-2 px-3 py-3"
+                className="rounded-(--radius-control) bg-surface-2 px-3 py-3"
               >
                 {/* Empilhado: no celular, nome e botões na mesma linha
                     espremeriam o nome até virar reticências. */}
@@ -169,7 +169,7 @@ export function CalendarsManager({
                 </div>
 
                 {source.lastError ? (
-                  <p className="mt-2 flex items-start gap-1.5 rounded-[--radius-control] bg-danger-soft/40 px-2.5 py-2 text-legenda text-ink-muted">
+                  <p className="mt-2 flex items-start gap-1.5 rounded-(--radius-control) bg-danger-soft/40 px-2.5 py-2 text-legenda text-ink-muted">
                     <TriangleAlert className="mt-0.5 size-3.5 shrink-0 text-danger" aria-hidden />
                     {source.lastError}
                   </p>
@@ -222,7 +222,7 @@ export function CalendarsManager({
           }
         >
           <div className="space-y-4">
-            <ol className="space-y-1 rounded-[--radius-control] bg-surface-2 px-3 py-3 text-corpo text-ink-muted">
+            <ol className="space-y-1 rounded-(--radius-control) bg-surface-2 px-3 py-3 text-corpo text-ink-muted">
               <li>1. No Google Agenda, abra Configurações.</li>
               <li>2. Escolha o calendário na lista da esquerda.</li>
               <li>

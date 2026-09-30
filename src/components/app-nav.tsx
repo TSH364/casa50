@@ -127,7 +127,7 @@ export function AppNav({
                   onClick={() => setMaisAberto(false)}
                   aria-current={isActive(href) ? "page" : undefined}
                   className={cn(
-                    "flex min-h-14 items-center gap-3 rounded-[--radius-control] border px-4 text-destaque transition-colors",
+                    "flex min-h-14 items-center gap-3 rounded-(--radius-control) border px-4 text-destaque transition-colors",
                     isActive(href)
                       ? "border-brand bg-brand-soft font-medium text-ink"
                       : "border-line bg-surface-2 text-ink hover:bg-surface-3",
@@ -147,7 +147,7 @@ export function AppNav({
             <form action={signOut}>
               <button
                 type="submit"
-                className="inline-flex min-h-11 items-center gap-2 rounded-[--radius-control] px-3 text-corpo text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink"
+                className="inline-flex min-h-11 items-center gap-2 rounded-(--radius-control) px-3 text-corpo text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink"
               >
                 <LogOut className="size-4" aria-hidden /> Sair
               </button>
@@ -172,7 +172,7 @@ export function AppNav({
                 href={href}
                 aria-current={isActive(href) ? "page" : undefined}
                 className={cn(
-                  "flex min-h-11 items-center gap-3 rounded-[--radius-control] px-3 text-corpo transition-colors",
+                  "flex min-h-11 items-center gap-3 rounded-(--radius-control) px-3 text-corpo transition-colors",
                   isActive(href)
                     ? "bg-surface-2 font-medium text-ink"
                     : "text-ink-muted hover:bg-surface-2 hover:text-ink",

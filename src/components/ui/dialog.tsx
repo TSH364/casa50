@@ -131,7 +131,7 @@ export function ConfirmDialog({
         footer={
           <div className="flex gap-2">
             <DialogPrimitive.Close
-              className="min-h-11 flex-1 rounded-[--radius-control] border border-line-strong text-sm text-ink transition-colors hover:bg-surface-2"
+              className="min-h-11 flex-1 rounded-(--radius-control) border border-line-strong text-sm text-ink transition-colors hover:bg-surface-2"
               disabled={pending}
             >
               Cancelar
@@ -141,7 +141,7 @@ export function ConfirmDialog({
               onClick={onConfirm}
               disabled={pending}
               aria-busy={pending}
-              className="min-h-11 flex-1 rounded-[--radius-control] bg-danger-fill text-sm font-medium text-white transition-colors hover:bg-danger/90 disabled:opacity-50"
+              className="min-h-11 flex-1 rounded-(--radius-control) bg-danger-fill text-sm font-medium text-white transition-colors hover:bg-danger/90 disabled:opacity-50"
             >
               {pending ? "Excluindo…" : confirmLabel}
             </button>
@@ -151,7 +151,7 @@ export function ConfirmDialog({
         <p className="text-sm text-ink">
           {description ?? "Esta ação não pode ser desfeita."}
         </p>
-        <p className="mt-3 rounded-[--radius-control] bg-surface-2 px-3 py-2.5 text-sm font-medium text-ink">
+        <p className="mt-3 rounded-(--radius-control) bg-surface-2 px-3 py-2.5 text-sm font-medium text-ink">
           {itemLabel}
         </p>
         {error ? (

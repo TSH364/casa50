@@ -72,13 +72,13 @@ export function AuthForm({
       </Field>
 
       {state.error ? (
-        <p role="alert" className="rounded-[--radius-control] bg-danger-soft px-3 py-2 text-corpo text-danger">
+        <p role="alert" className="rounded-(--radius-control) bg-danger-soft px-3 py-2 text-corpo text-danger">
           {state.error}
         </p>
       ) : null}
 
       {state.message ? (
-        <p role="status" className="rounded-[--radius-control] bg-positive-soft px-3 py-2 text-corpo text-positive">
+        <p role="status" className="rounded-(--radius-control) bg-positive-soft px-3 py-2 text-corpo text-positive">
           {state.message}
         </p>
       ) : null}

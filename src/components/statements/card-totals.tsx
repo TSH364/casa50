@@ -82,7 +82,7 @@ export async function Statements({
                         : `/extratos?mes=${month}&cartao=${card.id}`
                     }
                     aria-current={isActive ? "true" : undefined}
-                    className={`flex min-h-14 items-center gap-3 rounded-[--radius-control] px-3 transition-colors ${
+                    className={`flex min-h-14 items-center gap-3 rounded-(--radius-control) px-3 transition-colors ${
                       isActive
                         ? "bg-brand-soft ring-1 ring-brand/50"
                         : "bg-surface-2 hover:bg-surface-3"
@@ -114,7 +114,7 @@ export async function Statements({
             })}
 
             {noCard ? (
-              <li className="flex min-h-14 items-center gap-3 rounded-[--radius-control] bg-surface-2 px-3">
+              <li className="flex min-h-14 items-center gap-3 rounded-(--radius-control) bg-surface-2 px-3">
                 <div className="min-w-0 flex-1">
                   <p className="text-sm text-ink-muted">Sem cartão</p>
                   <p className="text-legenda text-ink-faint">

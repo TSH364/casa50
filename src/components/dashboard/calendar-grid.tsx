@@ -135,7 +135,7 @@ export function CalendarGrid({
               aria-pressed={isOpen}
               title={rotulo}
               className={cn(
-                "relative flex aspect-square min-h-[38px] flex-col items-center justify-center rounded-[--radius-control] transition-shadow",
+                "relative flex aspect-square min-h-[38px] flex-col items-center justify-center rounded-(--radius-control) transition-shadow",
                 d.step === 0 && "border border-line",
                 isOpen && "ring-2 ring-ink",
               )}
@@ -163,7 +163,7 @@ export function CalendarGrid({
       </div>
 
       {selecionado ? (
-        <div className="mt-3 rounded-[--radius-control] bg-surface-2 px-3 py-2.5">
+        <div className="mt-3 rounded-(--radius-control) bg-surface-2 px-3 py-2.5">
           <p className="flex flex-wrap items-baseline justify-between gap-2">
             <span className="text-sm text-ink">Dia {selecionado.day}</span>
             <span className="tabular text-sm font-medium text-ink">

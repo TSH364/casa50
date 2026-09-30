@@ -27,7 +27,7 @@ function Footer({ isEdit }: { isEdit: boolean }) {
       <DialogClose
         type="button"
         disabled={pending}
-        className="min-h-11 flex-1 rounded-[--radius-control] border border-line-strong text-sm text-ink transition-colors hover:bg-surface-2 disabled:opacity-50"
+        className="min-h-11 flex-1 rounded-(--radius-control) border border-line-strong text-sm text-ink transition-colors hover:bg-surface-2 disabled:opacity-50"
       >
         Cancelar
       </DialogClose>
@@ -36,7 +36,7 @@ function Footer({ isEdit }: { isEdit: boolean }) {
         form="card-form"
         disabled={pending}
         aria-busy={pending}
-        className="min-h-11 flex-1 rounded-[--radius-control] bg-brand text-sm font-medium text-on-brand transition-colors hover:bg-brand/90 disabled:opacity-50"
+        className="min-h-11 flex-1 rounded-(--radius-control) bg-brand text-sm font-medium text-on-brand transition-colors hover:bg-brand/90 disabled:opacity-50"
       >
         {pending ? "Salvando…" : isEdit ? "Salvar alterações" : "Adicionar cartão"}
       </button>
@@ -179,7 +179,7 @@ export function CardFormDialog({
           {state.error ? (
             <p
               role="alert"
-              className="rounded-[--radius-control] bg-danger-soft px-3 py-2 text-corpo text-danger"
+              className="rounded-(--radius-control) bg-danger-soft px-3 py-2 text-corpo text-danger"
             >
               {state.error}
             </p>

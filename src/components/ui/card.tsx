@@ -8,7 +8,7 @@ export function Card({
   return (
     <div
       className={cn(
-        "rounded-[--radius-card] border border-line bg-surface p-4 sm:p-5",
+        "rounded-(--radius-card) border border-line bg-surface p-4 sm:p-5",
         className,
       )}
       {...props}
@@ -45,7 +45,7 @@ export function CardHeader({
  */
 export function InDevelopment({ note }: { note?: string }) {
   return (
-    <div className="rounded-[--radius-control] border border-dashed border-line-strong bg-surface-2 px-4 py-6 text-center">
+    <div className="rounded-(--radius-control) border border-dashed border-line-strong bg-surface-2 px-4 py-6 text-center">
       <p className="text-corpo font-medium text-attention">Em desenvolvimento</p>
       {note ? <p className="mt-1 text-corpo text-ink-faint">{note}</p> : null}
     </div>

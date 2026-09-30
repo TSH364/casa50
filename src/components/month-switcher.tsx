@@ -68,7 +68,7 @@ export function MonthSwitcher({ month }: { month: string }) {
         disabled={isPending}
         aria-label={`${label}. Escolher outro mês`}
         className={cn(
-          "min-h-11 min-w-[9.5rem] rounded-[--radius-control] px-2 text-center",
+          "min-h-11 min-w-[9.5rem] rounded-(--radius-control) px-2 text-center",
           "text-destaque font-semibold tracking-tight text-ink transition-colors",
           "hover:bg-surface-2 disabled:opacity-40",
           isPending && "opacity-50",
@@ -126,7 +126,7 @@ export function MonthSwitcher({ month }: { month: string }) {
                     setOpen(false);
                   }}
                   className={cn(
-                    "min-h-12 rounded-[--radius-control] border text-sm capitalize transition-colors",
+                    "min-h-12 rounded-(--radius-control) border text-sm capitalize transition-colors",
                     isSelected
                       ? "border-brand bg-brand-soft font-medium text-ink"
                       : "border-line bg-surface-2 text-ink-muted hover:text-ink",
@@ -144,7 +144,7 @@ export function MonthSwitcher({ month }: { month: string }) {
           <div className="mt-3 flex gap-2">
             <DialogClose
               type="button"
-              className="min-h-11 flex-1 rounded-[--radius-control] border border-line-strong text-sm text-ink transition-colors hover:bg-surface-2"
+              className="min-h-11 flex-1 rounded-(--radius-control) border border-line-strong text-sm text-ink transition-colors hover:bg-surface-2"
             >
               Cancelar
             </DialogClose>
@@ -154,7 +154,7 @@ export function MonthSwitcher({ month }: { month: string }) {
                 goTo(thisMonth);
                 setOpen(false);
               }}
-              className="min-h-11 flex-1 rounded-[--radius-control] bg-surface-2 text-sm text-ink transition-colors hover:bg-surface-3"
+              className="min-h-11 flex-1 rounded-(--radius-control) bg-surface-2 text-sm text-ink transition-colors hover:bg-surface-3"
             >
               Mês atual
             </button>

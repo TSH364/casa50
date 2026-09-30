@@ -22,7 +22,7 @@ export function NextMonthsCard({ forecast }: { forecast: ReturnType<typeof forec
       {forecast.map((m) => (
         <li
           key={m.month}
-          className="rounded-[--radius-control] bg-surface-2 px-3 py-3"
+          className="rounded-(--radius-control) bg-surface-2 px-3 py-3"
         >
           <div className="flex items-baseline justify-between gap-3">
             <span className="text-sm text-ink">{monthLabel(m.month)}</span>
@@ -121,7 +121,7 @@ export function InstallmentsCard({
         {running.map((s) => (
           <li
             key={s.key}
-            className="rounded-[--radius-control] bg-surface-2 px-3 py-3"
+            className="rounded-(--radius-control) bg-surface-2 px-3 py-3"
           >
             <div className="flex items-baseline justify-between gap-3">
               <span className="min-w-0 truncate text-sm text-ink">

@@ -16,6 +16,7 @@ import {
 import { MonthSwitcher } from "@/components/month-switcher";
 import { FilterChips } from "@/components/filter-chips";
 import { NewTransactionButton } from "@/components/transactions/new-transaction-button";
+import { FiltrosInicio } from "@/components/home/filtros-inicio";
 import { InicioPainel, InicioPainelSkeleton } from "@/components/home/inicio-painel";
 import { getCurrentUser } from "@/lib/supabase/server";
 import type { MonthKey } from "@/domain/types";
@@ -87,62 +88,82 @@ export default async function InicioPage({
   );
   const saudacao = hora < 12 ? "Bom dia" : hora < 18 ? "Boa tarde" : "Boa noite";
 
+  // O recorte em uso, numa linha: pessoa, cartao e o que esta fora dos totais.
+  const cartoesAtivos = cards.filter((c) => c.isActive);
+  const temFiltros = members.length > 1 || cartoesAtivos.length > 1 || view.excluded.length > 0;
+  const partes = [
+    memberId ? (members.find((m) => m.userId === memberId)?.fullName.split(" ")[0] ?? "Uma pessoa") : "Todos",
+    cardId ? (cards.find((c) => c.id === cardId)?.name ?? "Um cartão") : null,
+    view.excluded.length === 0
+      ? null
+      : view.showingAll
+        ? "tudo"
+        : `sem ${view.excluded.map((c) => c.name).join(", ")}`,
+  ].filter(Boolean);
+  const resumoFiltros = partes.join(" · ");
+  const filtroAtivo = memberId !== null || cardId !== null || view.showingAll;
+
   return (
     <div className="mx-auto max-w-3xl space-y-5">
-      <header className="flex flex-wrap items-end justify-between gap-3">
-        <div className="min-w-0">
-          <p className="text-corpo text-ink-muted">
+      <header className="space-y-0.5">
+        <div className="flex items-center justify-between gap-3">
+          <p className="min-w-0 truncate text-corpo text-ink-muted">
             {saudacao}
             {eu ? `, ${eu.fullName.split(" ")[0]}` : ""}
           </p>
-          <h1 className="sr-only">Início</h1>
-          <MonthSwitcher month={month} />
+          {temFiltros ? (
+            <FiltrosInicio resumo={resumoFiltros} ativo={filtroAtivo}>
+              {members.length > 1 ? (
+                <FilterChips
+                  param="membro"
+                  label="Filtrar por pessoa"
+                  active={memberId}
+                  options={members.map((m) => ({ value: m.userId, label: m.fullName }))}
+                />
+              ) : null}
+
+              {cards.filter((c) => c.isActive).length > 1 ? (
+                <FilterChips
+                  param="cartao"
+                  label="Filtrar por cartão"
+                  active={cardId}
+                  allLabel="Todos os cartões"
+                  options={cards
+                    .filter((c) => c.isActive)
+                    .map((c) => ({ value: c.id, label: c.name }))}
+                />
+              ) : null}
+
+              <TotalsNote
+                view={view}
+                month={month}
+                extraParams={{ membro: memberId, cartao: cardId }}
+              />
+            </FiltrosInicio>
+          ) : null}
         </div>
-        <NewTransactionButton
-          categories={categories}
-          cards={cards}
-          members={members}
-          defaultMonth={month}
-          label="Lançar"
-          size="default"
-        />
+        <h1 className="sr-only">Início</h1>
+        <div className="-ml-3 flex items-center justify-between gap-2">
+          <MonthSwitcher month={month} />
+          <NewTransactionButton
+            categories={categories}
+            cards={cards}
+            members={members}
+            defaultMonth={month}
+            label="Lançar"
+            size="default"
+          />
+        </div>
       </header>
 
       {redirected ? (
-        <p className="rounded-[--radius-control] bg-attention-soft px-3.5 py-2.5 text-corpo text-attention">
+        <p className="rounded-(--radius-control) bg-attention-soft px-3.5 py-2.5 text-corpo text-attention">
           {monthLabel(currentMonth())} ainda não tem lançamentos. Mostrando{" "}
           {monthLabel(month)}, o mês mais recente com dados.
         </p>
       ) : null}
 
-      {members.length > 1 ? (
-        <FilterChips
-          param="membro"
-          label="Filtrar por pessoa"
-          active={memberId}
-          options={members.map((m) => ({ value: m.userId, label: m.fullName }))}
-        />
-      ) : null}
-
       {memberId ? <PersonFilterNote cards={cards} houseWidePanels /> : null}
-
-      {cards.filter((c) => c.isActive).length > 1 ? (
-        <FilterChips
-          param="cartao"
-          label="Filtrar por cartão"
-          active={cardId}
-          allLabel="Todos os cartões"
-          options={cards
-            .filter((c) => c.isActive)
-            .map((c) => ({ value: c.id, label: c.name }))}
-        />
-      ) : null}
-
-      <TotalsNote
-        view={view}
-        month={month}
-        extraParams={{ membro: memberId, cartao: cardId }}
-      />
 
       <Suspense key={`painel:${key}`} fallback={<InicioPainelSkeleton />}>
         <InicioPainel

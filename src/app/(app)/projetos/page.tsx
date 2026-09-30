@@ -111,7 +111,7 @@ export default async function ProjetosPage({
               href={`/projetos?projeto=${p.id}`}
               aria-current={p.id === project.id ? "page" : undefined}
               className={cn(
-                "rounded-[--radius-control] px-2.5 py-1.5 text-legenda",
+                "rounded-(--radius-control) px-2.5 py-1.5 text-legenda",
                 p.id === project.id
                   ? "bg-surface-3 text-ink"
                   : "bg-surface-2 text-ink-faint",

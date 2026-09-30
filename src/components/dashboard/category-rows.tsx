@@ -50,13 +50,13 @@ export function CategoryRows({
         const key = row.categoryId ?? "sem-categoria";
         const isOpen = open === key;
         return (
-          <li key={key} className="rounded-[--radius-control]">
+          <li key={key} className="rounded-(--radius-control)">
             <button
               type="button"
               onClick={() => setOpen(isOpen ? null : key)}
               aria-expanded={isOpen}
               className={cn(
-                "flex w-full items-center gap-2.5 rounded-[--radius-control] px-2 py-2 text-left transition-colors",
+                "flex w-full items-center gap-2.5 rounded-(--radius-control) px-2 py-2 text-left transition-colors",
                 isOpen ? "bg-surface-2" : "hover:bg-surface-2",
               )}
             >

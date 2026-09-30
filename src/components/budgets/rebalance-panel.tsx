@@ -120,7 +120,7 @@ export async function RebalancePanel({
         {plan.proposals.map((p) => (
           <li
             key={p.categoryId}
-            className="rounded-[--radius-control] bg-surface-2 px-3 py-3"
+            className="rounded-(--radius-control) bg-surface-2 px-3 py-3"
           >
             <div className="flex items-center gap-2">
               <span

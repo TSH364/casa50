@@ -43,7 +43,7 @@ export function TotalsNote({
   const ligado = view.showingAll;
 
   return (
-    <div className="flex items-center gap-3 rounded-[--radius-control] bg-surface-2 px-3 py-2.5">
+    <div className="flex items-center gap-3 rounded-(--radius-control) bg-surface-2 px-3 py-2.5">
       {/*
         É um link, e não um botão com estado no cliente: o recorte mora na URL,
         então ele sobrevive a recarregar a página e pode ser compartilhado. Leva

@@ -27,7 +27,7 @@ function Kpi({
   hint?: string;
 }) {
   return (
-    <div className="rounded-[--radius-control] bg-surface-2 px-3.5 py-3">
+    <div className="rounded-(--radius-control) bg-surface-2 px-3.5 py-3">
       <p className="text-legenda uppercase tracking-[0.08em] text-ink-faint">{label}</p>
       <p
         className={cn(
@@ -52,7 +52,7 @@ export function SummarySkeleton() {
       <CardHeader title="Resumo do mês" />
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
         {Array.from({ length: 6 }, (_, i) => (
-          <div key={i} className="rounded-[--radius-control] bg-surface-2 px-3.5 py-3">
+          <div key={i} className="rounded-(--radius-control) bg-surface-2 px-3.5 py-3">
             <Skeleton className="h-3 w-16" />
             <Skeleton className="mt-2 h-6 w-24" />
           </div>

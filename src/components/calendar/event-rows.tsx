@@ -101,7 +101,7 @@ function EventItem({
   const confirmados = row.confirmedCount;
 
   return (
-    <li className="rounded-[--radius-control] bg-surface-2">
+    <li className="rounded-(--radius-control) bg-surface-2">
       <button
         type="button"
         onClick={onToggle}
@@ -162,7 +162,7 @@ function EventItem({
                     palavras — e o nome é o que faz a pessoa lembrar se aquilo
                     foi da festa ou não. A altura extra é o preço certo.
                   */
-                  <li key={c.id} className="rounded-[--radius-control] px-1 py-1">
+                  <li key={c.id} className="rounded-(--radius-control) px-1 py-1">
                     <div className="flex items-baseline gap-2">
                       <span className="tabular shrink-0 text-legenda text-ink-faint">
                         {DIA.format(new Date(`${c.date}T00:00:00Z`))}
@@ -263,7 +263,7 @@ function Acao({
       title={label}
       disabled={disabled}
       onClick={onClick}
-      className="inline-flex min-h-8 items-center gap-1 rounded-[--radius-control] border border-line px-2 text-legenda text-ink-muted transition-colors hover:bg-surface-3 disabled:opacity-50 [&_svg]:size-3"
+      className="inline-flex min-h-8 items-center gap-1 rounded-(--radius-control) border border-line px-2 text-legenda text-ink-muted transition-colors hover:bg-surface-3 disabled:opacity-50 [&_svg]:size-3"
     >
       {children}
     </button>

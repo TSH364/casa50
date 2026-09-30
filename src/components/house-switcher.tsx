@@ -43,7 +43,7 @@ export function HouseSwitcher({
             void selectHouse(next);
           });
         }}
-        className="min-h-11 w-full appearance-none rounded-[--radius-control] bg-transparent py-2 pl-2 pr-8 text-sm font-medium text-ink focus:outline-none disabled:opacity-60"
+        className="min-h-11 w-full appearance-none rounded-(--radius-control) bg-transparent py-2 pl-2 pr-8 text-sm font-medium text-ink focus:outline-none disabled:opacity-60"
       >
         {houses.map((house) => (
           <option key={house.id} value={house.id} className="bg-surface-2">

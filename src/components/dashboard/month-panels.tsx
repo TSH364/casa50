@@ -193,7 +193,7 @@ export async function MonthPanels({
             {committed.map((c) => (
               <li
                 key={c.month}
-                className="rounded-[--radius-control] bg-surface-2 px-3 py-2.5 text-center"
+                className="rounded-(--radius-control) bg-surface-2 px-3 py-2.5 text-center"
               >
                 <p className="text-legenda uppercase tracking-[0.06em] text-ink-faint">
                   {monthShortLabel(c.month)}
@@ -218,7 +218,7 @@ export async function MonthPanels({
           </p>
         ) : (
           <dl className="grid grid-cols-2 gap-2">
-            <div className="rounded-[--radius-control] bg-surface-2 px-3 py-2.5">
+            <div className="rounded-(--radius-control) bg-surface-2 px-3 py-2.5">
               <dt className="text-legenda text-ink-faint">
                 Tarifas ({fees.length})
               </dt>
@@ -226,7 +226,7 @@ export async function MonthPanels({
                 {formatCents(feeCents)}
               </dd>
             </div>
-            <div className="rounded-[--radius-control] bg-surface-2 px-3 py-2.5">
+            <div className="rounded-(--radius-control) bg-surface-2 px-3 py-2.5">
               <dt className="text-legenda text-ink-faint">
                 Estornos ({refunds.length})
               </dt>

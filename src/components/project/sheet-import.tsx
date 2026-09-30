@@ -198,7 +198,7 @@ export function SheetImport({ projectId }: { projectId: string }) {
                   }}
                   aria-pressed={i === aba}
                   className={cn(
-                    "min-h-9 rounded-[--radius-control] px-2.5 py-1.5 text-legenda",
+                    "min-h-9 rounded-(--radius-control) px-2.5 py-1.5 text-legenda",
                     i === aba ? "bg-brand/15 text-brand" : "bg-surface-2 text-ink-faint",
                   )}
                 >
@@ -231,7 +231,7 @@ export function SheetImport({ projectId }: { projectId: string }) {
                   onClick={() => setColunaQtd(o.column)}
                   aria-pressed={ativa}
                   className={cn(
-                    "min-h-9 rounded-[--radius-control] px-2.5 py-1.5 text-legenda",
+                    "min-h-9 rounded-(--radius-control) px-2.5 py-1.5 text-legenda",
                     ativa ? "bg-brand/15 text-brand" : "bg-surface-2 text-ink-faint",
                   )}
                 >

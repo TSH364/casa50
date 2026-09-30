@@ -108,7 +108,7 @@ export function ProjectManager({
           ].map(([rotulo, valor, tom]) => (
             <div
               key={rotulo}
-              className="flex items-baseline justify-between gap-3 rounded-[--radius-control] bg-surface-2 px-3 py-2"
+              className="flex items-baseline justify-between gap-3 rounded-(--radius-control) bg-surface-2 px-3 py-2"
             >
               <dt className="text-legenda text-ink-faint">{rotulo}</dt>
               <dd className={cn("tabular text-sm font-semibold", tom)}>{valor}</dd>
@@ -208,7 +208,7 @@ function ItemRow({
   const temQuantidade = item.plannedQuantity !== null;
 
   return (
-    <li className="rounded-[--radius-control] bg-surface-2 px-3 py-2.5">
+    <li className="rounded-(--radius-control) bg-surface-2 px-3 py-2.5">
       <button
         type="button"
         onClick={onToggle}
@@ -324,7 +324,7 @@ function ItemDetalhe({
             aria-selected={aba === chave}
             onClick={() => setAba(chave)}
             className={cn(
-              "rounded-[--radius-control] px-2.5 py-1 text-legenda",
+              "rounded-(--radius-control) px-2.5 py-1 text-legenda",
               aba === chave ? "bg-surface-3 text-ink" : "text-ink-faint",
             )}
           >
@@ -458,7 +458,7 @@ function ItemDetalhe({
                 )
               }
               className={cn(
-                "min-h-9 rounded-[--radius-control] px-2.5 py-1.5 text-legenda",
+                "min-h-9 rounded-(--radius-control) px-2.5 py-1.5 text-legenda",
                 item.priority === nivel
                   ? "bg-brand/15 text-brand"
                   : "bg-surface-2 text-ink-faint",

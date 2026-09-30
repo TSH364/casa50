@@ -117,7 +117,7 @@ export function BudgetsManager({
     return (
       <li
         key={row.category.id}
-        className="rounded-[--radius-control] bg-surface-2 px-3 py-3"
+        className="rounded-(--radius-control) bg-surface-2 px-3 py-3"
       >
         <div className="flex items-center gap-3">
           <span
@@ -161,7 +161,7 @@ export function BudgetsManager({
                 );
                 setEditing(row.category.id);
               }}
-              className="tabular shrink-0 rounded-[--radius-control] px-2 py-1 text-sm text-ink transition-colors hover:bg-surface-3"
+              className="tabular shrink-0 rounded-(--radius-control) px-2 py-1 text-sm text-ink transition-colors hover:bg-surface-3"
             >
               {row.limitCents > 0 ? (
                 <>
@@ -245,7 +245,7 @@ export function BudgetsManager({
 
         {withBudget.length > 0 ? (
           <>
-            <div className="mb-3 flex items-baseline justify-between rounded-[--radius-control] bg-surface-3 px-3 py-2.5">
+            <div className="mb-3 flex items-baseline justify-between rounded-(--radius-control) bg-surface-3 px-3 py-2.5">
               <span className="text-corpo text-ink-muted">
                 Total orçado neste mês
               </span>

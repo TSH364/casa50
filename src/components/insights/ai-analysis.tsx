@@ -73,7 +73,7 @@ export function AiAnalysisCard({
           {analise.items.map((a, i) => {
             const tom = TOM[a.tone];
             return (
-              <li key={i} className={cn("rounded-[--radius-control] border-l-2 bg-surface-2 px-3 py-3", tom.border)}>
+              <li key={i} className={cn("rounded-(--radius-control) border-l-2 bg-surface-2 px-3 py-3", tom.border)}>
                 <div className="flex items-start gap-2.5">
                   <tom.Icon className={cn("mt-0.5 size-4 shrink-0", tom.icon)} aria-hidden />
                   <div className="min-w-0 flex-1">

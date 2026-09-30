@@ -137,7 +137,7 @@ export function RecurrencesPanel({
               return (
                 <li
                   key={match.recurrence.id}
-                  className="flex items-center gap-3 rounded-[--radius-control] bg-surface-2 px-3 py-2.5"
+                  className="flex items-center gap-3 rounded-(--radius-control) bg-surface-2 px-3 py-2.5"
                 >
                   <meta.Icon
                     className={cn("size-4 shrink-0", meta.tone)}
@@ -225,7 +225,7 @@ export function RecurrencesPanel({
               return (
                 <li
                   key={r.id}
-                  className="flex items-center gap-3 rounded-[--radius-control] bg-surface-2 px-3 py-2.5"
+                  className="flex items-center gap-3 rounded-(--radius-control) bg-surface-2 px-3 py-2.5"
                 >
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm text-ink">
@@ -307,7 +307,7 @@ export function RecurrencesPanel({
             {visibleCandidates.map((candidate) => (
               <li
                 key={candidate.merchantNormalized}
-                className="flex items-center gap-3 rounded-[--radius-control] bg-surface-2 px-3 py-2.5"
+                className="flex items-center gap-3 rounded-(--radius-control) bg-surface-2 px-3 py-2.5"
               >
                 <Sparkles className="size-4 shrink-0 text-brand" aria-hidden />
                 <div className="min-w-0 flex-1">

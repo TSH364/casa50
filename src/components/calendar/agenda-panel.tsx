@@ -151,7 +151,7 @@ export async function AgendaPanel({
       ) : (
         <>
           {custosos.length > 0 && !jaPassou ? (
-            <div className="mb-4 rounded-[--radius-control] border border-attention/40 bg-attention-soft/30 px-3 py-3">
+            <div className="mb-4 rounded-(--radius-control) border border-attention/40 bg-attention-soft/30 px-3 py-3">
               <p className="text-corpo text-ink">
                 {diasComCusto === 1
                   ? "Há 1 dia de compromisso que costuma custar neste mês."

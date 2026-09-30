@@ -138,7 +138,7 @@ export function TaskBoard({
             <li
               key={col.id}
               className={cn(
-                "w-[17.5rem] shrink-0 snap-start rounded-[--radius-card] border bg-surface",
+                "w-[17.5rem] shrink-0 snap-start rounded-(--radius-card) border bg-surface",
                 overCol === col.id ? "border-brand" : "border-line",
               )}
               onDragOver={(e) => {
@@ -253,7 +253,7 @@ function TaskCard({
   const vencida = isOverdue(task, todayIso);
 
   return (
-    <div className="flex items-start gap-1 rounded-[--radius-control] border border-line bg-surface-2 py-1 pl-1 pr-3 transition-colors hover:border-line-strong">
+    <div className="flex items-start gap-1 rounded-(--radius-control) border border-line bg-surface-2 py-1 pl-1 pr-3 transition-colors hover:border-line-strong">
       <button
         type="button"
         role="checkbox"
@@ -327,7 +327,7 @@ function NewTask({ listId }: { listId: string }) {
         <button
           type="button"
           onClick={() => setAberto(true)}
-          className="flex min-h-11 w-full items-center gap-2 rounded-[--radius-control] px-2 text-sm text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink"
+          className="flex min-h-11 w-full items-center gap-2 rounded-(--radius-control) px-2 text-sm text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink"
         >
           <Plus className="size-4" aria-hidden />
           Adicionar tarefa
@@ -383,7 +383,7 @@ function NewColumn() {
       <button
         type="button"
         onClick={() => setAberto(true)}
-        className="flex min-h-12 w-full items-center gap-2 rounded-[--radius-card] border border-dashed border-line-strong px-3 text-sm text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink"
+        className="flex min-h-12 w-full items-center gap-2 rounded-(--radius-card) border border-dashed border-line-strong px-3 text-sm text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink"
       >
         <Plus className="size-4" aria-hidden />
         Nova coluna
@@ -393,7 +393,7 @@ function NewColumn() {
 
   return (
     <form
-      className="space-y-2 rounded-[--radius-card] border border-line bg-surface p-2"
+      className="space-y-2 rounded-(--radius-card) border border-line bg-surface p-2"
       onSubmit={(e) => {
         e.preventDefault();
         start(async () => {

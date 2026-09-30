@@ -44,7 +44,7 @@ export default async function AppLayout({
       */}
       <a
         href="#conteudo"
-        className="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-50 focus:rounded-[--radius-control] focus:bg-brand focus:px-4 focus:py-2.5 focus:text-sm focus:text-on-brand"
+        className="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-50 focus:rounded-(--radius-control) focus:bg-brand focus:px-4 focus:py-2.5 focus:text-sm focus:text-on-brand"
       >
         Pular para o conteúdo
       </a>

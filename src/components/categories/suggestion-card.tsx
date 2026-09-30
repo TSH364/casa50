@@ -80,7 +80,7 @@ export function SuggestionCard({
   }
 
   return (
-    <div className="rounded-[--radius-control] bg-surface-2 px-3 py-3">
+    <div className="rounded-(--radius-control) bg-surface-2 px-3 py-3">
       <div className="flex items-center gap-2">
         <span
           className="size-2 shrink-0 rounded-full"

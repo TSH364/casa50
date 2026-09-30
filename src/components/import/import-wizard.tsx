@@ -350,7 +350,7 @@ export function ImportWizard({
           description="CSV ou planilha (.xlsx) da fatura, exportados pelo app ou site do banco."
         />
         <label
-          className="flex cursor-pointer flex-col items-center justify-center gap-3 rounded-[--radius-card] border border-dashed border-line-strong bg-surface-2 px-6 py-12 text-center transition-colors hover:border-brand"
+          className="flex cursor-pointer flex-col items-center justify-center gap-3 rounded-(--radius-card) border border-dashed border-line-strong bg-surface-2 px-6 py-12 text-center transition-colors hover:border-brand"
           onDragOver={(e) => e.preventDefault()}
           onDrop={(e) => {
             e.preventDefault();
@@ -379,7 +379,7 @@ export function ImportWizard({
         {fileError ? (
           <p
             role="alert"
-            className="mt-4 rounded-[--radius-control] bg-danger-soft px-3 py-2.5 text-corpo text-danger"
+            className="mt-4 rounded-(--radius-control) bg-danger-soft px-3 py-2.5 text-corpo text-danger"
           >
             {fileError}
           </p>
@@ -595,7 +595,7 @@ export function ImportWizard({
               { label: "Ignorados", value: summary.ignored, tone: "text-ink-muted" },
               { label: "Sem categoria", value: summary.withoutCategory, tone: "text-ink-muted" },
             ].map((k) => (
-              <div key={k.label} className="rounded-[--radius-control] bg-surface-2 px-3 py-2.5">
+              <div key={k.label} className="rounded-(--radius-control) bg-surface-2 px-3 py-2.5">
                 <p className="text-legenda uppercase tracking-[0.08em] text-ink-faint">
                   {k.label}
                 </p>

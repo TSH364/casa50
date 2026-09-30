@@ -77,7 +77,7 @@ export function GoalsManager({
     return (
       <li
         key={goal.id}
-        className="rounded-[--radius-control] bg-surface-2 px-3 py-3"
+        className="rounded-(--radius-control) bg-surface-2 px-3 py-3"
       >
         <div className="flex items-start gap-3">
           <div className="min-w-0 flex-1">

@@ -149,7 +149,7 @@ export function NovaCompra({
               }}
               aria-pressed={metodo === m}
               className={cn(
-                "min-h-9 rounded-[--radius-control] px-2.5 py-1.5 text-legenda",
+                "min-h-9 rounded-(--radius-control) px-2.5 py-1.5 text-legenda",
                 metodo === m
                   ? "bg-brand/15 text-brand"
                   : "bg-surface-2 text-ink-faint",
@@ -248,14 +248,14 @@ function ForaDoCartao({
   categoryLabel: string | null;
 }) {
   return (
-    <div className="space-y-1.5 rounded-[--radius-control] bg-surface-2 p-2.5">
+    <div className="space-y-1.5 rounded-(--radius-control) bg-surface-2 p-2.5">
       <label className="flex items-center justify-between gap-2 text-legenda text-ink-muted">
         <span>Mês em que sai do bolso</span>
         <input
           type="month"
           value={mes}
           onChange={(e) => e.target.value && setMes(e.target.value)}
-          className="min-h-9 rounded-[--radius-control] border border-line bg-surface px-2 text-corpo text-ink"
+          className="min-h-9 rounded-(--radius-control) border border-line bg-surface px-2 text-corpo text-ink"
           aria-label="Mês da despesa"
         />
       </label>
@@ -319,7 +319,7 @@ function VincularLancamento({
   if (escolhido !== null) {
     const compra = purchaseFromTransaction(escolhido);
     return (
-      <div className="rounded-[--radius-control] bg-surface-2 p-2.5 text-legenda">
+      <div className="rounded-(--radius-control) bg-surface-2 p-2.5 text-legenda">
         <div className="flex items-baseline justify-between gap-2">
           <span className="min-w-0 break-words text-ink-muted">
             {escolhido.merchant ?? escolhido.description}
@@ -367,7 +367,7 @@ function VincularLancamento({
   }
 
   return (
-    <div className="space-y-1.5 rounded-[--radius-control] bg-surface-2 p-2.5">
+    <div className="space-y-1.5 rounded-(--radius-control) bg-surface-2 p-2.5">
       <div className="flex gap-1.5">
         <Input
           value={busca}

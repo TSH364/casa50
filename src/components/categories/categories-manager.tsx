@@ -121,7 +121,7 @@ export function CategoriesManager({ categories }: { categories: Category[] }) {
               const children = childrenOf(parent.id);
               return (
                 <li key={parent.id}>
-                  <div className="flex items-center gap-3 rounded-[--radius-control] bg-surface-2 px-3 py-2.5">
+                  <div className="flex items-center gap-3 rounded-(--radius-control) bg-surface-2 px-3 py-2.5">
                     <span
                       className="size-3 shrink-0 rounded-full"
                       style={{ backgroundColor: parent.color }}
@@ -196,7 +196,7 @@ export function CategoriesManager({ categories }: { categories: Category[] }) {
                       {children.map((child) => (
                         <li
                           key={child.id}
-                          className="flex items-center gap-3 rounded-[--radius-control] bg-surface-2 px-3 py-2"
+                          className="flex items-center gap-3 rounded-(--radius-control) bg-surface-2 px-3 py-2"
                         >
                           <span
                             className="size-2.5 shrink-0 rounded-full"

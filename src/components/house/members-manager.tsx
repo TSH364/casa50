@@ -102,7 +102,7 @@ export function MembersManager({
             return (
               <li
                 key={member.memberId}
-                className="flex items-center gap-3 rounded-[--radius-control] bg-surface-2 px-3 py-3"
+                className="flex items-center gap-3 rounded-(--radius-control) bg-surface-2 px-3 py-3"
               >
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm text-ink">
@@ -167,7 +167,7 @@ export function MembersManager({
             {invited.map((invite) => (
               <li
                 key={invite.memberId}
-                className="flex items-center gap-3 rounded-[--radius-control] bg-surface-2 px-3 py-2.5"
+                className="flex items-center gap-3 rounded-(--radius-control) bg-surface-2 px-3 py-2.5"
               >
                 <Clock className="size-4 shrink-0 text-attention" aria-hidden />
                 <span className="min-w-0 flex-1 truncate text-sm text-ink-muted">
@@ -203,7 +203,7 @@ export function MembersManager({
             {state.error ? (
               <p
                 role="alert"
-                className="rounded-[--radius-control] bg-danger-soft px-3 py-2.5 text-corpo text-danger"
+                className="rounded-(--radius-control) bg-danger-soft px-3 py-2.5 text-corpo text-danger"
               >
                 {state.error}
               </p>

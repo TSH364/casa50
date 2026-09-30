@@ -54,7 +54,7 @@ export function PendingInvites({
         {invites.map((invite) => (
           <li
             key={invite.houseId}
-            className="flex items-center gap-3 rounded-[--radius-control] bg-brand-soft px-3 py-3"
+            className="flex items-center gap-3 rounded-(--radius-control) bg-brand-soft px-3 py-3"
           >
             <MailOpen className="size-4 shrink-0 text-brand" aria-hidden />
             <span className="min-w-0 flex-1 truncate text-sm text-ink">

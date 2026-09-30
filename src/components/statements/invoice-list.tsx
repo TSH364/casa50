@@ -134,7 +134,7 @@ export function InvoiceList({
             <li
               key={invoice.id}
               className={cn(
-                "flex items-start gap-3 rounded-[--radius-control] bg-surface-2 px-3 py-3",
+                "flex items-start gap-3 rounded-(--radius-control) bg-surface-2 px-3 py-3",
                 isReverted && "opacity-55",
               )}
             >

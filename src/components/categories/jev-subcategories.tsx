@@ -108,7 +108,7 @@ function JevCategory({ row }: { row: JevCategoryRow }) {
   const nMarcadas = sugestoes?.filter((s) => marcadas.has(s.merchant)).length ?? 0;
 
   return (
-    <div className="rounded-[--radius-control] bg-surface-2 px-3 py-3">
+    <div className="rounded-(--radius-control) bg-surface-2 px-3 py-3">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
         <span className="size-2 shrink-0 rounded-full" style={{ backgroundColor: row.color }} aria-hidden />
         <span className="min-w-0 flex-1 text-corpo text-ink">

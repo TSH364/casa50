@@ -62,7 +62,7 @@ export function InsightCard({ insight }: { insight: Insight }) {
   );
 
   const className = cn(
-    "block rounded-[--radius-control] border-l-2 bg-surface-2 px-3 py-3 text-left",
+    "block rounded-(--radius-control) border-l-2 bg-surface-2 px-3 py-3 text-left",
     tone.border,
     insight.href && "transition-colors hover:bg-surface-3",
   );

@@ -277,7 +277,7 @@ function Gastos({ task }: { task: Task }) {
       {task.linked.length === 0 ? (
         <p className="text-corpo text-ink-faint">Nenhum lançamento ligado.</p>
       ) : (
-        <ul className="divide-y divide-line rounded-[--radius-control] border border-line">
+        <ul className="divide-y divide-line rounded-(--radius-control) border border-line">
           {task.linked.map((l) => (
             <li key={l.id} className="flex items-center gap-2 pl-3">
               <span className="tabular w-16 shrink-0 text-legenda text-ink-faint">{dia(l.date)}</span>
@@ -340,7 +340,7 @@ function Gastos({ task }: { task: Task }) {
               Nada encontrado.
             </p>
           ) : (
-            <ul className="max-h-64 divide-y divide-line overflow-y-auto rounded-[--radius-control] border border-line">
+            <ul className="max-h-64 divide-y divide-line overflow-y-auto rounded-(--radius-control) border border-line">
               {opcoes.map((o) => {
                 const ja = ligados.has(o.id);
                 return (

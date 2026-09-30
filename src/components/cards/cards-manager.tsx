@@ -118,7 +118,7 @@ export function CardsManager({
             {active.map((card) => (
               <li
                 key={card.id}
-                className="flex items-center gap-3 rounded-[--radius-control] bg-surface-2 px-3 py-3"
+                className="flex items-center gap-3 rounded-(--radius-control) bg-surface-2 px-3 py-3"
               >
                 <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-surface-3 text-ink-muted">
                   <CreditCard className="size-4" aria-hidden />
@@ -245,7 +245,7 @@ export function CardsManager({
             {archived.map((card) => (
               <li
                 key={card.id}
-                className="flex items-center gap-3 rounded-[--radius-control] bg-surface-2 px-3 py-2.5 opacity-70"
+                className="flex items-center gap-3 rounded-(--radius-control) bg-surface-2 px-3 py-2.5 opacity-70"
               >
                 <span className="min-w-0 flex-1 truncate text-sm text-ink-muted">
                   {card.name}

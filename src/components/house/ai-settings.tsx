@@ -158,7 +158,7 @@ export function AiSettings({
 
       <div className="space-y-3">
         {/* O estado, sempre visível — inclusive para quem não pode mexer. */}
-        <div className="flex items-start gap-2.5 rounded-[--radius-control] bg-surface-2 px-3 py-2.5">
+        <div className="flex items-start gap-2.5 rounded-(--radius-control) bg-surface-2 px-3 py-2.5">
           <KeyRound
             className={temChave ? "mt-0.5 size-4 text-positive" : "mt-0.5 size-4 text-ink-faint"}
             aria-hidden
@@ -362,7 +362,7 @@ function GastoDeIa({
       {periodos.length > 0 ? (
         <dl className="grid grid-cols-3 gap-2">
           {periodos.map(([rotulo, valor]) => (
-            <div key={rotulo} className="rounded-[--radius-control] bg-surface-2 px-2.5 py-2">
+            <div key={rotulo} className="rounded-(--radius-control) bg-surface-2 px-2.5 py-2">
               <dt className="text-legenda text-ink-muted">{rotulo}</dt>
               <dd className="tabular text-sm font-semibold text-ink">{dinheiro(valor!, fx)}</dd>
             </div>
