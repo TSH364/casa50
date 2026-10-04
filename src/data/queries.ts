@@ -261,7 +261,12 @@ export async function listTransactions(
   // O corte é feito em memória, e não como filtro no PostgREST: em SQL,
   // `category_id NOT IN (...)` descarta em silêncio as linhas com categoria
   // nula. A regra mora no domínio, onde tem teste.
-  return withoutExcludedCategories(rows, filter.excludeCategoryIds ?? []);
+  return withoutExcludedCategories(
+    // O lancamento do mes que a fatura substituiu nao e mais um gasto: a
+    // linha do banco esta no lugar dele (ver `domain/provisorios.ts`).
+    rows.filter((t) => !(t.status === "cancelled" && t.isReconciled)),
+    filter.excludeCategoryIds ?? [],
+  );
 }
 
 export async function getTransaction(id: string): Promise<Transaction | null> {

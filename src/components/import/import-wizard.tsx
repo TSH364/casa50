@@ -22,11 +22,12 @@ import type {
   SignConvention,
 } from "@/importers/types";
 import { Button } from "@/components/ui/button";
+import { NomearCartao } from "@/components/cards/nomear-cartao";
 import { Card, CardHeader } from "@/components/ui/card";
 import { Field } from "@/components/ui/field";
 import { Select } from "@/components/ui/select";
 import { formatCents } from "@/lib/money";
-import { addMonths, monthLabel } from "@/domain/month";
+import { addMonths, monthLabel, monthShortLabel } from "@/domain/month";
 import { cn } from "@/lib/utils";
 import { probabilityLabel } from "@/domain/jev";
 import type { Card as CardType } from "@/domain/types";
@@ -111,6 +112,8 @@ export function ImportWizard({
   const [summary, setSummary] = useState<ImportSummary | null>(null);
   const [notes, setNotes] = useState<string[]>([]);
   const [invoiceId, setInvoiceId] = useState<string | null>(null);
+  // Cartoes que a importacao acabou de criar, ainda com o nome automatico.
+  const [cartoesNovos, setCartoesNovos] = useState<{ id: string; lastFour: string }[]>([]);
 
   function reset() {
     setStep("arquivo");
@@ -124,6 +127,7 @@ export function ImportWizard({
     setSummary(null);
     setNotes([]);
     setInvoiceId(null);
+    setCartoesNovos([]);
     setAmountColumn("");
     setSignOverride("");
     setCardByLastFour({});
@@ -272,6 +276,11 @@ export function ImportWizard({
     );
   }
 
+  /** A casa diz que nao e a mesma compra: as duas ficam. */
+  function manterOsDois(row: number) {
+    setReviewed((prev) => prev.map((d) => (d.row === row ? { ...d, provisorio: null } : d)));
+  }
+
   function confirm() {
     if (!parsed) return;
     startTransition(async () => {
@@ -292,6 +301,7 @@ export function ImportWizard({
       }
       setInvoiceId(result.invoiceId ?? null);
       setSummary(result.summary ?? null);
+      setCartoesNovos(result.cartoesNovos ?? []);
       setStep("pronto");
       toast.success("Fatura importada.");
     });
@@ -347,7 +357,7 @@ export function ImportWizard({
       <Card>
         <CardHeader
           title="Escolher arquivo"
-          description="CSV ou planilha (.xlsx) da fatura, exportados pelo app ou site do banco."
+          description="CSV ou planilha (.xlsx) da fatura, exportados pelo app ou site do banco. Vale também a fatura aberta, no meio do mês: importe de novo quando quiser, só entra o que é novo."
         />
         <label
           className="flex cursor-pointer flex-col items-center justify-center gap-3 rounded-(--radius-card) border border-dashed border-line-strong bg-surface-2 px-6 py-12 text-center transition-colors hover:border-brand"
@@ -659,6 +669,23 @@ export function ImportWizard({
                       ···· {d.cardLastFour}
                     </span>
                   ) : null}
+                  {d.decision === "new" && d.provisorio ? (
+                    <span className="mt-0.5 flex flex-wrap items-center gap-x-2 text-legenda text-ink-muted">
+                      <span className="truncate">
+                        Já lançado: {d.provisorio.texto} · {formatDateShort(d.provisorio.date)}
+                        {d.provisorio.amountCents !== d.amountCents
+                          ? ` · ${formatCents(d.provisorio.amountCents)}`
+                          : null}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => manterOsDois(d.row)}
+                        className="font-medium text-brand hover:underline"
+                      >
+                        São compras diferentes
+                      </button>
+                    </span>
+                  ) : null}
                   <span className="block truncate text-legenda text-ink-faint">
                     {d.categoryName ?? "Sem categoria"}
                     {d.subcategoryName ? ` › ${d.subcategoryName}` : null}
@@ -715,6 +742,26 @@ export function ImportWizard({
           ) : null}
         </div>
 
+        {cartoesNovos.length > 0 ? (
+          // A hora de dar nome e agora: a fatura acabou de dizer qual cartao e qual.
+          <div className="mb-4 space-y-3 rounded-(--radius-control) bg-surface-2 p-3">
+            <p className="text-corpo text-ink">
+              {cartoesNovos.length === 1 ? "Um cartão novo apareceu" : `${cartoesNovos.length} cartões novos apareceram`}{" "}
+              nesta fatura. Dê um nome para reconhecer depois.
+            </p>
+            {cartoesNovos.map((c) => (
+              <div key={c.id}>
+                <p className="text-legenda text-ink-faint">Final {c.lastFour}</p>
+                <NomearCartao
+                  cardId={c.id}
+                  lastFour={c.lastFour}
+                  onNomeado={() => setCartoesNovos((prev) => prev.filter((p) => p.id !== c.id))}
+                />
+              </div>
+            ))}
+          </div>
+        ) : null}
+
         <div className="flex gap-2">
           <Button
             variant="outline"
@@ -733,6 +780,11 @@ export function ImportWizard({
   }
 
   return null;
+}
+
+/** "15 set": a data do lancamento ja feito, como a lista de lancamentos mostra. */
+function formatDateShort(iso: string) {
+  return `${iso.slice(8, 10)} ${monthShortLabel(iso.slice(0, 7))}`;
 }
 
 /** A certeza que a marca "Jev" mostra: a da categoria, se foi ela; senão a da subcategoria. */

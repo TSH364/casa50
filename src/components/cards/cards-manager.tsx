@@ -7,6 +7,8 @@ import { archiveCard, deleteCard, restoreCard, setCardOwner } from "@/actions/ca
 import { suggestCardOwnerWithJev } from "@/actions/jev";
 import { probabilityLabel } from "@/domain/jev";
 import { CardFormDialog } from "./card-form";
+import { NomearCartao } from "./nomear-cartao";
+import { temNomeAutomatico } from "@/domain/cartoes";
 import { Button } from "@/components/ui/button";
 import { Card as Panel, CardHeader } from "@/components/ui/card";
 import { ConfirmDialog } from "@/components/ui/dialog";
@@ -133,6 +135,10 @@ export function CardsManager({
                       </span>
                     ) : null}
                   </p>
+                  {temNomeAutomatico(card) ? (
+                    // Nome automatico da importacao: pelo final ninguem sabe qual e qual.
+                    <NomearCartao cardId={card.id} lastFour={card.lastFour} />
+                  ) : null}
                   <p className="truncate text-corpo text-ink-faint">
                     {ownerName(card.ownerId)}
                     {card.closingDay

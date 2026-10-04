@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { listMembers } from "@/lib/houses";
 import { cardSchema } from "@/domain/schemas";
@@ -180,5 +181,38 @@ export async function setCardOwner(input: {
   }
 
   revalidateCards();
+  return { ok: true };
+}
+
+const nomeSchema = z.object({
+  cardId: z.string().uuid(),
+  name: z.string().trim().min(2, "Dê um nome com pelo menos 2 letras.").max(60),
+});
+
+/**
+ * So o nome - o "Que cartão é esse?" que aparece onde o cartao ainda tem o
+ * nome automatico ("Cartão 2150", criado pela importacao). Pelo final ninguem
+ * sabe qual e qual; o formulario completo ficava escondido em Editar.
+ */
+export async function renameCard(input: { cardId: string; name: string }): Promise<FormState> {
+  const parsed = nomeSchema.safeParse(input);
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Nome inválido." };
+
+  const houseId = await requireHouseId();
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("cards")
+    .update({ name: parsed.data.name })
+    .eq("id", parsed.data.cardId)
+    .eq("house_id", houseId)
+    .select("id");
+
+  if (error || !data || data.length === 0) {
+    console.error("[cartoes] falha ao renomear", { code: error?.code });
+    return { error: "Não foi possível salvar o nome." };
+  }
+
+  revalidateCards();
+  revalidatePath("/analise");
   return { ok: true };
 }

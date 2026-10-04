@@ -4,6 +4,7 @@ import { useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
+  CreditCard,
   Hammer,
   House,
   KanbanSquare,
@@ -35,6 +36,8 @@ const MAIS = [
   { href: "/metas", label: "Metas", Icon: Target },
   { href: "/projetos", label: "Projetos", Icon: Hammer },
   { href: "/tarefas", label: "Tarefas", Icon: KanbanSquare },
+  // Fora do "Casa" para ser achado: e onde se da nome aos cartoes.
+  { href: "/cartoes", label: "Cartões", Icon: CreditCard },
   { href: "/casa", label: "Casa", Icon: Users },
 ] as const;
 

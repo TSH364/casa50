@@ -11,6 +11,7 @@ import { EmptyState } from "@/components/states";
 import { Button } from "@/components/ui/button";
 import { formatBRL } from "@/lib/money";
 import { spendingCents } from "@/domain/finance";
+import { ehProvisorio } from "@/domain/provisorios";
 import { monthShortLabel } from "@/domain/month";
 import { cn } from "@/lib/utils";
 import type { Card, Category, Transaction } from "@/domain/types";
@@ -108,6 +109,8 @@ export function TransactionList({
               : null,
             ORIGIN_LABEL[t.origin],
             t.status === "forecast" ? "previsto" : null,
+            // Lancado no mes; quando a fatura chegar, a linha do banco o substitui.
+            ehProvisorio(t) ? "aguardando a fatura" : null,
           ].filter(Boolean);
 
           return (

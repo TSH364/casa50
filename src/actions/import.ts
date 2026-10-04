@@ -37,6 +37,7 @@ import {
   readVerdict,
 } from "@/domain/jev";
 import type { BuiltQuestions, MerchantAsk } from "@/domain/jev";
+import { casarProvisorios, janelaDasLinhas, type Provisorio } from "@/domain/provisorios";
 
 /**
  * Gravação da importação (secao 6).
@@ -71,6 +72,16 @@ const draftSchema = z.object({
   installmentCurrent: z.number().int().min(1).max(99).nullable(),
   installmentTotal: z.number().int().min(1).max(99).nullable(),
   duplicateKey: z.string().max(600),
+  /** Lancamento do mes que esta linha substitui; conferido de novo ao gravar. */
+  provisorio: z
+    .object({
+      id: z.string().uuid(),
+      texto: z.string().max(300),
+      date: z.string().max(10),
+      amountCents: z.number().int(),
+    })
+    .nullable()
+    .optional(),
 });
 
 const reviewSchema = z.object({
@@ -303,6 +314,55 @@ async function classifyWithJev(
   return { note: partes.length > 0 ? partes.join(" ") : null };
 }
 
+/** Provisorio com o que a casa ja decidiu nele - passa para a linha da fatura. */
+interface ProvisorioDaCasa extends Provisorio {
+  categoryId: string | null;
+}
+
+/**
+ * Os lancamentos feitos durante o mes que ainda esperam a fatura, na janela
+ * de datas das linhas. Ver `domain/provisorios.ts`.
+ *
+ * Inclui os sem cartao: o que se lanca pela conversa ("gastei 40 na padaria")
+ * quase nunca diz o cartao, e e justamente o que mais duplicaria. Falhar nao
+ * derruba a revisao - sem provisorios, ela e a de antes.
+ */
+async function carregarProvisorios(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  houseId: string,
+  datas: readonly string[],
+): Promise<ProvisorioDaCasa[]> {
+  const janela = janelaDasLinhas(datas);
+  if (!janela) return [];
+  const { data, error } = await supabase
+    .from("transactions")
+    .select(
+      "id, date, amount, type, card_id, description, merchant_alias, installment_current, installment_total, category_id",
+    )
+    .eq("house_id", houseId)
+    .is("invoice_id", null)
+    .in("origin", ["manual", "imported_statement"])
+    .eq("status", "confirmed")
+    .eq("is_reconciled", false)
+    .gte("date", janela.de)
+    .lte("date", janela.ate);
+  if (error || !data) {
+    if (error) console.error("[importacao] falha ao ler provisorios", { code: error.code });
+    return [];
+  }
+  return data.map((t) => ({
+    id: t.id as string,
+    date: String(t.date).slice(0, 10),
+    amountCents: Math.round(Number(t.amount) * 100),
+    type: t.type as string,
+    cardId: (t.card_id as string | null) ?? null,
+    texto: (t.merchant_alias as string | null) || String(t.description ?? ""),
+    installmentCurrent: (t.installment_current as number | null) ?? null,
+    installmentTotal: (t.installment_total as number | null) ?? null,
+    categoryId: (t.category_id as string | null) ?? null,
+  }));
+}
+
 /**
  * Confronta as linhas lidas com o que já existe no banco.
  *
@@ -411,12 +471,46 @@ export async function reviewImport(
     };
   });
 
+  // Antes do Jev: a linha que substitui um lancamento do mes herda a
+  // categoria que a casa deu a ele, e ai nao ha o que perguntar.
+  const novas = reviewed.filter((d) => d.decision === "new");
+  const provisorios = await carregarProvisorios(supabase, houseId, novas.map((d) => d.date));
+  const casados = casarProvisorios(
+    novas.map((d) => ({
+      chave: d.duplicateKey,
+      date: d.date,
+      amountCents: d.amountCents,
+      type: d.type,
+      cardId: d.cardId,
+      merchantNormalized: d.merchantNormalized,
+      installmentCurrent: d.installmentCurrent,
+      installmentTotal: d.installmentTotal,
+    })),
+    provisorios,
+  );
+  for (const d of novas) {
+    const p = casados.get(d.duplicateKey);
+    if (!p) continue;
+    d.provisorio = { id: p.id, texto: p.texto, date: p.date, amountCents: p.amountCents };
+    if (p.categoryId && maps.nameById.has(p.categoryId)) {
+      d.categoryId = p.categoryId;
+      d.categoryName = maps.nameById.get(p.categoryId) ?? null;
+      d.categorySource = null;
+      fonteFraca.delete(d.row);
+    }
+  }
+
   const jev = await classifyWithJev(supabase, houseId, reviewed, fonteFraca, maps, historico);
   if (jev.note) notes.push(jev.note);
 
   if (autoCategorized > 0) {
     notes.push(
       `${autoCategorized} lançamento(s) categorizados automaticamente pelo estabelecimento, por regra aprendida ou pela categoria do arquivo. Confira abaixo antes de gravar.`,
+    );
+  }
+  if (casados.size > 0) {
+    notes.push(
+      `${casados.size} compra(s) já lançada(s) durante o mês apareceram na fatura. A linha do banco fica no lugar, com a categoria e a nota que vocês deram — não conta duas vezes.`,
     );
   }
   const dupes = reviewed.filter((d) => d.decision === "duplicate").length;
@@ -461,6 +555,8 @@ export interface CommitResult {
   error?: string;
   invoiceId?: string;
   summary?: ImportSummary;
+  /** Cartoes que esta importacao criou, com o nome automatico: a tela pede o nome. */
+  cartoesNovos?: { id: string; lastFour: string }[];
 }
 
 /**
@@ -690,36 +786,95 @@ export async function commitImport(input: unknown): Promise<CommitResult> {
     if (chaves.length === 1) vinculoPorLinha.set(chaves[0]!, recurrenceId);
   }
 
-  const rows = toImport.map((d) => ({
-    house_id: houseId,
-    invoice_id: invoice.id,
-    card_id: cardIdFor(d),
-    member_id: data.memberId,
-    date: d.date,
-    invoice_month: fromMonthKey(data.invoiceMonth),
-    description: d.description,
-    merchant_original: d.merchantOriginal,
-    // Guardados crus, como vieram no arquivo: é o que deixa a reanálise
-    // alcançar a linha depois, sem precisar do arquivo de novo.
-    category_hint: d.categoryHint,
-    card_last_four: d.cardLastFour,
-    amount: fromCents(d.amountCents),
-    type: d.type,
-    origin: "invoice" as const,
-    status: "confirmed" as const,
-    category_id: d.categoryId,
-    category_source: d.categoryId === null ? null : (d.categorySource ?? null),
-    subcategory_id:
-      resolveSubcategoryId(d.merchantNormalized, d.categoryId, maps) ??
-      proposedSubcategoryId(d, maps),
-    visibility: "shared" as const,
-    installment_current: d.installmentCurrent,
-    installment_total: d.installmentTotal,
-    installment_value:
-      d.installmentTotal === null ? null : fromCents(d.amountCents),
-    recurring_id: vinculoPorLinha.get(d.duplicateKey) ?? null,
-    created_by: user?.id ?? null,
-  }));
+  // Os provisorios que a revisao casou, conferidos de novo aqui: tem de ser
+  // desta casa e continuar esperando a fatura. O id veio do navegador.
+  const idsProvisorios = [
+    ...new Set(toImport.map((d) => d.provisorio?.id).filter((id): id is string => Boolean(id))),
+  ];
+  const provisorioPorId = new Map<string, Record<string, unknown>>();
+  if (idsProvisorios.length > 0) {
+    const { data: provs, error: provsError } = await supabase
+      .from("transactions")
+      .select("id, category_id, subcategory_id, note, merchant_alias, member_id, is_joint, visibility")
+      .eq("house_id", houseId)
+      .is("invoice_id", null)
+      .eq("status", "confirmed")
+      .eq("is_reconciled", false)
+      .in("id", idsProvisorios);
+    if (provsError) {
+      console.error("[importacao] falha ao conferir provisorios", { code: provsError.code });
+    }
+    for (const p of provs ?? []) provisorioPorId.set(p.id as string, p);
+  }
+  const usados = new Set<string>();
+  const provisorioDa = (d: { provisorio?: { id: string } | null }) => {
+    const id = d.provisorio?.id;
+    if (!id || usados.has(id)) return null;
+    const p = provisorioPorId.get(id);
+    if (!p) return null;
+    usados.add(id);
+    return p;
+  };
+
+  const rows = toImport.map((d) => {
+    const p = provisorioDa(d);
+    const linha = {
+      house_id: houseId,
+      invoice_id: invoice.id,
+      card_id: cardIdFor(d),
+      member_id: data.memberId,
+      date: d.date,
+      invoice_month: fromMonthKey(data.invoiceMonth),
+      description: d.description,
+      merchant_original: d.merchantOriginal,
+      // Guardados crus, como vieram no arquivo: é o que deixa a reanálise
+      // alcançar a linha depois, sem precisar do arquivo de novo.
+      category_hint: d.categoryHint,
+      card_last_four: d.cardLastFour,
+      amount: fromCents(d.amountCents),
+      type: d.type,
+      origin: "invoice" as const,
+      status: "confirmed" as const,
+      category_id: d.categoryId,
+      category_source: d.categoryId === null ? null : (d.categorySource ?? null),
+      subcategory_id:
+        resolveSubcategoryId(d.merchantNormalized, d.categoryId, maps) ??
+        proposedSubcategoryId(d, maps),
+      visibility: "shared" as const,
+      installment_current: d.installmentCurrent,
+      installment_total: d.installmentTotal,
+      installment_value:
+        d.installmentTotal === null ? null : fromCents(d.amountCents),
+      recurring_id: vinculoPorLinha.get(d.duplicateKey) ?? null,
+      created_by: user?.id ?? null,
+      // Presentes em toda linha, mesmo vazios: no insert em lote a coluna que
+      // falta numa linha vai como nulo, e `is_joint` nao aceita nulo.
+      reconciled_with_id: null as string | null,
+      note: null as string | null,
+      merchant_alias: null as string | null,
+      is_joint: false,
+    };
+    if (!p) return linha;
+    // O que a casa decidiu no lancamento do mes passa para a linha do banco.
+    const categoriaDaCasa = (p.category_id as string | null) ?? null;
+    return {
+      ...linha,
+      reconciled_with_id: p.id as string,
+      ...(categoriaDaCasa && maps.nameById.has(categoriaDaCasa)
+        ? {
+            category_id: categoriaDaCasa,
+            category_source: "casa",
+            subcategory_id: (p.subcategory_id as string | null) ?? null,
+          }
+        : {}),
+      note: (p.note as string | null) ?? null,
+      merchant_alias: (p.merchant_alias as string | null) ?? null,
+      // "Dos dois" nao tem pessoa (constraint da tabela).
+      member_id: p.is_joint ? null : ((p.member_id as string | null) ?? linha.member_id),
+      is_joint: Boolean(p.is_joint),
+      visibility: ((p.visibility as "shared" | "individual" | null) ?? "shared"),
+    };
+  });
 
   const { error: rowsError } = await supabase.from("transactions").insert(rows);
 
@@ -743,13 +898,34 @@ export async function commitImport(input: unknown): Promise<CommitResult> {
     return { error: "Não foi possível gravar os lançamentos. Nada foi importado." };
   }
 
+  // O provisorio sai das contas: a linha da fatura ja esta no lugar dele.
+  // Se isto falhar, a compra contaria duas vezes - melhor desfazer tudo.
+  if (usados.size > 0) {
+    const { error: conciliarError } = await supabase
+      .from("transactions")
+      .update({ status: "cancelled", is_reconciled: true })
+      .eq("house_id", houseId)
+      .in("id", [...usados]);
+    if (conciliarError) {
+      console.error("[importacao] falha ao conciliar provisorios", { code: conciliarError.code });
+      await supabase.from("transactions").delete().eq("invoice_id", invoice.id);
+      await supabase.from("invoices").delete().eq("id", invoice.id);
+      return { error: "Não foi possível juntar os lançamentos do mês com a fatura. Nada foi importado." };
+    }
+  }
+
   await regrasDoJevConfirmadas(supabase, houseId, user?.id ?? null, toImport, maps);
 
   revalidatePath("/inicio");
   revalidatePath("/extratos");
   revalidatePath("/importar");
 
-  return { invoiceId: invoice.id, summary };
+  const criados = new Set(cards.createdIds);
+  const cartoesNovos = [...cards.byLastFour]
+    .filter(([, id]) => criados.has(id))
+    .map(([lastFour, id]) => ({ id, lastFour }));
+
+  return { invoiceId: invoice.id, summary, cartoesNovos };
 }
 
 /**
@@ -1020,6 +1196,16 @@ export async function revertImport(
 ): Promise<{ error?: string; removed?: number }> {
   const supabase = await createClient();
 
+  // Os lancamentos do mes que esta fatura substituiu voltam a valer. Lido
+  // antes de apagar: depois o vinculo some junto com a linha.
+  const { data: substituidos } = await supabase
+    .from("transactions")
+    .select("reconciled_with_id")
+    .eq("invoice_id", invoiceId);
+  const devolver = (substituidos ?? [])
+    .map((t) => t.reconciled_with_id as string | null)
+    .filter((id): id is string => Boolean(id));
+
   const { count, error: deleteError } = await supabase
     .from("transactions")
     .delete({ count: "exact" })
@@ -1028,6 +1214,17 @@ export async function revertImport(
   if (deleteError) {
     console.error("[importacao] falha ao desfazer", { code: deleteError.code });
     return { error: "Não foi possível desfazer a importação." };
+  }
+
+  if (devolver.length > 0) {
+    const { error: devolverError } = await supabase
+      .from("transactions")
+      .update({ status: "confirmed", is_reconciled: false })
+      .in("id", devolver)
+      .eq("status", "cancelled");
+    if (devolverError) {
+      console.error("[importacao] falha ao devolver provisorios", { code: devolverError.code });
+    }
   }
 
   const { error: statusError } = await supabase

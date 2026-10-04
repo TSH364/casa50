@@ -95,6 +95,19 @@ export interface ReviewedDraft extends DraftTransaction {
   subcategoryProbability?: number;
   /** Preenchido quando `decision === "duplicate"`. */
   duplicateOfId?: string;
+  /**
+   * O lancamento feito durante o mes (a mao, pela conversa) que esta linha
+   * da fatura substitui. `null` quando a casa pediu para manter os dois.
+   */
+  provisorio?: ProvisorioNaRevisao | null;
+}
+
+/** O minimo do provisorio para a revisao mostrar "ja lancado: padaria, 15/09". */
+export interface ProvisorioNaRevisao {
+  id: string;
+  texto: string;
+  date: string;
+  amountCents: Cents;
 }
 
 export interface ParseResult {

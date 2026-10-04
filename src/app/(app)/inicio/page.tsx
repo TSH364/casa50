@@ -17,6 +17,7 @@ import { MonthSwitcher } from "@/components/month-switcher";
 import { FilterChips } from "@/components/filter-chips";
 import { NewTransactionButton } from "@/components/transactions/new-transaction-button";
 import { FiltrosInicio } from "@/components/home/filtros-inicio";
+import { rotuloDoCartao } from "@/domain/cartoes";
 import { InicioPainel, InicioPainelSkeleton } from "@/components/home/inicio-painel";
 import { getCurrentUser } from "@/lib/supabase/server";
 import type { MonthKey } from "@/domain/types";
@@ -90,10 +91,11 @@ export default async function InicioPage({
 
   // O recorte em uso, numa linha: pessoa, cartao e o que esta fora dos totais.
   const cartoesAtivos = cards.filter((c) => c.isActive);
+  const cartaoAtual = cardId ? cards.find((c) => c.id === cardId) : undefined;
   const temFiltros = members.length > 1 || cartoesAtivos.length > 1 || view.excluded.length > 0;
   const partes = [
     memberId ? (members.find((m) => m.userId === memberId)?.fullName.split(" ")[0] ?? "Uma pessoa") : "Todos",
-    cardId ? (cards.find((c) => c.id === cardId)?.name ?? "Um cartão") : null,
+    cardId ? (cartaoAtual ? rotuloDoCartao(cartaoAtual) : "Um cartão") : null,
     view.excluded.length === 0
       ? null
       : view.showingAll
@@ -118,7 +120,7 @@ export default async function InicioPage({
           label="Filtrar por cartão"
           active={cardId}
           allLabel="Todos os cartões"
-          options={cartoesAtivos.map((c) => ({ value: c.id, label: c.name }))}
+          options={cartoesAtivos.map((c) => ({ value: c.id, label: rotuloDoCartao(c) }))}
         />
       ) : null}
       <TotalsNote view={view} month={month} extraParams={{ membro: memberId, cartao: cardId }} />
