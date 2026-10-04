@@ -146,6 +146,31 @@ describe("formulário", () => {
     expect((screen.getByLabelText("Categoria") as HTMLSelectElement).value).toBe(ALI);
   });
 
+  it("receita: pergunta quem recebeu, some o que é de cartão, e não sugere categoria de gasto", async () => {
+    resposta = { categoryId: ALI, subcategoryId: null, via: "regra" };
+    const { TransactionFormDialog } = await import("@/components/transactions/transaction-form");
+    render(
+      <TransactionFormDialog open onOpenChange={() => {}} categories={CATS} cards={[]} members={[]} defaultMonth="2026-09" />,
+    );
+    fireEvent.click(screen.getByRole("radio", { name: "Receita" }));
+    expect(screen.getByRole("radio", { name: "Receita" }).getAttribute("aria-checked")).toBe("true");
+    expect(screen.getByLabelText("Quem recebeu")).toBeTruthy();
+    expect(screen.queryByLabelText("Quem gastou")).toBeNull();
+    expect(screen.queryByLabelText("Mês da fatura")).toBeNull();
+    expect(screen.queryByLabelText("Cartão ou conta")).toBeNull();
+    expect(screen.queryByLabelText("Parcela")).toBeNull();
+    // O tipo vai no formulario.
+    const form = document.getElementById("transaction-form") as HTMLFormElement;
+    expect(new FormData(form).get("type")).toBe("income");
+    expect(new FormData(form).get("invoiceMonth")).toMatch(/^\d{4}-\d{2}$/);
+
+    const campo = screen.getByLabelText("Descrição");
+    fireEvent.change(campo, { target: { value: "Salário" } });
+    fireEvent.blur(campo);
+    await new Promise((r) => setTimeout(r, 50));
+    expect((screen.getByLabelText("Categoria") as HTMLSelectElement).value).toBe("");
+  });
+
   it("ao editar um lançamento, não sugere nada", async () => {
     resposta = { categoryId: TRA, subcategoryId: UBER, via: "jev", probability: 0.91 };
     await abrir({

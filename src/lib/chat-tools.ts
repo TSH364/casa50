@@ -504,8 +504,9 @@ async function proporClassificacao(
 
 function proporLancamento(
   ctx: ToolContext,
-  a: { descricao: string; valor: number; data?: string; categoria?: string; subcategoria?: string; pessoa?: string },
+  a: { tipo?: "despesa" | "receita"; descricao: string; valor: number; data?: string; categoria?: string; subcategoria?: string; pessoa?: string },
 ): string {
+  const receita = a.tipo === "receita";
   const cat = resolverCategoria(ctx, a.categoria, a.subcategoria);
   if (typeof cat === "string") return cat;
 
@@ -531,6 +532,7 @@ function proporLancamento(
     kind: "lancar",
     id: novoId(),
     fields: {
+      type: receita ? "income" : "expense",
       description: a.descricao,
       amountCents,
       date: data,
@@ -542,7 +544,7 @@ function proporLancamento(
     },
     summary: { categoryLabel: cat.label, personLabel },
   });
-  return `Proposta criada (ainda NÃO gravada): ${a.descricao}, ${R(amountCents)}, em ${data}${cat.label ? `, ${cat.label}` : ", sem categoria"}${personLabel ? `, de ${personLabel}` : ""}. Peça para a casa confirmar no cartão.`;
+  return `Proposta criada (ainda NÃO gravada): ${receita ? "RECEITA" : "despesa"} ${a.descricao}, ${R(amountCents)}, em ${data}${cat.label ? `, ${cat.label}` : ", sem categoria"}${personLabel ? `, ${receita ? "recebida por" : "de"} ${personLabel}` : ""}. Peça para a casa confirmar no cartão.`;
 }
 
 // ---------------------------------------------------------------------------

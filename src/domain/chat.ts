@@ -207,6 +207,7 @@ export const TOOL_ARGS = {
     pessoa: texto,
   }),
   propor_lancamento: z.object({
+    tipo: z.enum(["despesa", "receita"]).optional(),
     descricao: z.string().trim().min(2).max(200),
     valor: z.coerce.number().positive().max(10_000_000),
     data: z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/, "Data no formato AAAA-MM-DD.").optional(),
@@ -425,18 +426,24 @@ export const TOOL_DEFINITIONS = [
     function: {
       name: "propor_lancamento",
       description:
-        "PROPÕE um lançamento manual novo (uma despesa). Não grava: a casa confirma num cartão. Use quando pedirem para registrar um gasto.",
+        "PROPÕE um lançamento manual novo: uma despesa (gasto) ou uma receita (dinheiro que entrou). Não grava: a casa confirma num cartão. Use quando pedirem para registrar um gasto ou uma entrada de dinheiro.",
       parameters: {
         type: "object",
         properties: {
+          tipo: {
+            type: "string",
+            enum: ["despesa", "receita"],
+            description:
+              "despesa = dinheiro que saiu (compra, conta). receita = dinheiro que ENTROU: salário, Pix recebido, reembolso, venda, rendimento. Na dúvida, pergunte antes de propor.",
+          },
           descricao: { type: "string", description: "O que foi, como a pessoa disse." },
           valor: { type: "number", description: "Valor em reais, positivo." },
           data: { type: "string", description: "Data da compra, AAAA-MM-DD. Sem ela, hoje." },
           categoria: { type: "string", description: CATEGORIA_DESC },
           subcategoria: { type: "string", description: "Subcategoria, se houver." },
-          pessoa: { type: "string", description: "Quem gastou: primeiro nome, ou 'os dois'." },
+          pessoa: { type: "string", description: "Quem gastou (despesa) ou quem recebeu (receita): primeiro nome, ou 'os dois'." },
         },
-        required: ["descricao", "valor"],
+        required: ["tipo", "descricao", "valor"],
       },
     },
   },
@@ -650,6 +657,8 @@ export type Proposal =
       kind: "lancar";
       id: string;
       fields: {
+        /** Despesa ou receita. Antes so havia despesa, e "recebi o salario" virava gasto. */
+        type: "expense" | "income";
         description: string;
         amountCents: number;
         date: string;

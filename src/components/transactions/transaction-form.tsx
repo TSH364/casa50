@@ -23,9 +23,13 @@ import type { MemberSummary } from "@/lib/houses";
  * meio de pagamento faria os totais precisarem somar categorias que na
  * verdade sao a mesma coisa.
  */
-const TYPES = [
-  { value: "expense", label: "Despesa" },
-  { value: "income", label: "Receita" },
+/**
+ * Gasto e receita sao 99% dos lancamentos a mao: ficam como dois botoes no
+ * topo. Os outros tipos moram em "Outro". Antes era um seletor generico com
+ * "Despesa" marcado - quem lancava uma receita nao via o campo, e ela entrava
+ * como gasto.
+ */
+const OUTROS_TIPOS = [
   { value: "payment", label: "Pagamento de fatura" },
   { value: "refund", label: "Estorno" },
   { value: "fee", label: "Tarifa" },
@@ -94,6 +98,9 @@ export function TransactionFormDialog({
     transaction?.subcategoryId ?? "",
   );
   const [visibility, setVisibility] = useState(transaction?.visibility ?? "shared");
+  const [tipo, setTipo] = useState<string>(transaction?.type ?? "expense");
+  const receita = tipo === "income";
+  const outro = tipo !== "expense" && tipo !== "income";
   const [date, setDate] = useState(transaction?.date ?? todayIso());
   // Sugestao de categoria pela descricao. So em lancamento NOVO e com a
   // categoria vazia: editar um lancamento nao pode trocar o que alguem ja
@@ -102,7 +109,8 @@ export function TransactionFormDialog({
   const [sugerindo, startSugestao] = useTransition();
 
   function sugerir(descricao: string, amountRaw: string) {
-    if (isEdit || categoryId !== "" || descricao.trim().length < 3) return;
+    // A sugestao aprende com gastos: numa receita ela proporia "Mercado".
+    if (isEdit || tipo !== "expense" || categoryId !== "" || descricao.trim().length < 3) return;
     const cents = parseAmountCents(amountRaw);
     startSugestao(async () => {
       const r = await suggestCategoryFromText({
@@ -147,7 +155,7 @@ export function TransactionFormDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        title={isEdit ? "Editar lançamento" : "Novo lançamento"}
+        title={isEdit ? "Editar lançamento" : receita ? "Nova receita" : "Novo lançamento"}
         footer={<Footer isEdit={isEdit} />}
       >
         <form
@@ -156,6 +164,45 @@ export function TransactionFormDialog({
           className="space-y-4"
           noValidate
         >
+          <input type="hidden" name="type" value={tipo} />
+          <div role="radiogroup" aria-label="Tipo de lançamento" className="grid grid-cols-3 gap-2">
+            {[
+              { value: "expense", label: "Gasto" },
+              { value: "income", label: "Receita" },
+              { value: outro ? tipo : "payment", label: "Outro" },
+            ].map((op) => {
+              const ativo = op.label === "Outro" ? outro : tipo === op.value;
+              return (
+                <button
+                  key={op.label}
+                  type="button"
+                  role="radio"
+                  aria-checked={ativo}
+                  onClick={() => setTipo(op.value)}
+                  className={
+                    ativo
+                      ? op.value === "income"
+                        ? "min-h-11 rounded-(--radius-control) border border-positive bg-positive-soft text-sm font-medium text-ink"
+                        : "min-h-11 rounded-(--radius-control) border border-brand bg-brand-soft text-sm font-medium text-ink"
+                      : "min-h-11 rounded-(--radius-control) border border-line bg-surface-2 text-sm text-ink-muted hover:text-ink"
+                  }
+                >
+                  {op.label}
+                </button>
+              );
+            })}
+          </div>
+          {outro ? (
+            <Field label="Qual tipo" htmlFor="tipo-outro" error={err.type}>
+              <Select
+                id="tipo-outro"
+                options={OUTROS_TIPOS}
+                value={tipo}
+                onChange={(e) => setTipo(e.target.value)}
+              />
+            </Field>
+          ) : null}
+
           <Field label="Descrição" htmlFor="description" error={err.description}>
             <Input
               id="description"
@@ -163,7 +210,7 @@ export function TransactionFormDialog({
               required
               maxLength={200}
               defaultValue={transaction?.description ?? ""}
-              placeholder="Mercado, aluguel, jantar…"
+              placeholder={receita ? "Salário, Pix recebido, reembolso…" : "Mercado, aluguel, jantar…"}
               aria-invalid={err.description ? true : undefined}
               onBlur={(e) => {
                 const form = e.currentTarget.form;
@@ -186,18 +233,7 @@ export function TransactionFormDialog({
                 aria-invalid={err.amount ? true : undefined}
               />
             </Field>
-            <Field label="Tipo" htmlFor="type" error={err.type}>
-              <Select
-                id="type"
-                name="type"
-                options={TYPES}
-                defaultValue={transaction?.type ?? "expense"}
-              />
-            </Field>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="Data" htmlFor="date" error={err.date}>
+            <Field label={receita ? "Data em que entrou" : "Data"} htmlFor="date" error={err.date}>
               <Input
                 id="date"
                 name="date"
@@ -208,20 +244,44 @@ export function TransactionFormDialog({
                 aria-invalid={err.date ? true : undefined}
               />
             </Field>
-            <Field
-              label="Mês da fatura"
-              htmlFor="invoiceMonth"
-              error={err.invoiceMonth}
-              hint="Compra após o fechamento cai na fatura seguinte."
-            >
-              <Select
-                id="invoiceMonth"
-                name="invoiceMonth"
-                options={monthOptions}
-                defaultValue={transaction?.invoiceMonth ?? defaultMonth}
-              />
-            </Field>
           </div>
+
+          {receita ? (
+            // Receita nao tem fatura: conta no mes em que o dinheiro entrou.
+            <input type="hidden" name="invoiceMonth" value={monthOf(date)} />
+          ) : (
+            <div className="grid grid-cols-2 gap-3">
+              <Field
+                label="Mês da fatura"
+                htmlFor="invoiceMonth"
+                error={err.invoiceMonth}
+                hint="Compra após o fechamento cai na fatura seguinte."
+              >
+                <Select
+                  id="invoiceMonth"
+                  name="invoiceMonth"
+                  options={monthOptions}
+                  defaultValue={transaction?.invoiceMonth ?? defaultMonth}
+                />
+              </Field>
+              <Field
+                label="Cartão ou conta"
+                htmlFor="cardId"
+                error={err.cardId}
+                hint="Deixe vazio para PIX ou dinheiro."
+              >
+                <Select
+                  id="cardId"
+                  name="cardId"
+                  placeholder="Sem cartão"
+                  defaultValue={transaction?.cardId ?? ""}
+                  options={cards
+                    .filter((c) => c.isActive || c.id === transaction?.cardId)
+                    .map((c) => ({ value: c.id, label: c.name }))}
+                />
+              </Field>
+            </div>
+          )}
 
           {/* A subcategoria só aparece quando a categoria escolhida tem alguma.
               Antes ela ficava sempre visível e desabilitada - e como nenhuma
@@ -292,7 +352,7 @@ export function TransactionFormDialog({
 
           <div className="grid grid-cols-2 gap-3">
             <Field
-              label="Quem gastou"
+              label={receita ? "Quem recebeu" : "Quem gastou"}
               htmlFor="memberId"
               error={err.memberId}
             >
@@ -311,25 +371,6 @@ export function TransactionFormDialog({
                 ]}
               />
             </Field>
-            <Field
-              label="Cartão ou conta"
-              htmlFor="cardId"
-              error={err.cardId}
-              hint="Deixe vazio para PIX ou dinheiro."
-            >
-              <Select
-                id="cardId"
-                name="cardId"
-                placeholder="Sem cartão"
-                defaultValue={transaction?.cardId ?? ""}
-                options={cards
-                  .filter((c) => c.isActive || c.id === transaction?.cardId)
-                  .map((c) => ({ value: c.id, label: c.name }))}
-              />
-            </Field>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
             <Field label="Visibilidade" htmlFor="visibility" error={err.visibility}>
               <Select
                 id="visibility"
@@ -343,6 +384,7 @@ export function TransactionFormDialog({
             </Field>
           </div>
 
+          {receita ? null : (
           <div className="grid grid-cols-2 gap-3">
             <Field
               label="Parcela"
@@ -373,7 +415,9 @@ export function TransactionFormDialog({
               />
             </Field>
           </div>
+          )}
 
+          {receita ? null : (
           <Field
             label="Apelido do estabelecimento"
             htmlFor="merchantAlias"
@@ -387,6 +431,7 @@ export function TransactionFormDialog({
               placeholder="99 Táxi"
             />
           </Field>
+          )}
 
           <Field label="Observação" htmlFor="note" error={err.note}>
             <Textarea

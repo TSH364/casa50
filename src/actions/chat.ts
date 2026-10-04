@@ -364,6 +364,8 @@ const proposalSchema = z.discriminatedUnion("kind", [
   z.object({
     kind: z.literal("lancar"),
     fields: z.object({
+      // Cartao criado antes da receita existir nao trazia o tipo: era despesa.
+      type: z.enum(["expense", "income"]).default("expense"),
       description: z.string().trim().min(2).max(200),
       amountCents: z.number().int().positive().max(1_000_000_000),
       date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
@@ -626,7 +628,7 @@ export async function applyProposal(input: unknown): Promise<ApplyProposalResult
 
   const f = p.fields;
   if (!(await categoriaOk(f.categoryId, f.subcategoryId))) return { error: "Categoria não encontrada." };
-  if (f.isJoint && f.memberId !== null) return { error: "Gasto dos dois não tem uma pessoa só." };
+  if (f.isJoint && f.memberId !== null) return { error: "Lançamento dos dois não tem uma pessoa só." };
   if (f.memberId !== null) {
     const membros = await listMembers(houseId);
     if (!membros.some((m) => m.userId === f.memberId)) return { error: "Essa pessoa não é da casa." };
@@ -635,7 +637,7 @@ export async function applyProposal(input: unknown): Promise<ApplyProposalResult
     house_id: houseId,
     origin: "manual",
     status: "confirmed",
-    type: "expense",
+    type: f.type,
     visibility: "shared",
     description: f.description,
     merchant_original: f.description,
