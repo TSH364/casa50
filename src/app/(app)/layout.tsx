@@ -6,6 +6,7 @@ import { getActiveHouse } from "@/lib/houses";
 import { getCurrentUser } from "@/lib/supabase/server";
 import { signOut } from "@/app/entrar/actions";
 import { syncStaleCalendars } from "@/actions/calendar";
+import { syncStaleBanks } from "@/actions/bancos";
 import { Button } from "@/components/ui/button";
 import { buildInfo, buildLabel, versionLabel } from "@/lib/version";
 import { cookies } from "next/headers";
@@ -31,6 +32,9 @@ export default async function AppLayout({
   // entrada do app - e `after()` garante que nenhuma navegacao espere por
   // isso. Nada roda quando ninguem esta usando o Fluxo.
   after(syncStaleCalendars);
+  // Os bancos do Meu Pluggy, pelo mesmo motivo e do mesmo jeito: a compra de
+  // ontem aparece na proxima tela que alguem da casa abrir.
+  after(syncStaleBanks);
 
   const build = buildInfo();
   const tema = parseTheme((await cookies()).get(THEME_COOKIE)?.value);

@@ -41,8 +41,8 @@ export function NomearCartao({
 
   const id = `nome-${cardId}`;
   return (
-    <form onSubmit={salvar} className="mt-1.5 space-y-1">
-      <label htmlFor={id} className="block text-legenda font-medium text-ink-muted">
+    <form onSubmit={salvar} className="mt-3 space-y-1.5">
+      <label htmlFor={id} className="block text-corpo font-medium text-ink">
         Que cartão é esse?<span className="sr-only">{lastFour ? ` Nome do cartão final ${lastFour}` : " Nome do cartão"}</span>
       </label>
       <div className="flex items-center gap-2">
@@ -52,9 +52,10 @@ export function NomearCartao({
           onChange={(e) => setNome(e.target.value)}
           maxLength={60}
           placeholder="Ex.: Nubank da Lari"
-          className="min-h-9 min-w-0 flex-1 text-corpo"
+          // 16px: abaixo disso o iPhone da zoom no campo ao tocar.
+          className="min-w-0 flex-1"
         />
-        <Button type="submit" size="sm" disabled={pending || nome.trim().length < 2}>
+        <Button type="submit" disabled={pending || nome.trim().length < 2}>
           {pending ? "Salvando…" : "Salvar"}
         </Button>
       </div>

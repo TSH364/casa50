@@ -795,7 +795,7 @@ export async function commitImport(input: unknown): Promise<CommitResult> {
   if (idsProvisorios.length > 0) {
     const { data: provs, error: provsError } = await supabase
       .from("transactions")
-      .select("id, category_id, subcategory_id, note, merchant_alias, member_id, is_joint, visibility")
+      .select("id, category_id, category_source, subcategory_id, note, merchant_alias, member_id, is_joint, visibility")
       .eq("house_id", houseId)
       .is("invoice_id", null)
       .eq("status", "confirmed")
@@ -863,7 +863,9 @@ export async function commitImport(input: unknown): Promise<CommitResult> {
       ...(categoriaDaCasa && maps.nameById.has(categoriaDaCasa)
         ? {
             category_id: categoriaDaCasa,
-            category_source: "casa",
+            // A origem vem junto: a compra do Meu Pluggy categorizada por regra
+            // continua "regra"; a lancada a mao e "casa".
+            category_source: (p.category_source as string | null) ?? "casa",
             subcategory_id: (p.subcategory_id as string | null) ?? null,
           }
         : {}),
