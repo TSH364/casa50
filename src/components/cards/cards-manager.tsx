@@ -118,123 +118,129 @@ export function CardsManager({
         ) : (
           <ul className="space-y-2">
             {active.map((card) => (
-              <li
-                key={card.id}
-                className="flex items-center gap-3 rounded-(--radius-control) bg-surface-2 px-3 py-3"
-              >
-                <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-surface-3 text-ink-muted">
-                  <CreditCard className="size-4" aria-hidden />
-                </span>
+              <li key={card.id} className="rounded-(--radius-control) bg-surface-2 px-3 py-3">
+                {/*
+                  No celular os tres botoes descem para a linha de baixo: ao lado
+                  do nome eles comiam um terco da largura, e o nome que a casa
+                  deu quebrava palavra por palavra. No computador ficam ao lado.
+                */}
+                <div className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-3 gap-y-1 sm:grid-cols-[auto_minmax(0,1fr)_auto]">
+                  <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-surface-3 text-ink-muted">
+                    <CreditCard className="size-4" aria-hidden />
+                  </span>
 
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium text-ink">
-                    {card.name}
-                    {card.lastFour ? (
-                      <span className="ml-1.5 font-normal text-ink-faint">
-                        •••• {card.lastFour}
-                      </span>
-                    ) : null}
-                  </p>
-                  {temNomeAutomatico(card) ? (
-                    // Nome automatico da importacao: pelo final ninguem sabe qual e qual.
-                    <NomearCartao cardId={card.id} lastFour={card.lastFour} />
-                  ) : null}
-                  <p className="truncate text-corpo text-ink-faint">
-                    {ownerName(card.ownerId)}
-                    {card.closingDay
-                      ? ` · fecha dia ${card.closingDay}`
-                      : ""}
-                    {card.dueDay ? ` · vence dia ${card.dueDay}` : ""}
-                    {card.creditLimit
-                      ? ` · limite ${formatBRL(card.creditLimit)}`
-                      : ""}
-                  </p>
-                  {card.ownerId === null && ownerSuggestions[card.id] ? (
-                    // Sugestao, nunca decisao: o dono so muda com o toque.
-                    <button
-                      type="button"
-                      disabled={pending}
-                      className="mt-1 inline-flex min-h-9 items-center rounded-full border border-brand/50 bg-brand-soft px-3 text-legenda text-ink disabled:opacity-50"
-                      onClick={() => {
-                        const s = ownerSuggestions[card.id]!;
-                        run(
-                          () => setCardOwner({ cardId: card.id, ownerId: s.memberId }),
-                          "Dono definido.",
-                        );
-                      }}
-                    >
-                      É de {members.find((m) => m.userId === ownerSuggestions[card.id]!.memberId)?.fullName ?? "?"}?
-                      <span className="ml-1 text-ink-faint">
-                        ({ownerSuggestions[card.id]!.count} lançamentos marcados)
-                      </span>
-                    </button>
-                  ) : null}
-                  {card.ownerId === null && !ownerSuggestions[card.id] && aiEnabled && members.length > 1 ? (
-                    jev[card.id] === undefined ? (
-                      <button
-                        type="button"
-                        disabled={pending}
-                        onClick={() => perguntarAoJev(card.id)}
-                        className="mt-1 inline-flex min-h-9 items-center rounded-full border border-line bg-surface-2 px-3 text-legenda text-ink-muted hover:text-ink disabled:opacity-50"
-                      >
-                        {perguntando === card.id ? "Perguntando ao Jev…" : "De quem é? Perguntar ao Jev"}
-                      </button>
-                    ) : jev[card.id]!.memberId ? (
+                  <div className="min-w-0 flex-1">
+                    <p className="break-words text-sm font-medium text-ink">
+                      {card.name}
+                      {card.lastFour ? (
+                        <span className="ml-1.5 font-normal text-ink-faint">
+                          •••• {card.lastFour}
+                        </span>
+                      ) : null}
+                    </p>
+                    <p className="text-corpo text-ink-faint">
+                      {ownerName(card.ownerId)}
+                      {card.closingDay
+                        ? ` · fecha dia ${card.closingDay}`
+                        : ""}
+                      {card.dueDay ? ` · vence dia ${card.dueDay}` : ""}
+                      {card.creditLimit
+                        ? ` · limite ${formatBRL(card.creditLimit)}`
+                        : ""}
+                    </p>
+                    {card.ownerId === null && ownerSuggestions[card.id] ? (
                       // Sugestao, nunca decisao: o dono so muda com o toque.
                       <button
                         type="button"
                         disabled={pending}
                         className="mt-1 inline-flex min-h-9 items-center rounded-full border border-brand/50 bg-brand-soft px-3 text-legenda text-ink disabled:opacity-50"
-                        onClick={() =>
+                        onClick={() => {
+                          const s = ownerSuggestions[card.id]!;
                           run(
-                            () => setCardOwner({ cardId: card.id, ownerId: jev[card.id]!.memberId! }),
+                            () => setCardOwner({ cardId: card.id, ownerId: s.memberId }),
                             "Dono definido.",
-                          )
-                        }
+                          );
+                        }}
                       >
-                        É de {members.find((m) => m.userId === jev[card.id]!.memberId)?.fullName ?? "?"}?
-                        <span className="ml-1 text-ink-muted">(Jev · {probabilityLabel(jev[card.id]!.probability)})</span>
+                        É de {members.find((m) => m.userId === ownerSuggestions[card.id]!.memberId)?.fullName ?? "?"}?
+                        <span className="ml-1 text-ink-faint">
+                          ({ownerSuggestions[card.id]!.count} lançamentos marcados)
+                        </span>
                       </button>
-                    ) : (
-                      <p className="mt-1 text-legenda text-ink-muted">
-                        O Jev não teve certeza ({probabilityLabel(jev[card.id]!.probability)}). Defina em Editar.
-                      </p>
-                    )
-                  ) : null}
-                </div>
+                    ) : null}
+                    {card.ownerId === null && !ownerSuggestions[card.id] && aiEnabled && members.length > 1 ? (
+                      jev[card.id] === undefined ? (
+                        <button
+                          type="button"
+                          disabled={pending}
+                          onClick={() => perguntarAoJev(card.id)}
+                          className="mt-1 inline-flex min-h-9 items-center rounded-full border border-line bg-surface-2 px-3 text-legenda text-ink-muted hover:text-ink disabled:opacity-50"
+                        >
+                          {perguntando === card.id ? "Perguntando ao Jev…" : "De quem é? Perguntar ao Jev"}
+                        </button>
+                      ) : jev[card.id]!.memberId ? (
+                        // Sugestao, nunca decisao: o dono so muda com o toque.
+                        <button
+                          type="button"
+                          disabled={pending}
+                          className="mt-1 inline-flex min-h-9 items-center rounded-full border border-brand/50 bg-brand-soft px-3 text-legenda text-ink disabled:opacity-50"
+                          onClick={() =>
+                            run(
+                              () => setCardOwner({ cardId: card.id, ownerId: jev[card.id]!.memberId! }),
+                              "Dono definido.",
+                            )
+                          }
+                        >
+                          É de {members.find((m) => m.userId === jev[card.id]!.memberId)?.fullName ?? "?"}?
+                          <span className="ml-1 text-ink-muted">(Jev · {probabilityLabel(jev[card.id]!.probability)})</span>
+                        </button>
+                      ) : (
+                        <p className="mt-1 text-legenda text-ink-muted">
+                          O Jev não teve certeza ({probabilityLabel(jev[card.id]!.probability)}). Defina em Editar.
+                        </p>
+                      )
+                    ) : null}
+                  </div>
 
-                <div className="flex shrink-0 items-center">
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    aria-label={`Editar ${card.name}`}
-                    onClick={() => openEdit(card)}
-                  >
-                    <Pencil aria-hidden />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    aria-label={`Arquivar ${card.name}`}
-                    disabled={pending}
-                    onClick={() =>
-                      run(() => archiveCard(card.id), "Cartão arquivado.")
-                    }
-                  >
-                    <Archive aria-hidden />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    aria-label={`Excluir ${card.name}`}
-                    onClick={() => {
-                      setDeleteError(undefined);
-                      setDeleting(card);
-                    }}
-                  >
-                    <Trash2 aria-hidden />
-                  </Button>
+                  <div className="col-span-2 -mr-2 -mb-2 flex items-center justify-end sm:col-span-1 sm:m-0">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      aria-label={`Editar ${card.name}`}
+                      onClick={() => openEdit(card)}
+                    >
+                      <Pencil aria-hidden />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      aria-label={`Arquivar ${card.name}`}
+                      disabled={pending}
+                      onClick={() =>
+                        run(() => archiveCard(card.id), "Cartão arquivado.")
+                      }
+                    >
+                      <Archive aria-hidden />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      aria-label={`Excluir ${card.name}`}
+                      onClick={() => {
+                        setDeleteError(undefined);
+                        setDeleting(card);
+                      }}
+                    >
+                      <Trash2 aria-hidden />
+                    </Button>
+                  </div>
                 </div>
+                {temNomeAutomatico(card) ? (
+                  // Nome automatico da importacao: pelo final ninguem sabe qual e qual.
+                  // Embaixo da linha, na largura toda: ao lado dos tres botoes o
+                  // campo ficava estreito demais no celular para ler o que se digita.
+                  <NomearCartao cardId={card.id} lastFour={card.lastFour} />
+                ) : null}
               </li>
             ))}
           </ul>
