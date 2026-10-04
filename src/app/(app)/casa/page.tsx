@@ -8,12 +8,13 @@ import {
   listRoster,
 } from "@/lib/houses";
 import { listCalendarSources } from "@/data/queries";
-import { getCurrentUser } from "@/lib/supabase/server";
+import { createClient, getCurrentUser } from "@/lib/supabase/server";
 import { Card, CardHeader } from "@/components/ui/card";
 import { MembersManager } from "@/components/house/members-manager";
 import { CalendarsManager } from "@/components/calendar/calendars-manager";
 import { PendingInvites } from "@/components/house/pending-invites";
 import { AiSettings } from "@/components/house/ai-settings";
+import { Bancos, type ConexaoResumo } from "@/components/house/bancos";
 import { getAiStatus } from "@/lib/ai-config";
 import { buildInfo, buildLabel } from "@/lib/version";
 
@@ -29,6 +30,28 @@ export default async function CasaPage() {
     active ? listCalendarSources(active.id) : Promise.resolve([]),
     active ? getAiStatus(active.id) : Promise.resolve(null),
   ]);
+
+  // As conexoes do Meu Pluggy: nada aqui e segredo (o Client Secret esta no Vault).
+  const conexoes: ConexaoResumo[] = [];
+  if (active) {
+    const supabase = await createClient();
+    const { data } = await supabase
+      .from("bank_connections")
+      .select("member_id, client_id, secret_hint, item_ids, last_sync_at, last_error")
+      .eq("house_id", active.id);
+    for (const c of data ?? []) {
+      conexoes.push({
+        memberId: c.member_id as string,
+        nome: members.find((m) => m.userId === c.member_id)?.fullName.split(" ")[0] ?? "Alguém",
+        clientId: c.client_id as string,
+        secretHint: (c.secret_hint as string | null) ?? null,
+        itemIds: (c.item_ids as string[] | null) ?? [],
+        lastSyncAt: (c.last_sync_at as string | null) ?? null,
+        lastError: (c.last_error as string | null) ?? null,
+      });
+    }
+  }
+  const minhaConexao = conexoes.find((c) => c.memberId === user?.id) ?? null;
 
   // Só dono e administrador convidam, mudam papel ou removem. O RLS recusaria
   // de qualquer forma; esconder os controles evita oferecer o que vai falhar.
@@ -54,6 +77,14 @@ export default async function CasaPage() {
       {/* Mesma regra dos membros: a chave paga pelas chamadas, então só quem
           administra a casa a troca. Os demais veem o estado. */}
       {active && ia ? <AiSettings status={ia} canManage={canManage} /> : null}
+
+      {active ? (
+        <Bancos
+          minha={minhaConexao}
+          outras={conexoes.filter((c) => c.memberId !== user?.id)}
+          podeConectar={active.role !== "viewer"}
+        />
+      ) : null}
 
       {active ? (
         <CalendarsManager
