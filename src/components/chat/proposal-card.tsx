@@ -90,7 +90,13 @@ export function ProposalCard({
         </>
       ) : proposal.kind === "lancar" ? (
         <p className="tabular text-legenda text-ink-muted">
-          {formatCents(proposal.fields.amountCents)} · {dia(proposal.fields.date)}
+          {proposal.fields.type === "income" ? (
+            // Receita marcada: confirmar uma entrada achando que e gasto era o erro.
+            <span className="font-medium text-positive">Receita +{formatCents(proposal.fields.amountCents)}</span>
+          ) : (
+            formatCents(proposal.fields.amountCents)
+          )}{" "}
+          · {dia(proposal.fields.date)}
           {proposal.summary.categoryLabel ? ` · ${proposal.summary.categoryLabel}` : " · sem categoria"}
           {proposal.summary.personLabel ? ` · ${proposal.summary.personLabel}` : ""}
         </p>

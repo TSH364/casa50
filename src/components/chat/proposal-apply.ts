@@ -109,13 +109,15 @@ export function proposalPayload(p: Proposal, learn = true): unknown {
 /** A frase que fica no historico (e volta ao modelo) depois de confirmar. */
 export function proposalDoneNote(p: Proposal, count: number | undefined): string {
   if (p.kind === "classificar") return `${count ?? 0} lançamento(s) classificados em ${p.summary.categoryLabel}.`;
-  if (p.kind === "lancar") return `Lançado: ${p.fields.description}, ${formatCents(p.fields.amountCents)}.`;
+  if (p.kind === "lancar") {
+    return `${p.fields.type === "income" ? "Receita lançada" : "Lançado"}: ${p.fields.description}, ${formatCents(p.fields.amountCents)}.`;
+  }
   return descrever(p).feito;
 }
 
 /** O titulo do cartao, tambem usado para falar a proposta. */
 export function proposalTitle(p: Proposal): string {
   if (p.kind === "classificar") return `Classificar ${p.summary.count} lançamento(s) em ${p.summary.categoryLabel}`;
-  if (p.kind === "lancar") return `Lançar ${p.fields.description}`;
+  if (p.kind === "lancar") return `${p.fields.type === "income" ? "Lançar receita" : "Lançar"} ${p.fields.description}`;
   return descrever(p).titulo;
 }

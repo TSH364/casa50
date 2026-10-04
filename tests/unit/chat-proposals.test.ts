@@ -175,6 +175,20 @@ describe("ferramentas de propor", () => {
     });
   });
 
+  it("lançar RECEITA: o tipo vai na proposta, e a frase para o modelo diz que é receita", async () => {
+    const c = ctx();
+    const r = await runTool(c, "propor_lancamento", JSON.stringify({ tipo: "receita", descricao: "Salário", valor: 5000, pessoa: "Lari" }));
+    expect(r.output).toMatch(/RECEITA Salário/);
+    expect(r.output).toMatch(/recebida por Lari/);
+    expect(c.proposals[0]).toMatchObject({ kind: "lancar", fields: { type: "income", amountCents: 500000, memberId: LARI } });
+  });
+
+  it("sem tipo, continua despesa (como antes)", async () => {
+    const c = ctx();
+    await runTool(c, "propor_lancamento", JSON.stringify({ descricao: "Jantar", valor: 50 }));
+    expect(c.proposals[0]).toMatchObject({ fields: { type: "expense" } });
+  });
+
   it("lançar para uma pessoa pelo apelido", async () => {
     const c = ctx();
     await runTool(c, "propor_lancamento", JSON.stringify({ descricao: "Farmácia", valor: 40, pessoa: "Lari", data: "2026-09-25" }));
@@ -239,6 +253,11 @@ describe("applyProposal", () => {
       op: "insert",
       payload: { house_id: "casa-1", origin: "manual", status: "confirmed", amount: 120.5, is_joint: true, member_id: null, type: "expense" },
     });
+  });
+
+  it("receita entra como receita - não como gasto", async () => {
+    expect(await applyProposal({ ...lancar, fields: { ...lancar.fields, type: "income", description: "Salário" } })).toEqual({ ok: true, count: 1 });
+    expect(db.escritas[0]).toMatchObject({ tabela: "transactions", op: "insert", payload: { type: "income", description: "Salário" } });
   });
 
   it("pessoa de fora da casa, ou 'dos dois' com pessoa: recusa", async () => {
