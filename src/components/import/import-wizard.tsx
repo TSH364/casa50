@@ -22,6 +22,7 @@ import type {
   SignConvention,
 } from "@/importers/types";
 import { Button } from "@/components/ui/button";
+import { NomearCartao } from "@/components/cards/nomear-cartao";
 import { Card, CardHeader } from "@/components/ui/card";
 import { Field } from "@/components/ui/field";
 import { Select } from "@/components/ui/select";
@@ -111,6 +112,8 @@ export function ImportWizard({
   const [summary, setSummary] = useState<ImportSummary | null>(null);
   const [notes, setNotes] = useState<string[]>([]);
   const [invoiceId, setInvoiceId] = useState<string | null>(null);
+  // Cartoes que a importacao acabou de criar, ainda com o nome automatico.
+  const [cartoesNovos, setCartoesNovos] = useState<{ id: string; lastFour: string }[]>([]);
 
   function reset() {
     setStep("arquivo");
@@ -124,6 +127,7 @@ export function ImportWizard({
     setSummary(null);
     setNotes([]);
     setInvoiceId(null);
+    setCartoesNovos([]);
     setAmountColumn("");
     setSignOverride("");
     setCardByLastFour({});
@@ -297,6 +301,7 @@ export function ImportWizard({
       }
       setInvoiceId(result.invoiceId ?? null);
       setSummary(result.summary ?? null);
+      setCartoesNovos(result.cartoesNovos ?? []);
       setStep("pronto");
       toast.success("Fatura importada.");
     });
@@ -736,6 +741,26 @@ export function ImportWizard({
             </p>
           ) : null}
         </div>
+
+        {cartoesNovos.length > 0 ? (
+          // A hora de dar nome e agora: a fatura acabou de dizer qual cartao e qual.
+          <div className="mb-4 space-y-3 rounded-(--radius-control) bg-surface-2 p-3">
+            <p className="text-corpo text-ink">
+              {cartoesNovos.length === 1 ? "Um cartão novo apareceu" : `${cartoesNovos.length} cartões novos apareceram`}{" "}
+              nesta fatura. Dê um nome para reconhecer depois.
+            </p>
+            {cartoesNovos.map((c) => (
+              <div key={c.id}>
+                <p className="text-legenda text-ink-faint">Final {c.lastFour}</p>
+                <NomearCartao
+                  cardId={c.id}
+                  lastFour={c.lastFour}
+                  onNomeado={() => setCartoesNovos((prev) => prev.filter((p) => p.id !== c.id))}
+                />
+              </div>
+            ))}
+          </div>
+        ) : null}
 
         <div className="flex gap-2">
           <Button

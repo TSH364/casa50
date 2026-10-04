@@ -11,6 +11,8 @@ import { Card, CardHeader } from "@/components/ui/card";
 import { Skeleton } from "@/components/states";
 import { MonthSwitcher } from "@/components/month-switcher";
 import { FilterChips } from "@/components/filter-chips";
+import { FiltrosCompactos } from "@/components/filtros-compactos";
+import { rotuloDoCartao } from "@/domain/cartoes";
 import { SearchBox } from "@/components/search-box";
 import { TransactionList } from "@/components/transactions/transaction-list";
 import { NewTransactionButton } from "@/components/transactions/new-transaction-button";
@@ -125,14 +127,31 @@ export default async function ExtratosPage({
 
   const key = `${month}:${memberId ?? "t"}:${cardId ?? "t"}:${categoryId ?? "t"}:${search ?? ""}`;
 
+  // O recorte em uso, numa linha - o mesmo desenho do Inicio: a pilula diz o
+  // que esta valendo e o toque abre os chips.
+  const cartoesAtivos = cards.filter((c) => c.isActive);
+  const cartao = cardId ? cards.find((c) => c.id === cardId) : undefined;
+  const categoria =
+    categoryId === "sem" ? "Sem categoria" : categoryId ? categories.find((c) => c.id === categoryId)?.name : undefined;
+  const resumoFiltros =
+    [
+      memberId ? (members.find((m) => m.userId === memberId)?.fullName.split(" ")[0] ?? "Uma pessoa") : null,
+      cartao ? rotuloDoCartao(cartao) : null,
+      categoria ?? null,
+    ]
+      .filter(Boolean)
+      .join(" · ") || "Filtros";
+  const filtroAtivo = memberId !== null || cardId !== null || categoryId !== null;
+
   return (
     <div className="mx-auto max-w-3xl space-y-4">
-      <header className="flex flex-wrap items-center justify-between gap-3">
+      <header className="-ml-3 flex items-center justify-between gap-2">
         <MonthSwitcher month={month} />
-        <div className="flex items-center gap-2">
+        <div className="flex shrink-0 items-center gap-2">
           <Button asChild variant="outline" size="sm">
-            <Link href="/importar">
-              <Upload aria-hidden /> Importar
+            <Link href="/importar" aria-label="Importar fatura">
+              {/* No celular, so o icone: com o texto, o "+" saia da tela. */}
+              <Upload aria-hidden /> <span className="hidden sm:inline">Importar</span>
             </Link>
           </Button>
           <NewTransactionButton
@@ -140,52 +159,59 @@ export default async function ExtratosPage({
             cards={cards}
             members={members}
             defaultMonth={month}
+            label="Lançar"
+            iconOnly
           />
         </div>
       </header>
 
-      <SearchBox placeholder="Buscar por descrição, estabelecimento ou apelido" />
+      <div className="flex items-center gap-2">
+        <div className="min-w-0 flex-1">
+          <SearchBox placeholder="Buscar" />
+        </div>
+        <FiltrosCompactos
+          resumo={resumoFiltros}
+          ativo={filtroAtivo}
+          descricao="O recorte vale para as faturas e os lançamentos."
+          className="min-h-11 max-w-[45%]"
+        >
+          {members.length > 1 ? (
+            <FilterChips
+              param="membro"
+              label="Filtrar por pessoa"
+              active={memberId}
+              options={members.map((m) => ({ value: m.userId, label: m.fullName }))}
+            />
+          ) : null}
 
-      {members.length > 1 ? (
-        <FilterChips
-          param="membro"
-          label="Filtrar por pessoa"
-          active={memberId}
-          options={members.map((m) => ({ value: m.userId, label: m.fullName }))}
-        />
-      ) : null}
+          {memberId ? <PersonFilterNote cards={cards} houseWidePanels={false} /> : null}
 
-      {memberId ? <PersonFilterNote cards={cards} houseWidePanels={false} /> : null}
+          {cartoesAtivos.length > 0 ? (
+            <FilterChips
+              param="cartao"
+              label="Filtrar por cartão"
+              active={cardId}
+              allLabel="Todos os cartões"
+              options={cartoesAtivos.map((c) => ({ value: c.id, label: rotuloDoCartao(c) }))}
+            />
+          ) : null}
 
-      {cards.filter((c) => c.isActive).length > 0 ? (
-        <FilterChips
-          param="cartao"
-          label="Filtrar por cartão"
-          active={cardId}
-          allLabel="Todos os cartões"
-          options={cards
-            .filter((c) => c.isActive)
-            .map((c) => ({
-              value: c.id,
-              label: c.lastFour ? `${c.name} ···· ${c.lastFour}` : c.name,
-            }))}
-        />
-      ) : null}
-
-      <FilterChips
-        param="categoria"
-        label="Filtrar por categoria"
-        active={categoryId}
-        allLabel="Todas as categorias"
-        options={[
-          // Primeiro da lista: é o recorte que resolve o trabalho pendente
-          // depois de importar uma fatura.
-          { value: "sem", label: "Sem categoria" },
-          ...categories
-            .filter((c) => c.parentId === null && c.isActive)
-            .map((c) => ({ value: c.id, label: c.name })),
-        ]}
-      />
+          <FilterChips
+            param="categoria"
+            label="Filtrar por categoria"
+            active={categoryId}
+            allLabel="Todas as categorias"
+            options={[
+              // Primeiro da lista: é o recorte que resolve o trabalho pendente
+              // depois de importar uma fatura.
+              { value: "sem", label: "Sem categoria" },
+              ...categories
+                .filter((c) => c.parentId === null && c.isActive)
+                .map((c) => ({ value: c.id, label: c.name })),
+            ]}
+          />
+        </FiltrosCompactos>
+      </div>
 
       <Suspense key={`faturas:${month}:${cardId ?? "t"}`} fallback={<StatementsSkeleton />}>
         <Statements

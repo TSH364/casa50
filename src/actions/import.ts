@@ -555,6 +555,8 @@ export interface CommitResult {
   error?: string;
   invoiceId?: string;
   summary?: ImportSummary;
+  /** Cartoes que esta importacao criou, com o nome automatico: a tela pede o nome. */
+  cartoesNovos?: { id: string; lastFour: string }[];
 }
 
 /**
@@ -918,7 +920,12 @@ export async function commitImport(input: unknown): Promise<CommitResult> {
   revalidatePath("/extratos");
   revalidatePath("/importar");
 
-  return { invoiceId: invoice.id, summary };
+  const criados = new Set(cards.createdIds);
+  const cartoesNovos = [...cards.byLastFour]
+    .filter(([, id]) => criados.has(id))
+    .map(([lastFour, id]) => ({ id, lastFour }));
+
+  return { invoiceId: invoice.id, summary, cartoesNovos };
 }
 
 /**

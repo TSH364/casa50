@@ -56,6 +56,10 @@ function tabela(nome: string) {
     estado.chamadas.push(chamada);
     const { operacao, payload } = chamada;
     if (operacao === "insert" && nome === "invoices") return { data: { id: "fatura-1" }, error: null };
+    if (operacao === "insert" && nome === "cards") {
+      const novos = payload as { last_four: string }[];
+      return { data: novos.map((c) => ({ id: `cartao-${c.last_four}`, last_four: c.last_four })), error: null };
+    }
     if (operacao !== "select") return { data: null, error: null, count: 1 };
     if (nome === "categories") return { data: CATEGORIAS, error: null };
     if (nome === "transactions" && colunas.includes("reconciled_with_id")) return { data: estado.daFatura, error: null };
@@ -207,6 +211,27 @@ describe("gravação", () => {
       drafts: [rascunho(1, "PADARIA DO ZE LTDA", { categoryId: ALI, decision: "new", provisorio: null })],
     });
     expect(operacoes("transactions", "update")).toHaveLength(0);
+  });
+});
+
+describe("cartão novo na fatura", () => {
+  it("a importação devolve os cartões que criou, para a tela pedir o nome", async () => {
+    estado.provisorios = [];
+    const r = await commitImport({
+      invoiceMonth: "2026-09",
+      cardId: null,
+      memberId: null,
+      fileName: "f.csv",
+      fileHash: null,
+      institution: null,
+      format: "csv",
+      reportedTotalCents: null,
+      drafts: [rascunho(1, "POSTO SHELL", { cardId: null, cardLastFour: "2150", decision: "new" })],
+    });
+    expect(r.error).toBeUndefined();
+    expect(r.cartoesNovos).toEqual([{ id: "cartao-2150", lastFour: "2150" }]);
+    const [criacao] = operacoes("cards", "insert");
+    expect(criacao!.payload).toEqual([{ house_id: "casa-1", name: "Cartão 2150", last_four: "2150" }]);
   });
 });
 
