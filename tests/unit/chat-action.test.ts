@@ -80,8 +80,8 @@ vi.mock("@/lib/houses", () => ({
 vi.mock("@/lib/house-view", () => ({
   houseView: async () => ({
     categories: [
-      { id: "ali", houseId: "casa-1", name: "Alimentacao", color: "#f00", icon: null, parentId: null, isActive: true, excludedFromTotals: false },
-      { id: "tra", houseId: "casa-1", name: "Transporte", color: "#00f", icon: null, parentId: null, isActive: true, excludedFromTotals: false },
+      { id: "ali", houseId: "casa-1", name: "Alimentacao", color: "#f00", icon: null, parentId: null, isActive: true, kind: "expense" as const, excludedFromTotals: false },
+      { id: "tra", houseId: "casa-1", name: "Transporte", color: "#00f", icon: null, parentId: null, isActive: true, kind: "expense" as const, excludedFromTotals: false },
     ],
     excluded: [],
     excludeCategoryIds: [],

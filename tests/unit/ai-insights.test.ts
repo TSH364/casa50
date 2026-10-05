@@ -54,7 +54,7 @@ function tx(o: Partial<Transaction> = {}): Transaction {
 }
 
 const cat = (id: string, name: string): Category =>
-  ({ id, houseId: "casa", name, color: "#000", icon: null, parentId: null, isActive: true, excludedFromTotals: false }) as Category;
+  ({ id, houseId: "casa", name, color: "#000", icon: null, parentId: null, isActive: true, kind: "expense" as const, excludedFromTotals: false }) as Category;
 
 const MERCADO = cat("c-m", "Mercado");
 const DELIVERY = cat("c-d", "Delivery");

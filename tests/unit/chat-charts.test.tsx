@@ -15,8 +15,8 @@ import type { ChartSpec, Proposal } from "@/domain/chat";
 const ALI = "aaaaaaaa-0000-4000-8000-000000000001";
 const TRA = "aaaaaaaa-0000-4000-8000-000000000002";
 const CATS = [
-  { id: ALI, houseId: "c", name: "Alimentacao", color: "#f00", icon: null, parentId: null, isActive: true, excludedFromTotals: false },
-  { id: TRA, houseId: "c", name: "Transporte", color: "#00f", icon: null, parentId: null, isActive: true, excludedFromTotals: false },
+  { id: ALI, houseId: "c", name: "Alimentacao", color: "#f00", icon: null, parentId: null, isActive: true, kind: "expense" as const, excludedFromTotals: false },
+  { id: TRA, houseId: "c", name: "Transporte", color: "#00f", icon: null, parentId: null, isActive: true, kind: "expense" as const, excludedFromTotals: false },
 ];
 
 let n = 0;

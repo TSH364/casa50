@@ -53,7 +53,7 @@ const MERCADO: Category = {
   icon: null,
   parentId: null,
   isActive: true,
-  excludedFromTotals: false,
+  kind: "expense" as const, excludedFromTotals: false,
 };
 
 /** Mesma formatacao que os insights usam, para a asercao nao depender de

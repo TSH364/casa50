@@ -439,7 +439,10 @@ export const TOOL_DEFINITIONS = [
           descricao: { type: "string", description: "O que foi, como a pessoa disse." },
           valor: { type: "number", description: "Valor em reais, positivo." },
           data: { type: "string", description: "Data da compra, AAAA-MM-DD. Sem ela, hoje." },
-          categoria: { type: "string", description: CATEGORIA_DESC },
+          categoria: {
+            type: "string",
+            description: `${CATEGORIA_DESC} Receita usa as categorias de RECEITA (salário, pró-labore, bolsa...); despesa, as de gasto.`,
+          },
           subcategoria: { type: "string", description: "Subcategoria, se houver." },
           pessoa: { type: "string", description: "Quem gastou (despesa) ou quem recebeu (receita): primeiro nome, ou 'os dois'." },
         },
@@ -732,8 +735,10 @@ export interface HouseContext {
   today: string;
   currentMonth: MonthKey;
   members: string[];
-  /** "Alimentação (subcategorias: Trabalho, Fim de semana)". */
+  /** "Alimentação (subcategorias: Trabalho, Fim de semana)". So as de gasto. */
   categories: string[];
+  /** As de receita: "Salário", "Pró-labore", "Bolsa"... */
+  incomeCategories?: string[];
   excludedCategories: string[];
   monthsWithData: MonthKey[];
   /** Resumo pronto do mes mais recente com dados - responde o basico sem ferramenta. */
@@ -787,6 +792,9 @@ export function buildSystemPrompt(c: HouseContext): string {
     `- Hoje: ${c.today}. Mês atual: ${c.currentMonth}.`,
     `- Pessoas: ${c.members.join(", ") || "—"}.`,
     `- Categorias: ${c.categories.join("; ") || "—"}.`,
+    c.incomeCategories && c.incomeCategories.length > 0
+      ? `- Categorias de receita (só para dinheiro que entrou): ${c.incomeCategories.join("; ")}.`
+      : "",
     c.excludedCategories.length > 0
       ? `- Fora dos totais da casa (as ferramentas não somam): ${c.excludedCategories.join(", ")}.`
       : "",

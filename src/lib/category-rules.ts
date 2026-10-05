@@ -65,7 +65,9 @@ export async function loadCategoryMaps(
       .from("categories")
       .select("id, name, parent_id")
       .eq("house_id", houseId)
-      .eq("is_active", true),
+      .eq("is_active", true)
+      // So as de gasto: compra de cartao nao cai em Salario.
+      .eq("kind", "expense"),
   ]);
 
   const byName = new Map<string, string>(

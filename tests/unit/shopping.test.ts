@@ -156,8 +156,8 @@ describe("simulação", () => {
 const ALI = "aaaaaaaa-0000-4000-8000-000000000001";
 const CASA = "aaaaaaaa-0000-4000-8000-000000000002";
 const CATS = [
-  { id: ALI, houseId: "casa-1", name: "Alimentacao", color: "#f00", icon: null, parentId: null, isActive: true, excludedFromTotals: false },
-  { id: CASA, houseId: "casa-1", name: "Casa", color: "#00f", icon: null, parentId: null, isActive: true, excludedFromTotals: false },
+  { id: ALI, houseId: "casa-1", name: "Alimentacao", color: "#f00", icon: null, parentId: null, isActive: true, kind: "expense" as const, excludedFromTotals: false },
+  { id: CASA, houseId: "casa-1", name: "Casa", color: "#00f", icon: null, parentId: null, isActive: true, kind: "expense" as const, excludedFromTotals: false },
 ];
 
 function tx(p: Partial<Transaction>): Transaction {

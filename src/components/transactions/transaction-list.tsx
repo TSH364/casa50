@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { formatBRL } from "@/lib/money";
 import { spendingCents } from "@/domain/finance";
 import { ehProvisorio } from "@/domain/provisorios";
+import { categoriasDoLado, ladoDoTipo } from "@/domain/categorias";
 import { monthShortLabel } from "@/domain/month";
 import { cn } from "@/lib/utils";
 import type { Card, Category, Transaction } from "@/domain/types";
@@ -170,7 +171,11 @@ export function TransactionList({
                     className="min-w-0 flex-1 sm:max-w-[15rem]"
                     transactionId={t.id}
                     description={t.merchantAlias ?? t.description}
-                    categories={categories}
+                    // Receita escolhe entre as categorias de receita.
+                    categories={categoriasDoLado(categories, ladoDoTipo(t.type), [
+                      t.categoryId,
+                      t.subcategoryId,
+                    ])}
                     categoryId={t.categoryId}
                     subcategoryId={t.subcategoryId}
                   />

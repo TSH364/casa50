@@ -43,7 +43,8 @@ import { DEFAULT_CHAT_PAID_MODEL } from "@/domain/ai-models";
 import { normalizeMerchant } from "@/importers/detect";
 import { formatCents, toCents } from "@/lib/money";
 import { DOS_DOIS } from "@/domain/schemas";
-import type { Category, MonthKey, Transaction } from "@/domain/types";
+import type { Category, CategoryKind, MonthKey, Transaction } from "@/domain/types";
+import { categoriasDoLado } from "@/domain/categorias";
 import type { MemberSummary } from "@/lib/houses";
 
 /**
@@ -428,15 +429,22 @@ function resolverCategoria(
   ctx: ToolContext,
   categoria: string | undefined,
   subcategoria: string | undefined,
+  lado: CategoryKind = "expense",
 ): { categoryId: string | null; subcategoryId: string | null; label: string | null } | string {
   if (!categoria) return { categoryId: null, subcategoryId: null, label: null };
-  const c = findCategory(categoria, ctx.categories);
-  if (!c) return `Não achei a categoria "${categoria}". Categorias: ${ctx.categories.filter((x) => x.parentId === null && x.isActive).map((x) => x.name).join(", ")}.`;
+  // Receita procura entre as de receita; gasto, entre as de gasto - "Outros"
+  // de gasto nao vira categoria de um salario.
+  const doLado = categoriasDoLado(ctx.categories, lado);
+  const c = findCategory(categoria, doLado);
+  if (!c) {
+    const nomes = doLado.filter((x) => x.parentId === null && x.isActive).map((x) => x.name).join(", ");
+    return `Não achei a categoria ${lado === "income" ? "de receita " : ""}"${categoria}". Categorias${lado === "income" ? " de receita" : ""}: ${nomes || "nenhuma"}.`;
+  }
   // Pediu uma subcategoria pelo nome da categoria: a mae e a dela.
-  const mae = c.parentId === null ? c : ctx.categories.find((x) => x.id === c.parentId)!;
+  const mae = c.parentId === null ? c : doLado.find((x) => x.id === c.parentId)!;
   let sub = c.parentId === null ? null : c;
   if (subcategoria) {
-    const filhas = ctx.categories.filter((x) => x.parentId === mae.id && x.isActive);
+    const filhas = doLado.filter((x) => x.parentId === mae.id && x.isActive);
     const achada = findCategory(subcategoria, filhas);
     if (!achada) {
       return `"${subcategoria}" não é subcategoria de ${mae.name}.${filhas.length ? ` As dela: ${filhas.map((x) => x.name).join(", ")}.` : " Ela não tem subcategorias."}`;
@@ -507,7 +515,7 @@ function proporLancamento(
   a: { tipo?: "despesa" | "receita"; descricao: string; valor: number; data?: string; categoria?: string; subcategoria?: string; pessoa?: string },
 ): string {
   const receita = a.tipo === "receita";
-  const cat = resolverCategoria(ctx, a.categoria, a.subcategoria);
+  const cat = resolverCategoria(ctx, a.categoria, a.subcategoria, receita ? "income" : "expense");
   if (typeof cat === "string") return cat;
 
   let memberId: string | null = null;
@@ -829,8 +837,9 @@ async function proporOrcamento(ctx: ToolContext, a: { categoria: string; valor: 
   const r = resolveRange({ mes: a.mes }, ctx.today);
   if ("error" in r) return r.error;
   const mes = r.range.to;
-  const c = findCategory(a.categoria, ctx.categories);
-  if (!c) return `Não achei a categoria "${a.categoria}".`;
+  // Orcamento e limite de gasto: categoria de receita nao entra.
+  const c = findCategory(a.categoria, categoriasDoLado(ctx.categories, "expense"));
+  if (!c) return `Não achei a categoria de gasto "${a.categoria}".`;
   if (c.parentId !== null) {
     const mae = ctx.categories.find((x) => x.id === c.parentId);
     return `Orçamento é por categoria principal: "${c.name}" é subcategoria de ${mae?.name ?? "outra"}. Proponha para ${mae?.name ?? "a principal"}.`;

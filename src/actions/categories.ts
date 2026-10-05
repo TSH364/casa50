@@ -34,6 +34,8 @@ const categorySchema = z.object({
     .nullable()
     .optional()
     .transform((v) => v ?? null),
+  // Gasto ou receita. Subcategoria herda da mae (trigger no banco).
+  kind: z.enum(["expense", "income"]).default("expense"),
 });
 
 export async function createCategory(
@@ -44,6 +46,7 @@ export async function createCategory(
   const parsed = categorySchema.safeParse({
     ...raw,
     parentId: raw.parentId || null,
+    kind: raw.kind || undefined,
   });
   if (!parsed.success) return fieldErrorsFrom(parsed.error);
 
@@ -68,6 +71,7 @@ export async function createCategory(
     name: parsed.data.name,
     color: parsed.data.color,
     parent_id: parsed.data.parentId,
+    kind: parsed.data.kind,
   });
 
   if (error) {
@@ -86,7 +90,7 @@ export async function updateCategory(
   formData: FormData,
 ): Promise<FormState> {
   const parsed = categorySchema
-    .omit({ parentId: true })
+    .omit({ parentId: true, kind: true })
     .safeParse(formToObject(formData));
   if (!parsed.success) return fieldErrorsFrom(parsed.error);
 

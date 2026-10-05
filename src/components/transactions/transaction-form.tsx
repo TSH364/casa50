@@ -14,6 +14,7 @@ import { Field, Input, Textarea } from "@/components/ui/field";
 import { Select } from "@/components/ui/select";
 import { monthLabel, monthOf, addMonths } from "@/domain/month";
 import { DOS_DOIS } from "@/domain/schemas";
+import { categoriasDoLado, ladoDoTipo } from "@/domain/categorias";
 import type { Card, Category, Transaction } from "@/domain/types";
 import type { MemberSummary } from "@/lib/houses";
 
@@ -141,8 +142,25 @@ export function TransactionFormDialog({
   }, [state.ok, isEdit, onOpenChange]);
 
   const err = state.fieldErrors ?? {};
-  const parents = categories.filter((c) => c.parentId === null);
-  const children = categories.filter((c) => c.parentId === categoryId);
+  // Receita escolhe entre Salario, Pro-labore...; gasto entre Mercado, Lazer...
+  // O que o lancamento ja tem fica, mesmo que seja do outro lado.
+  const doLado = categoriasDoLado(categories, ladoDoTipo(tipo), [
+    transaction?.categoryId,
+    transaction?.subcategoryId,
+  ]);
+  const parents = doLado.filter((c) => c.parentId === null);
+  const children = doLado.filter((c) => c.parentId === categoryId);
+
+  function mudarTipo(novo: string) {
+    setTipo(novo);
+    // Categoria de gasto numa receita (ou o contrario) nao serve: limpa.
+    const atual = categories.find((c) => c.id === categoryId);
+    if (atual && atual.kind !== ladoDoTipo(novo)) {
+      setCategoryId("");
+      setSubcategoryId("");
+      setSugestao(null);
+    }
+  }
 
   // O mês da fatura raramente é o da compra: uma compra depois do fechamento
   // cai na fatura seguinte. Oferecemos os três meses em torno da data.
@@ -178,7 +196,7 @@ export function TransactionFormDialog({
                   type="button"
                   role="radio"
                   aria-checked={ativo}
-                  onClick={() => setTipo(op.value)}
+                  onClick={() => mudarTipo(op.value)}
                   className={
                     ativo
                       ? op.value === "income"
@@ -198,7 +216,7 @@ export function TransactionFormDialog({
                 id="tipo-outro"
                 options={OUTROS_TIPOS}
                 value={tipo}
-                onChange={(e) => setTipo(e.target.value)}
+                onChange={(e) => mudarTipo(e.target.value)}
               />
             </Field>
           ) : null}

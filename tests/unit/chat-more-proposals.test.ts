@@ -22,8 +22,8 @@ const COL_A = "c0c00000-0000-4000-8000-00000000000a";
 const COL_B = "c0c00000-0000-4000-8000-00000000000b";
 
 const CATS = [
-  { id: MERCADO, houseId: "casa-1", name: "Mercado", color: "#0f0", icon: null, parentId: null, isActive: true, excludedFromTotals: false },
-  { id: HORTI, houseId: "casa-1", name: "Hortifruti", color: "#0f0", icon: null, parentId: MERCADO, isActive: true, excludedFromTotals: false },
+  { id: MERCADO, houseId: "casa-1", name: "Mercado", color: "#0f0", icon: null, parentId: null, isActive: true, kind: "expense" as const, excludedFromTotals: false },
+  { id: HORTI, houseId: "casa-1", name: "Hortifruti", color: "#0f0", icon: null, parentId: MERCADO, isActive: true, kind: "expense" as const, excludedFromTotals: false },
 ];
 
 function tx(p: Partial<Transaction>): Transaction {
