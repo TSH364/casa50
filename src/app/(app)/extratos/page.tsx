@@ -6,7 +6,6 @@ import { getActiveHouse, listMembers } from "@/lib/houses";
 import { listCards, listCategories, listTransactions } from "@/data/queries";
 import { summarizeMonth } from "@/domain/finance";
 import { currentMonth, isMonthKey } from "@/domain/month";
-import { formatCents } from "@/lib/money";
 import { Card, CardHeader } from "@/components/ui/card";
 import { Skeleton } from "@/components/states";
 import { MonthSwitcher } from "@/components/month-switcher";
@@ -15,6 +14,7 @@ import { FiltrosCompactos } from "@/components/filtros-compactos";
 import { rotuloDoCartao } from "@/domain/cartoes";
 import { SearchBox } from "@/components/search-box";
 import { TransactionList } from "@/components/transactions/transaction-list";
+import { TotaisSeparados } from "@/components/transactions/totais-separados";
 import { NewTransactionButton } from "@/components/transactions/new-transaction-button";
 import { Statements, StatementsSkeleton } from "@/components/statements/card-totals";
 import Link from "next/link";
@@ -81,9 +81,10 @@ async function Listing({
         title="Lançamentos"
         description={`${transactions.length} no recorte atual`}
         action={
-          <span className="tabular text-sm font-semibold text-ink">
-            {formatCents(summary.spentCents)}
-          </span>
+          <TotaisSeparados
+            gastoCents={summary.spentCents}
+            recebidoCents={summary.incomeCents}
+          />
         }
       />
       <TransactionList

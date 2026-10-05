@@ -1,11 +1,12 @@
 import Link from "next/link";
 import { CreditCard } from "lucide-react";
 import { listInvoices, listTransactions } from "@/data/queries";
-import { spendingCents } from "@/domain/finance";
+import { incomeCents, spendingCents } from "@/domain/finance";
 import { formatCents } from "@/lib/money";
 import { Card as Panel, CardHeader } from "@/components/ui/card";
 import { Skeleton } from "@/components/states";
 import { InvoiceList } from "./invoice-list";
+import { TotaisSeparados } from "@/components/transactions/totais-separados";
 import type { Card, MonthKey } from "@/domain/types";
 import type { MemberSummary } from "@/lib/houses";
 
@@ -47,11 +48,17 @@ export async function Statements({
     listInvoices(houseId, month),
   ]);
 
-  const totals = new Map<string | null, { cents: number; count: number }>();
+  // Gasto e recebido em contas separadas: a receita (sem cartao, quase
+  // sempre) nao entra no total gasto, e aparece ao lado, em azul.
+  const totals = new Map<
+    string | null,
+    { cents: number; incomeCents: number; count: number }
+  >();
   for (const t of transactions) {
     const key = t.cardId;
-    const bucket = totals.get(key) ?? { cents: 0, count: 0 };
+    const bucket = totals.get(key) ?? { cents: 0, incomeCents: 0, count: 0 };
     bucket.cents += spendingCents(t);
+    bucket.incomeCents += incomeCents(t);
     bucket.count += 1;
     totals.set(key, bucket);
   }
@@ -71,7 +78,11 @@ export async function Statements({
           />
           <ul className="space-y-2">
             {withCard.map((card) => {
-              const bucket = totals.get(card.id) ?? { cents: 0, count: 0 };
+              const bucket = totals.get(card.id) ?? {
+                cents: 0,
+                incomeCents: 0,
+                count: 0,
+              };
               const isActive = activeCardId === card.id;
               return (
                 <li key={card.id}>
@@ -105,7 +116,7 @@ export async function Statements({
                         {card.dueDay ? ` · vence dia ${card.dueDay}` : ""}
                       </p>
                     </div>
-                    <span className="tabular shrink-0 text-sm font-medium text-ink">
+                    <span className="tabular shrink-0 text-sm font-medium text-danger">
                       {formatCents(bucket.cents)}
                     </span>
                   </Link>
@@ -121,9 +132,12 @@ export async function Statements({
                     {noCard.count} lançamento(s) · PIX, dinheiro ou manual
                   </p>
                 </div>
-                <span className="tabular shrink-0 text-sm text-ink-muted">
-                  {formatCents(noCard.cents)}
-                </span>
+                <div className="shrink-0">
+                  <TotaisSeparados
+                    gastoCents={noCard.cents}
+                    recebidoCents={noCard.incomeCents}
+                  />
+                </div>
               </li>
             ) : null}
           </ul>
