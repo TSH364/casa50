@@ -144,13 +144,19 @@ export function TransactionList({
                   <p
                     className={cn(
                       "tabular shrink-0 text-sm font-medium",
-                      // Verde para o que entra ou volta; branco para o que sai.
-                      spend < 0 || t.type === "income"
-                        ? "text-positive"
-                        : "text-ink",
+                      // Azul para o que entrou (receita), verde para o que
+                      // voltou (estorno), vermelho para o que saiu.
+                      t.type === "income"
+                        ? "text-info"
+                        : spend < 0
+                          ? "text-positive"
+                          : spend > 0
+                            ? "text-danger"
+                            : "text-ink",
                       t.type === "payment" && "text-ink-muted",
                     )}
                   >
+                    {t.type === "income" ? "+" : ""}
                     {formatBRL(t.amount)}
                   </p>
                 </div>

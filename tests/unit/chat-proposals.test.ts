@@ -183,6 +183,22 @@ describe("ferramentas de propor", () => {
     expect(c.proposals[0]).toMatchObject({ kind: "lancar", fields: { type: "income", amountCents: 500000, memberId: LARI } });
   });
 
+  it("a mesma proposta duas vezes na resposta vira uma só (a voz confirma todas de uma vez)", async () => {
+    const c = ctx();
+    const args = { tipo: "receita", descricao: "FAPESP Lari", valor: 5700, data: "2026-09-04", pessoa: "Lari" };
+    await runTool(c, "propor_lancamento", JSON.stringify(args));
+    const r2 = await runTool(c, "propor_lancamento", JSON.stringify({ ...args, descricao: " fapesp lari " }));
+    const r3 = await runTool(c, "propor_lancamento", JSON.stringify(args));
+    expect(r2.output).toMatch(/já está proposto/);
+    expect(r3.output).toMatch(/já está proposto/);
+    expect(c.proposals).toHaveLength(1);
+    // Outro valor, outra data ou despesa: e outra proposta.
+    await runTool(c, "propor_lancamento", JSON.stringify({ ...args, valor: 5790 }));
+    await runTool(c, "propor_lancamento", JSON.stringify({ ...args, data: "2026-10-04" }));
+    await runTool(c, "propor_lancamento", JSON.stringify({ ...args, tipo: "despesa" }));
+    expect(c.proposals).toHaveLength(4);
+  });
+
   it("sem tipo, continua despesa (como antes)", async () => {
     const c = ctx();
     await runTool(c, "propor_lancamento", JSON.stringify({ descricao: "Jantar", valor: 50 }));

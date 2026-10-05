@@ -35,6 +35,9 @@
   --color-on-brand: #08090c;
   --color-positive: #35d29a;
   --color-positive-soft: #12352b;
+  /* Receita: o dinheiro que entrou, em azul - separado do verde do estorno
+     e do vermelho do gasto. */
+  --color-info: #6cb6ff;
   --color-attention: #f2b23c;
   --color-attention-soft: #3a2e13;
   --color-danger: #f2686b;
@@ -183,6 +186,7 @@
   --color-dori-contorno: transparent;
   --color-positive: #065c3e;
   --color-positive-soft: #d6f1e5;
+  --color-info: #1f5fbf;
   --color-attention: #704600;
   --color-attention-soft: #faebcc;
   --color-danger: #9c272c;
@@ -212,6 +216,7 @@
   --color-dori-contorno: transparent;
     --color-positive: #065c3e;
     --color-positive-soft: #d6f1e5;
+    --color-info: #1f5fbf;
     --color-attention: #704600;
     --color-attention-soft: #faebcc;
     --color-danger: #9c272c;
