@@ -528,11 +528,27 @@ function proporLancamento(
   const data = a.data ?? ctx.todayIso;
   if (Number.isNaN(new Date(`${data}T12:00:00Z`).getTime())) return `Data inválida: ${data}.`;
   const amountCents = toCents(a.valor);
+  // A mesma proposta duas vezes na mesma resposta vira dois lancamentos: o
+  // "confirmar" da voz aplica todas as propostas da resposta de uma vez. Foi
+  // assim que uma receita de R$ 5.700 entrou tres vezes em setembro.
+  const type = receita ? "income" : "expense";
+  const mesmaDescricao = (d: string) => d.trim().toLowerCase() === a.descricao.trim().toLowerCase();
+  const repetida = ctx.proposals.some(
+    (p) =>
+      p.kind === "lancar" &&
+      p.fields.type === type &&
+      p.fields.amountCents === amountCents &&
+      p.fields.date === data &&
+      mesmaDescricao(p.fields.description),
+  );
+  if (repetida) {
+    return `Esse lançamento já está proposto nesta resposta (ainda NÃO gravado). Não proponha de novo: um só cartão basta. Peça para a casa confirmar.`;
+  }
   ctx.proposals.push({
     kind: "lancar",
     id: novoId(),
     fields: {
-      type: receita ? "income" : "expense",
+      type,
       description: a.descricao,
       amountCents,
       date: data,
