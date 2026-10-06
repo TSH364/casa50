@@ -56,19 +56,21 @@ export async function loadCategoryMaps(
   supabase: Awaited<ReturnType<typeof createClient>>,
   houseId: string,
 ): Promise<CategoryMaps> {
-  const [{ data: rules }, { data: categories }] = await Promise.all([
+  const [{ data: rules }, { data: todas }] = await Promise.all([
     supabase
       .from("learned_rules")
       .select("normalized_pattern, category_id, subcategory_id")
       .eq("house_id", houseId),
     supabase
       .from("categories")
-      .select("id, name, parent_id")
+      .select("*")
       .eq("house_id", houseId)
-      .eq("is_active", true)
-      // So as de gasto: compra de cartao nao cai em Salario.
-      .eq("kind", "expense"),
+      .eq("is_active", true),
   ]);
+  // So as de gasto: compra de cartao nao cai em Salario. Filtro aqui, e nao
+  // na consulta: sem a migracao de `kind`, filtrar pela coluna derrubaria a
+  // leitura inteira.
+  const categories = (todas ?? []).filter((c) => c.kind !== "income");
 
   const byName = new Map<string, string>(
     (categories ?? []).map((c) => [
