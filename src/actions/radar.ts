@@ -6,6 +6,7 @@ import { createClient, getCurrentUser } from "@/lib/supabase/server";
 import { getAiKey } from "@/lib/ai-config";
 import { recordAiUsage } from "@/lib/ai-usage";
 import { buscarOfertas } from "@/lib/ofertas";
+import { buscarImagemDoProduto } from "@/lib/imagem-produto";
 import { parseAmountCents } from "@/lib/money";
 import { tabelaAusente } from "@/data/radar";
 import { HORAS_ENTRE_CONFERENCIAS, MAX_POR_RODADA, melhorOferta, normalizarNome } from "@/domain/radar";
@@ -215,6 +216,7 @@ async function conferir(supabase: Supabase, houseId: string, produto: { id: stri
       best_url: melhor.url,
       best_title: melhor.title,
     });
+    await guardarImagem(supabase, produto.id, [melhor.url, ...busca.offers.map((o) => o.url)]);
     return { ok: true, achou: { cents: melhor.priceCents, loja: melhor.store } };
   } catch (e) {
     const msg = e instanceof Error ? e.message : "A busca falhou.";
@@ -222,5 +224,23 @@ async function conferir(supabase: Supabase, houseId: string, produto: { id: stri
     return { error: msg };
   } finally {
     if (custo > 0 || detalhes) await recordAiUsage(houseId, "radar", { calls: 1, costUsd: custo, model: modelo, details: detalhes });
+  }
+}
+
+/**
+ * A foto do produto, da pagina do anuncio. Tenta a melhor oferta e, se a loja
+ * bloquear, mais uma. Gravada a parte e sem custo de IA: sem a
+ * coluna (migracao ainda nao aplicada) ou sem imagem, so fica sem foto.
+ */
+async function guardarImagem(supabase: Supabase, produtoId: string, urls: readonly string[]): Promise<void> {
+  const unicas = [...new Set(urls)].slice(0, 2);
+  for (const url of unicas) {
+    const imagem = await buscarImagemDoProduto(url);
+    if (!imagem) continue;
+    const { error } = await supabase.from("radar_products").update({ image_url: imagem }).eq("id", produtoId);
+    if (error && !error.code?.startsWith("PGRST2") && error.code !== "42703") {
+      console.error("[radar] falha ao guardar a imagem", { code: error.code });
+    }
+    return;
   }
 }

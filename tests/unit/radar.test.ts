@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   avisosDoRadar,
+  imagemDaPagina,
   ler,
   melhorOferta,
   normalizarNome,
@@ -28,7 +29,7 @@ function oferta(extra: Partial<Offer>): Offer {
 }
 
 function produto(extra: Partial<RadarProduto> = {}): RadarProduto {
-  return { id: "p1", nome: "Air fryer Mondial 4L", metaCents: null, ativo: true, conferidoEm: null, erro: null, melhor: null, ...extra };
+  return { id: "p1", nome: "Air fryer Mondial 4L", metaCents: null, ativo: true, conferidoEm: null, erro: null, melhor: null, imagem: null, ...extra };
 }
 
 function preco(cents: number, horasAtras: number, loja = "Amazon"): RadarPreco {
@@ -124,4 +125,24 @@ describe("aviso no Início", () => {
 
 it("nome do produto sem espaços sobrando", () => {
   expect(normalizarNome("  Air   fryer\nMondial ")).toBe("Air fryer Mondial");
+});
+
+describe("a foto do produto", () => {
+  const pagina = "https://www.magazineluiza.com.br/air-fryer/p/123/";
+
+  it("og:image da página, relativa vira absoluta", () => {
+    expect(imagemDaPagina('<head><meta property="og:image" content="https://a-static.mlcdn.com.br/foto.jpg"></head>', pagina)).toBe(
+      "https://a-static.mlcdn.com.br/foto.jpg",
+    );
+    expect(imagemDaPagina("<meta content='/img/foto.png?w=600&amp;h=600' property='og:image' />", pagina)).toBe(
+      "https://www.magazineluiza.com.br/img/foto.png?w=600&h=600",
+    );
+  });
+
+  it("sem og:image, twitter:image ou link image_src; só https", () => {
+    expect(imagemDaPagina('<meta name="twitter:image" content="https://cdn.loja.com/t.jpg">', pagina)).toBe("https://cdn.loja.com/t.jpg");
+    expect(imagemDaPagina('<link rel="image_src" href="https://cdn.loja.com/l.jpg">', pagina)).toBe("https://cdn.loja.com/l.jpg");
+    expect(imagemDaPagina('<meta property="og:image" content="http://cdn.loja.com/inseguro.jpg">', pagina)).toBeNull();
+    expect(imagemDaPagina("<html><title>Loja</title></html>", pagina)).toBeNull();
+  });
 });

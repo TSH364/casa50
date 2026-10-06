@@ -29,6 +29,7 @@ export function mapProduto(r: Record<string, unknown>): RadarProduto {
     ativo: r.is_active !== false,
     conferidoEm: (r.last_checked_at as string | null) ?? null,
     erro: (r.last_error as string | null) ?? null,
+    imagem: typeof r.image_url === "string" && r.image_url.startsWith("https://") ? r.image_url : null,
     melhor:
       cents !== null && r.best_url
         ? {
