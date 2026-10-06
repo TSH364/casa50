@@ -27,17 +27,9 @@ import {
 } from "@/domain/chat";
 import { refOf, refPrefix } from "@/domain/chat";
 import type { ChartSpec, Proposal, Range, ToolName } from "@/domain/chat";
-import {
-  SEARCH_PROMPT,
-  checkOffers,
-  offersFromCitations,
-  offersPrompt,
-  purchaseImpact,
-  searchDiagnostics,
-  unverifiedOffers,
-} from "@/domain/shopping";
+import { purchaseImpact } from "@/domain/shopping";
 import type { ShoppingSearch } from "@/domain/shopping";
-import { webSearch } from "@/lib/openrouter";
+import { buscarOfertas } from "@/lib/ofertas";
 import { recordAiUsage } from "@/lib/ai-usage";
 import { DEFAULT_CHAT_PAID_MODEL } from "@/domain/ai-models";
 import { normalizeMerchant } from "@/importers/detect";
@@ -665,27 +657,11 @@ async function pesquisarCompra(ctx: ToolContext, a: { produto: string; preco_max
   let modelo: string | null = DEFAULT_CHAT_PAID_MODEL;
   let detalhes: Record<string, unknown> | null = null;
   try {
-    const r = await webSearch([{ role: "user", content: offersPrompt(a.produto, teto) }], {
-      apiKey: ctx.apiKey,
-      model: DEFAULT_CHAT_PAID_MODEL,
-      timeoutMs: tempo,
-      searchPrompt: SEARCH_PROMPT,
-    });
-    custo = r.costUsd;
-    modelo = r.servedBy ?? modelo;
-    // Tres niveis, do mais ao menos conferido: o anuncio que a IA citou e a
-    // busca abriu; o anuncio direto das paginas de loja citadas; e, por
-    // ultimo, a busca na loja pelo nome do que a IA viu.
-    const conferidas = checkOffers(r.content, r.citations, teto);
-    const planoB = conferidas.offers.length > 0 ? [] : offersFromCitations(r.citations, teto);
-    const planoC = conferidas.offers.length > 0 || planoB.length > 0 ? [] : unverifiedOffers(r.content, teto);
-    const offers = conferidas.offers.length > 0 ? conferidas.offers : planoB.length > 0 ? planoB : planoC;
-    detalhes = searchDiagnostics(a.produto, r.content, r.citations, {
-      conferidas: conferidas.offers.length,
-      descartadas: conferidas.dropped,
-      planoB: planoB.length,
-      planoC: planoC.length,
-    });
+    const busca = await buscarOfertas(a.produto, teto, { apiKey: ctx.apiKey, timeoutMs: tempo });
+    custo = busca.costUsd;
+    modelo = busca.model;
+    detalhes = busca.details;
+    const offers = busca.offers;
     ctx.searches.push({
       id: novoId(),
       query: a.produto,

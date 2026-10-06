@@ -4,6 +4,8 @@ import { budgetProgress, spendingCents, summarizeMonth, totalsByCategory } from 
 import { forecastMonths, goalProgress, reconcileRecurrences, recurrencesFor } from "@/domain/forecast";
 import { doriBarra, escolherAvisos, montarRamos } from "@/domain/home";
 import { ehProvisorio } from "@/domain/provisorios";
+import { avisosDoRadar } from "@/domain/radar";
+import { carregarRadar } from "@/data/radar";
 import { addMonths, currentMonth, monthLabel } from "@/domain/month";
 import { formatCents, formatCentsCompact, toCents } from "@/lib/money";
 import { Skeleton } from "@/components/states";
@@ -78,7 +80,7 @@ export async function InicioPainel({
   categories: Category[];
   hasData: boolean;
 }) {
-  const [txs, recorrentes, orcamentos, { goals }] = await Promise.all([
+  const [txs, recorrentes, orcamentos, { goals }, radar] = await Promise.all([
     listTransactions(houseId, {
       fromMonth: addMonths(month, -3),
       toMonth: month,
@@ -89,6 +91,8 @@ export async function InicioPainel({
     listRecurrences(houseId),
     listBudgets(houseId, month),
     listGoals(houseId),
+    // O Radar nunca derruba o Inicio: sem ele, so faltam os avisos dele.
+    carregarRadar(houseId, 5).catch(() => ({ disponivel: false, itens: [] })),
   ]);
 
   const agora = new Date();
@@ -127,6 +131,7 @@ export async function InicioPainel({
                 overCents: p.overCents,
               };
             }),
+          radar: avisosDoRadar(radar.itens, agora),
           contasFaltando: reconcileRecurrences(recurrencesFor(recorrentes, memberId), txs, month, agora)
             .filter((m) => m.status === "missing")
             .map((m) => ({ nome: m.recurrence.description })),

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { CircleAlert, ReceiptText, TriangleAlert } from "lucide-react";
+import { CircleAlert, Radar, ReceiptText, TriangleAlert } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Aviso } from "@/domain/home";
 
@@ -7,6 +7,7 @@ const ESTILO = {
   passou: { aba: "bg-danger-fill text-white", icone: "text-danger", Icone: TriangleAlert },
   orcamento: { aba: "bg-attention text-canvas", icone: "text-attention", Icone: CircleAlert },
   conta: { aba: "bg-brand text-on-brand", icone: "text-brand", Icone: ReceiptText },
+  radar: { aba: "bg-positive text-canvas", icone: "text-positive", Icone: Radar },
 } as const;
 
 /**
