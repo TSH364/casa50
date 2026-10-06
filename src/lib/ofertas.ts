@@ -3,7 +3,8 @@ import {
   SEARCH_PROMPT,
   checkOffers,
   offersFromCitations,
-  offersPrompt,
+  offersInstructions,
+  offersQuery,
   searchDiagnostics,
   unverifiedOffers,
   type Offer,
@@ -35,12 +36,20 @@ export async function buscarOfertas(
   tetoCents: Cents | null,
   options: { apiKey: string; timeoutMs: number; aceitarNaoConferidas?: boolean },
 ): Promise<BuscaDeOfertas> {
-  const r = await webSearch([{ role: "user", content: offersPrompt(produto, tetoCents) }], {
-    apiKey: options.apiKey,
-    model: DEFAULT_CHAT_PAID_MODEL,
-    timeoutMs: options.timeoutMs,
-    searchPrompt: SEARCH_PROMPT,
-  });
+  // Instrucoes no sistema, produto na mensagem do usuario: e esta que o
+  // buscador recebe (ver `offersQuery`).
+  const r = await webSearch(
+    [
+      { role: "system", content: offersInstructions(produto, tetoCents) },
+      { role: "user", content: offersQuery(produto) },
+    ],
+    {
+      apiKey: options.apiKey,
+      model: DEFAULT_CHAT_PAID_MODEL,
+      timeoutMs: options.timeoutMs,
+      searchPrompt: SEARCH_PROMPT,
+    },
+  );
   const conferidas = checkOffers(r.content, r.citations, tetoCents);
   const planoB = conferidas.offers.length > 0 ? [] : offersFromCitations(r.citations, tetoCents);
   const planoC =
