@@ -1,6 +1,7 @@
 import { formatCents, type Cents } from "@/lib/money";
 import { currentMonth, daysInMonth, daysRemaining } from "./month";
 import type { MonthKey } from "./types";
+import type { AvisoDoRadar } from "./radar";
 
 /**
  * O Inicio da nova interface: a barra da Dori, os avisos e os ramos.
@@ -108,7 +109,7 @@ export function doriBarra({
 // Avisos
 // ---------------------------------------------------------------------------
 
-export type AvisoTipo = "passou" | "orcamento" | "conta";
+export type AvisoTipo = "passou" | "orcamento" | "conta" | "radar";
 
 export interface Aviso {
   tipo: AvisoTipo;
@@ -123,9 +124,12 @@ export function escolherAvisos(
   {
     orcamentos,
     contasFaltando,
+    radar = [],
   }: {
     orcamentos: { nome: string; categoryId: string; ratio: number; overCents: Cents }[];
     contasFaltando: { nome: string }[];
+    /** Do Radar de produtos (`avisosDoRadar`): chegou na meta ou caiu. */
+    radar?: readonly AvisoDoRadar[];
   },
   max = 2,
 ): Aviso[] {
@@ -156,7 +160,19 @@ export function escolherAvisos(
       acao: "Ver os gastos",
       href: `/extratos?categoria=${o.categoryId}`,
     }));
-  return [...passou, ...contas, ...perto].slice(0, max);
+  // Oportunidade de compra vem logo depois do orcamento estourado: preco de
+  // loja muda, e o aviso de amanha pode ja nao valer.
+  const radarAvisos = radar.map<Aviso>((r) => ({
+    tipo: "radar",
+    aba: "Radar",
+    texto:
+      r.motivo === "meta"
+        ? `${r.nome} chegou a ${formatCents(r.atualCents)} na ${r.loja}${r.metaCents ? ` (meta ${formatCents(r.metaCents)})` : ""}.`
+        : `${r.nome} caiu ${formatCents(r.quedaCents)}: agora ${formatCents(r.atualCents)} na ${r.loja}.`,
+    acao: "Ver no Radar",
+    href: "/radar",
+  }));
+  return [...passou, ...radarAvisos, ...contas, ...perto].slice(0, max);
 }
 
 // ---------------------------------------------------------------------------

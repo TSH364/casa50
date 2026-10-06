@@ -11,6 +11,7 @@ import {
   LogOut,
   Mic,
   MoreHorizontal,
+  Radar,
   ReceiptText,
   Sparkles,
   Target,
@@ -34,6 +35,7 @@ const DIREITA = [{ href: "/analise", label: "Análise", Icon: Sparkles }] as con
 /** O que o celular guarda no "Mais": telas que se abrem menos. */
 const MAIS = [
   { href: "/metas", label: "Metas", Icon: Target },
+  { href: "/radar", label: "Radar", Icon: Radar },
   { href: "/projetos", label: "Projetos", Icon: Hammer },
   { href: "/tarefas", label: "Tarefas", Icon: KanbanSquare },
   // Fora do "Casa" para ser achado: e onde se da nome aos cartoes.

@@ -7,6 +7,7 @@ import { getCurrentUser } from "@/lib/supabase/server";
 import { signOut } from "@/app/entrar/actions";
 import { syncStaleCalendars } from "@/actions/calendar";
 import { syncStaleBanks } from "@/actions/bancos";
+import { syncRadar } from "@/actions/radar";
 import { Button } from "@/components/ui/button";
 import { buildInfo, buildLabel, versionLabel } from "@/lib/version";
 import { cookies } from "next/headers";
@@ -35,6 +36,8 @@ export default async function AppLayout({
   // Os bancos do Meu Pluggy, pelo mesmo motivo e do mesmo jeito: a compra de
   // ontem aparece na proxima tela que alguem da casa abrir.
   after(syncStaleBanks);
+  // O Radar de produtos: o preco do dia, conferido na primeira abertura.
+  after(syncRadar);
 
   const build = buildInfo();
   const tema = parseTheme((await cookies()).get(THEME_COOKIE)?.value);
