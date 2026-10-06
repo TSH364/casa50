@@ -57,5 +57,5 @@ $fn$;
 --
 -- O `update` dispara o proprio trigger acima, que reescreve a coluna. Mexe so
 -- em `duplicate_key` e `merchant_normalized`, que a auditoria ja ignora
--- (ver 20260902000003_audit.sql), entao nao gera ruido no historico.
+-- (ver 20260902215314_audit.sql), entao nao gera ruido no historico.
 update public.transactions set updated_at = updated_at;
