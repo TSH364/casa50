@@ -29,6 +29,9 @@ import { CategoryMatrix, CategoryMatrixSkeleton } from "@/components/dashboard/c
 import { AgendaPanel, AgendaPanelSkeleton } from "@/components/calendar/agenda-panel";
 import { RecurrencesPanel } from "@/components/forecast/recurrences-panel";
 import { InstallmentsCard, NextMonthsCard } from "@/components/forecast/forecast-cards";
+import { ProjecaoCard } from "@/components/forecast/projecao-card";
+import { projetar, quandoComprar } from "@/domain/projecao";
+import { carregarRadar } from "@/data/radar";
 import { InsightCard } from "@/components/insights/insight-card";
 import { AiAnalysisCard } from "@/components/insights/ai-analysis";
 
@@ -62,7 +65,11 @@ export default async function AnalisePage({
   const scope = view.showingAll ? "tudo" : "casa";
   const categories = view.categories;
 
-  const [transactions, budgets, recurrences, cards, members, events, ia, analise] = await Promise.all([
+  // A projecao olha do mes de hoje para a frente; num mes passado ela nao
+  // teria o que dizer.
+  const ehMesAtual = month === currentMonth();
+
+  const [transactions, budgets, recurrences, cards, members, events, ia, analise, futuras, radar] = await Promise.all([
     // Doze meses para trás: a detecção de recorrência precisa de sequência,
     // e as parcelas longas precisam do mês em que começaram.
     listTransactions(active.id, {
@@ -83,6 +90,12 @@ export default async function AnalisePage({
     }),
     getAiStatus(active.id),
     getLatestAiAnalysis(active.id, month, scope),
+    // Receitas lancadas com data futura (13o, freela combinado) entram na
+    // projecao do mes delas.
+    ehMesAtual
+      ? listTransactions(active.id, { fromMonth: addMonths(month, 1), toMonth: addMonths(month, 6), excludeCategoryIds, limit: 1000 })
+      : Promise.resolve([]),
+    ehMesAtual ? carregarRadar(active.id, 1).catch(() => ({ disponivel: false, itens: [] })) : Promise.resolve(null),
   ]);
 
   // ---- o que mudou (insights): seis meses de base, como sempre foi
@@ -113,6 +126,24 @@ export default async function AnalisePage({
   );
   const candidates = detectRecurrences(transactions).filter((c) => !known.has(c.merchantNormalized));
 
+  // ---- a projecao: recebe x gasta, e quando comprar o que esta no Radar
+  const projecao = ehMesAtual ? projetar({ transactions, futuras, recurrences, mesAtual: month }) : null;
+  const compras =
+    projecao && radar
+      ? quandoComprar(
+          projecao.meses,
+          radar.itens
+            .filter((i) => i.produto.ativo)
+            .map((i) => ({
+              id: i.produto.id,
+              nome: i.produto.nome,
+              // O preco de hoje; sem preco ainda, a meta que a casa deu.
+              cents: i.historico[0]?.cents ?? i.produto.melhor?.cents ?? i.produto.metaCents ?? 0,
+            }))
+            .filter((i) => i.cents > 0),
+        )
+      : [];
+
   return (
     <div className="mx-auto max-w-3xl space-y-4">
       <header className="flex flex-wrap items-center justify-between gap-3">
@@ -128,6 +159,12 @@ export default async function AnalisePage({
         initial={analise}
         enabled={ia.source !== null}
       />
+
+      {projecao ? (
+        <section id="projecao" className="scroll-mt-20">
+          <ProjecaoCard projecao={projecao} atual={month} compras={compras} />
+        </section>
+      ) : null}
 
       <Card>
         <CardHeader
