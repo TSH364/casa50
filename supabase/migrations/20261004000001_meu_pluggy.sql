@@ -200,19 +200,29 @@ $fn$;
 -- a ler nos ultimos 10 minutos. O UPDATE com filtro e atomico - quem nao pegar
 -- a linha nao recebe nada de volta, e nao le de novo.
 -- ---------------------------------------------------------------------------
+-- plpgsql, e nao sql: o corpo de uma funcao sql e conferido na criacao, e no
+-- SQL Editor a tabela criada acima nao era vista ("relation does not exist").
 create or replace function public.claim_bank_sync(p_house uuid, p_hours integer)
 returns setof uuid
-language sql
+language plpgsql
 security definer
 set search_path = public, extensions, pg_temp
 as $fn$
-  update public.bank_connections
-     set sync_started_at = now()
-   where house_id = p_house
-     and app.can_write(p_house)
-     and (last_sync_at is null or last_sync_at < now() - make_interval(hours => greatest(p_hours, 1)))
-     and (sync_started_at is null or sync_started_at < now() - interval '10 minutes')
-  returning id;
+declare
+  v_id uuid;
+begin
+  for v_id in
+    update public.bank_connections
+       set sync_started_at = now()
+     where house_id = p_house
+       and app.can_write(p_house)
+       and (last_sync_at is null or last_sync_at < now() - make_interval(hours => greatest(p_hours, 1)))
+       and (sync_started_at is null or sync_started_at < now() - interval '10 minutes')
+    returning id
+  loop
+    return next v_id;
+  end loop;
+end;
 $fn$;
 
 revoke all on function public.set_bank_connection(uuid, text, text, text[]) from public, anon;
