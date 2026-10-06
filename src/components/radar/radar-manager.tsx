@@ -205,8 +205,8 @@ function ProdutoCard({ item, agora, temChave }: { item: RadarItem; agora: number
       </div>
 
       {atual ? (
-        <div className="mt-3 flex flex-wrap items-end justify-between gap-x-4 gap-y-2">
-          <div>
+        <div className="mt-3 grid gap-x-6 gap-y-3 sm:grid-cols-[auto_minmax(0,1fr)]">
+          <div className="min-w-0">
             <p className="tabular text-2xl font-semibold tracking-tight text-ink">{formatCents(atual.cents)}</p>
             <a
               href={atual.url}
@@ -219,20 +219,51 @@ function ProdutoCard({ item, agora, temChave }: { item: RadarItem; agora: number
             {!atual.vistoNaPagina ? (
               <p className="text-legenda text-ink-faint">Preço dito pela busca; confira na loja.</p>
             ) : null}
-          </div>
-          <div className="text-right text-corpo">
             {l.anteriorCents !== null && l.quedaCents !== 0 ? (
-              <p className={cn("tabular inline-flex items-center gap-1", l.quedaCents > 0 ? "text-positive" : "text-danger")}>
+              <p
+                className={cn(
+                  "tabular mt-1 flex items-center gap-1 text-corpo",
+                  l.quedaCents > 0 ? "text-positive" : "text-danger",
+                )}
+              >
                 {l.quedaCents > 0 ? <ArrowDownRight className="size-4" aria-hidden /> : <ArrowUpRight className="size-4" aria-hidden />}
                 {l.quedaCents > 0 ? "caiu" : "subiu"} {formatCents(Math.abs(l.quedaCents))}
               </p>
             ) : l.anteriorCents !== null ? (
-              <p className="text-ink-faint">igual à última</p>
+              <p className="mt-1 text-corpo text-ink-faint">igual à última</p>
             ) : null}
             {l.menorCents !== null && historico.length > 1 ? (
               <p className="tabular text-legenda text-ink-faint">menor já visto {formatCents(l.menorCents)}</p>
             ) : null}
           </div>
+
+          {produto.outras.length > 0 ? (
+            <div className="min-w-0 sm:border-l sm:border-line sm:pl-6">
+              <p className="text-legenda font-medium text-ink-muted">Outras lojas hoje</p>
+              <ul className="mt-1 divide-y divide-line">
+                {produto.outras.map((o) => (
+                  <li key={o.url}>
+                    <a
+                      href={o.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="flex min-h-9 items-center gap-2 text-corpo hover:text-brand"
+                    >
+                      <span className="min-w-0 flex-1 truncate text-ink">{o.loja}</span>
+                      <span className="tabular shrink-0 text-ink-muted">
+                        {formatCents(o.cents)}
+                        {o.vistoNaPagina ? "" : "*"}
+                      </span>
+                      <ExternalLink className="size-3.5 shrink-0 text-ink-faint" aria-hidden />
+                    </a>
+                  </li>
+                ))}
+              </ul>
+              {produto.outras.some((o) => !o.vistoNaPagina) ? (
+                <p className="mt-1 text-legenda text-ink-faint">* preço dito pela busca; confira na loja.</p>
+              ) : null}
+            </div>
+          ) : null}
         </div>
       ) : (
         <p className="mt-3 text-corpo text-ink-muted">Ainda sem preço.</p>
