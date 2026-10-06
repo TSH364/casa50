@@ -53,15 +53,30 @@ export interface Citation {
 
 const MAX_OFERTAS = 6;
 
-/** O pedido para a busca. So o produto e o teto - nada da casa. */
-export function offersPrompt(query: string, maxPriceCents: Cents | null): string {
+/**
+ * O que vai para o BUSCADOR: so o produto, em poucas palavras.
+ *
+ * O plugin de busca do OpenRouter manda o texto da mensagem do usuario direto
+ * para a Exa. Quando essa mensagem era o pedido inteiro ("Pesquise ofertas...
+ * Priorize Mercado Livre, Amazon... responda em JSON"), a busca achava artigos
+ * sobre monitorar preco no Mercado Livre - e nenhum anuncio do produto.
+ */
+export function offersQuery(query: string): string {
+  return `${query.replace(/\s+/g, " ").trim()} preço comprar Brasil`;
+}
+
+/**
+ * O que vai para o MODELO, como mensagem de sistema: como ler os resultados e
+ * em que formato responder. So o produto e o teto - nada da casa.
+ */
+export function offersInstructions(query: string, maxPriceCents: Cents | null): string {
   return [
-    `Pesquise ofertas à venda no Brasil, hoje, para: ${query}.`,
+    `Encontre ofertas à venda no Brasil, hoje, para: ${query.replace(/\s+/g, " ").trim()}.`,
     maxPriceCents !== null ? `Preço máximo: R$ ${(maxPriceCents / 100).toFixed(2).replace(".", ",")}.` : "",
-    "Priorize Mercado Livre, Amazon Brasil, Magazine Luiza, Casas Bahia, Kabum, Americanas e lojas oficiais das marcas. Só produtos novos, à venda, com preço na página.",
+    "Prefira Mercado Livre, Amazon Brasil, Magazine Luiza, Casas Bahia, Kabum, Americanas e lojas oficiais das marcas. Só produtos novos, à venda, com preço na página, e só o produto pedido (não acessório, refil ou peça).",
     `Responda SÓ com JSON, até ${MAX_OFERTAS} ofertas, sem texto antes ou depois:`,
     '{"ofertas":[{"titulo":"nome do produto como na página","loja":"nome da loja","preco":123.45,"parcelamento":"10x de R$ 12,35 sem juros ou vazio","url":"endereço da página do produto"}]}',
-    '"preco" é o valor à vista em reais, como número. "url" tem de ser uma das páginas que você consultou.',
+    '"preco" é o valor à vista em reais, como número. "url" tem de ser uma das páginas dos resultados da busca.',
   ]
     .filter(Boolean)
     .join("\n");

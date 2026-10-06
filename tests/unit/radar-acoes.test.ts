@@ -65,6 +65,9 @@ vi.mock("@/lib/supabase/server", () => ({
 }));
 vi.mock("@/lib/ai-config", () => ({ getAiKey: async () => estado.chave }));
 vi.mock("@/lib/ai-usage", () => ({ recordAiUsage: async (_h: string, feature: string) => void estado.usos.push({ feature }) }));
+vi.mock("@/lib/imagem-produto", () => ({
+  buscarImagemDoProduto: async (url: string) => (url.includes("amazon") ? null : "https://magalu.com/foto.jpg"),
+}));
 vi.mock("@/lib/ofertas", () => ({
   buscarOfertas: async (produto: string, _teto: unknown, opcoes: Record<string, unknown>) => {
     estado.buscas.push({ produto, opcoes });
@@ -100,9 +103,13 @@ describe("cadastrar", () => {
     // Só anúncio conferido: a busca vai sem o plano C.
     expect(estado.buscas[0]).toEqual({ produto: "Air fryer Mondial 4L", opcoes: expect.objectContaining({ aceitarNaoConferidas: false }) });
     expect(da("radar_prices", "insert")[0]!.payload).toMatchObject({ price_cents: 38_900, store: "Amazon", price_seen: true });
-    const fechou = da("radar_products", "update").at(-1)!.payload as Record<string, unknown>;
+    const fechou = da("radar_products", "update")
+      .map((c) => c.payload as Record<string, unknown>)
+      .find((p) => "last_checked_at" in p)!;
     expect(fechou).toMatchObject({ check_started_at: null, best_cents: 38_900, best_store: "Amazon", last_error: null });
     expect(estado.usos).toEqual([{ feature: "radar" }]);
+    // A Amazon bloqueou a pagina; a foto veio da segunda oferta.
+    expect(da("radar_products", "update").some((c) => (c.payload as Record<string, unknown>).image_url === "https://magalu.com/foto.jpg")).toBe(true);
   });
 
   it("meta que não é valor e nome curto voltam como erro, sem gravar", async () => {

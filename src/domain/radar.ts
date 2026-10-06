@@ -18,6 +18,8 @@ export interface RadarProduto {
   conferidoEm: string | null;
   erro: string | null;
   melhor: { cents: Cents; loja: string; url: string; titulo: string | null } | null;
+  /** A foto do anuncio (og:image da loja). `null` ate a primeira achada. */
+  imagem: string | null;
 }
 
 export interface RadarPreco {
@@ -155,4 +157,32 @@ export function avisosDoRadar(
 /** "Air fryer Mondial 4L": espacos colapsados, sem pontas. */
 export function normalizarNome(nome: string): string {
   return nome.replace(/\s+/g, " ").trim();
+}
+
+/**
+ * A imagem do produto, como a loja a publica para compartilhar o link (a
+ * mesma que aparece no WhatsApp): `og:image`, `twitter:image` ou
+ * `link rel=image_src`. Imagem de verdade, da pagina do anuncio - nunca um
+ * endereco que a IA escreveu.
+ *
+ * So https, e relativa vira absoluta pela pagina. `null` quando nao ha.
+ */
+export function imagemDaPagina(html: string, paginaUrl: string): string | null {
+  const metas = [
+    /<meta[^>]+(?:property|name)=["'](?:og:image:secure_url|og:image|twitter:image(?::src)?)["'][^>]*>/gi,
+    /<link[^>]+rel=["']image_src["'][^>]*>/gi,
+  ];
+  for (const re of metas) {
+    for (const tag of html.match(re) ?? []) {
+      const valor = /(?:content|href)=["']([^"']+)["']/i.exec(tag)?.[1];
+      if (!valor) continue;
+      try {
+        const u = new URL(valor.replace(/&amp;/g, "&").trim(), paginaUrl);
+        if (u.protocol === "https:") return u.toString();
+      } catch {
+        // endereco quebrado: tenta a proxima
+      }
+    }
+  }
+  return null;
 }

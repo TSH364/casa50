@@ -139,6 +139,8 @@ function ProdutoCard({ item, agora, temChave }: { item: RadarItem; agora: number
   const [editando, setEditando] = useState(false);
   const [meta, setMeta] = useState(produto.metaCents ? (produto.metaCents / 100).toFixed(2).replace(".", ",") : "");
   const [confirmando, setConfirmando] = useState(false);
+  // Foto que a loja tirou do ar (ou bloqueia fora do site dela): some.
+  const [semFoto, setSemFoto] = useState(false);
   const [pending, startTransition] = useTransition();
   const atual = historico[0] ?? null;
 
@@ -175,7 +177,20 @@ function ProdutoCard({ item, agora, temChave }: { item: RadarItem; agora: number
   return (
     <Card>
       <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
+        {produto.imagem && !semFoto ? (
+          // A foto fica na loja; <img> e nao next/image, que exigiria listar
+          // cada dominio de loja na configuracao.
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={produto.imagem}
+            alt=""
+            loading="lazy"
+            referrerPolicy="no-referrer"
+            onError={() => setSemFoto(true)}
+            className="size-16 shrink-0 rounded-(--radius-control) bg-white object-contain p-1 ring-1 ring-line"
+          />
+        ) : null}
+        <div className="min-w-0 flex-1">
           <h2 className="break-words text-destaque font-semibold tracking-tight text-ink">{produto.nome}</h2>
           <p className="mt-0.5 text-legenda text-ink-faint">
             {haQuanto(produto.conferidoEm, agora)}
