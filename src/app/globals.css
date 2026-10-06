@@ -38,6 +38,11 @@
   /* Receita: o dinheiro que entrou, em azul - separado do verde do estorno
      e do vermelho do gasto. */
   --color-info: #6cb6ff;
+  /* Colunas do grafico de projecao: recebido e gasto. Mais escuras que o
+     texto (info/danger) para caber na faixa de luminosidade de marcas no
+     escuro; validadas para daltonismo nos dois temas. */
+  --color-chart-in: #3d8fe6;
+  --color-chart-out: #e0484c;
   --color-attention: #f2b23c;
   --color-attention-soft: #3a2e13;
   --color-danger: #f2686b;
@@ -187,6 +192,8 @@
   --color-positive: #065c3e;
   --color-positive-soft: #d6f1e5;
   --color-info: #1f5fbf;
+  --color-chart-in: #1f5fbf;
+  --color-chart-out: #9c272c;
   --color-attention: #704600;
   --color-attention-soft: #faebcc;
   --color-danger: #9c272c;
@@ -217,6 +224,8 @@
     --color-positive: #065c3e;
     --color-positive-soft: #d6f1e5;
     --color-info: #1f5fbf;
+    --color-chart-in: #1f5fbf;
+    --color-chart-out: #9c272c;
     --color-attention: #704600;
     --color-attention-soft: #faebcc;
     --color-danger: #9c272c;
