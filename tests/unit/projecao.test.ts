@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { projetar, quandoComprar, receitasRecorrentes, type MesProjetado } from "@/domain/projecao";
+import { linhaDoTempo, projetar, quandoComprar, receitasRecorrentes, type MesProjetado } from "@/domain/projecao";
 import type { Recurrence, Transaction } from "@/domain/types";
 
 /**
@@ -125,6 +125,26 @@ describe("quando comprar", () => {
       ["tv", null],
       ["creami", "2026-11"],
       ["fone", "2026-10"],
+    ]);
+  });
+});
+
+describe("linha do tempo", () => {
+  const mes = (month: string, sobraCents: number, acumuladoCents: number | null, tipo: MesProjetado["tipo"] = "previsto"): MesProjetado => ({
+    month, tipo, receitasCents: 0, gastosCents: 0, sobraCents, acumuladoCents, receitasRecorrentesCents: 0, temEstimativa: false,
+  });
+
+  it("a reserva cresce, cada compra entra no seu mês e o livre desconta tudo o que já foi comprado", () => {
+    const meses = [mes("2026-09", 500_000, null, "realizado"), mes("2026-10", 100_000, 100_000, "atual"), mes("2026-11", 100_000, 200_000), mes("2026-12", 200_000, 400_000)];
+    const itens = [
+      { id: "fone", nome: "Fone", cents: 50_000 },
+      { id: "creami", nome: "Ninja Creami", cents: 129_900 },
+    ];
+    const linha = linhaDoTempo(meses, quandoComprar(meses, itens));
+    expect(linha.map((l) => [l.month, l.compras.map((c) => c.id), l.livreCents])).toEqual([
+      ["2026-10", ["fone"], 50_000],
+      ["2026-11", ["creami"], 20_100],
+      ["2026-12", [], 220_100],
     ]);
   });
 });

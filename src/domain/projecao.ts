@@ -236,3 +236,43 @@ export function quandoComprar(meses: readonly MesProjetado[], itens: readonly It
   for (const item of pendentes) resultado.set(item.id, { item, mes: null, disponivelCents: Math.max(0, caixa) });
   return itens.filter((i) => resultado.has(i.id)).map((i) => resultado.get(i.id)!);
 }
+
+// ---------------------------------------------------------------------------
+// Linha do tempo: a reserva crescendo e as compras encaixadas
+// ---------------------------------------------------------------------------
+
+export interface MesDaLinha {
+  month: MonthKey;
+  tipo: TipoDoMes;
+  sobraCents: Cents;
+  /** Sobra acumulada do mes atual ate este, sem as compras. */
+  acumuladoCents: Cents;
+  /** O que do Radar cabe neste mes. */
+  compras: ItemParaComprar[];
+  /** O acumulado menos tudo o que foi comprado ate este mes. */
+  livreCents: Cents;
+}
+
+/**
+ * Do mes atual em diante: quanto acumula, o que se compra em cada mes e
+ * quanto fica livre depois. E a mesma conta de `quandoComprar`, vista por
+ * mes - para a casa ver a reserva crescer e onde cada compra a usa.
+ */
+export function linhaDoTempo(meses: readonly MesProjetado[], compras: readonly QuandoComprar[]): MesDaLinha[] {
+  let gasto = 0;
+  return meses
+    .filter((m) => m.tipo !== "realizado")
+    .map((m) => {
+      const doMes = compras.filter((c) => c.mes === m.month).map((c) => c.item);
+      gasto += doMes.reduce((s, i) => s + i.cents, 0);
+      const acumulado = m.acumuladoCents ?? 0;
+      return {
+        month: m.month,
+        tipo: m.tipo,
+        sobraCents: m.sobraCents,
+        acumuladoCents: acumulado,
+        compras: doMes,
+        livreCents: acumulado - gasto,
+      };
+    });
+}
