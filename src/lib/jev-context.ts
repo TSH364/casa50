@@ -33,13 +33,15 @@ export async function loadJevContext(
   supabase: Supabase,
   houseId: string,
 ): Promise<JevHouseContext> {
-  const { data: categorias } = await supabase
+  const { data: todas } = await supabase
     .from("categories")
-    .select("id, name, parent_id")
+    .select("*")
     .eq("house_id", houseId)
-    .eq("is_active", true)
-    // So as de gasto: compra de cartao nao cai em Salario.
-    .eq("kind", "expense");
+    .eq("is_active", true);
+  // So as de gasto: compra de cartao nao cai em Salario. Filtro aqui, e nao
+  // na consulta: sem a migracao de `kind`, filtrar pela coluna derrubaria a
+  // leitura inteira.
+  const categorias = (todas ?? []).filter((c) => c.kind !== "income");
 
   const contagem = new Map<string, Map<string, number>>();
   const contar = (categoriaId: string | null, loja: string | null) => {

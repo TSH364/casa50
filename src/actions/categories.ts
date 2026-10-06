@@ -71,7 +71,9 @@ export async function createCategory(
     name: parsed.data.name,
     color: parsed.data.color,
     parent_id: parsed.data.parentId,
-    kind: parsed.data.kind,
+    // So manda a coluna quando precisa: gasto e o padrao do banco, e assim
+    // criar categoria de gasto funciona mesmo antes da migracao de `kind`.
+    ...(parsed.data.kind === "income" ? { kind: "income" } : {}),
   });
 
   if (error) {

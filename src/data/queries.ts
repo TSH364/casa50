@@ -103,16 +103,25 @@ export async function getCard(cardId: string): Promise<Card | null> {
 
 export async function listCategories(houseId: string): Promise<Category[]> {
   const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("categories")
-    .select(CATEGORY_COLUMNS)
-    .eq("house_id", houseId)
-    .eq("is_active", true)
-    .order("sort_order")
-    .order("name");
+  const ler = (colunas: string) =>
+    supabase
+      .from("categories")
+      .select(colunas)
+      .eq("house_id", houseId)
+      .eq("is_active", true)
+      .order("sort_order")
+      .order("name");
+
+  let { data, error } = await ler(CATEGORY_COLUMNS);
+  // 42703: coluna que nao existe. O codigo pode subir antes da migracao que
+  // cria `kind` (o deploy da Vercel e o do banco correm em paralelo): sem a
+  // coluna, tudo e categoria de gasto, como era antes - e a tela abre.
+  if (error?.code === "42703") {
+    ({ data, error } = await ler(CATEGORY_COLUMNS.replace(", kind", "")));
+  }
 
   if (error) fail("as categorias", error);
-  return (data ?? []).map(mapCategory);
+  return ((data ?? []) as unknown as Record<string, unknown>[]).map(mapCategory);
 }
 
 export interface TransactionFilter {
