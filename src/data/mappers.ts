@@ -75,7 +75,7 @@ export function mapCard(row: Record<string, unknown>): Card {
 }
 
 export const CATEGORY_COLUMNS =
-  "id, house_id, name, color, icon, parent_id, is_active, excluded_from_totals";
+  "id, house_id, name, color, icon, parent_id, is_active, excluded_from_totals, kind";
 
 export function mapCategory(row: Record<string, unknown>): Category {
   return {
@@ -86,6 +86,7 @@ export function mapCategory(row: Record<string, unknown>): Category {
     icon: (row.icon as string | null) ?? null,
     parentId: (row.parent_id as string | null) ?? null,
     isActive: row.is_active as boolean,
+    kind: row.kind === "income" ? "income" : "expense",
     excludedFromTotals: (row.excluded_from_totals as boolean | null) ?? false,
   };
 }

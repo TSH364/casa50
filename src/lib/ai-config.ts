@@ -12,7 +12,7 @@ import { DEFAULT_MODEL } from "@/lib/openrouter";
  *      sessao de usuario consegue le-la.
  *   2. A CHAVE DA CASA, colada na tela da Casa e guardada no Vault do
  *      Supabase, criptografada. Mais pratica - troca sem deploy -, com um
- *      limite dito na migracao `20260925000001_chave_de_ia.sql`: um membro
+ *      limite dito na migracao `20260925203108_chave_de_ia.sql`: um membro
  *      logado que chame a funcao de leitura direto pela API consegue ve-la.
  *
  * Quem configurou a Vercel escolheu a opcao mais fechada, e a tela nao deixa

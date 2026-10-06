@@ -13,17 +13,20 @@ import { Button } from "@/components/ui/button";
 import { Card as Panel, CardHeader } from "@/components/ui/card";
 import { ConfirmDialog } from "@/components/ui/dialog";
 import { EmptyState } from "@/components/states";
-import type { Category } from "@/domain/types";
+import type { Category, CategoryKind } from "@/domain/types";
 
 export function CategoriesManager({ categories }: { categories: Category[] }) {
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<Category | undefined>();
   const [parentFor, setParentFor] = useState<string | undefined>();
+  const [kindFor, setKindFor] = useState<CategoryKind>("expense");
   const [deleting, setDeleting] = useState<Category | undefined>();
   const [usage, setUsage] = useState<string | undefined>();
   const [pending, startTransition] = useTransition();
 
   const parents = categories.filter((c) => c.parentId === null);
+  const gastos = parents.filter((c) => c.kind === "expense");
+  const receitas = parents.filter((c) => c.kind === "income");
   const childrenOf = (id: string) => categories.filter((c) => c.parentId === id);
 
   function toggleTotals(category: Category) {
@@ -41,15 +44,17 @@ export function CategoriesManager({ categories }: { categories: Category[] }) {
     });
   }
 
-  function openNew(parentId?: string) {
+  function openNew(kind: CategoryKind, parentId?: string) {
     setEditing(undefined);
     setParentFor(parentId);
+    setKindFor(kind);
     setFormOpen(true);
   }
 
   function openEdit(category: Category) {
     setEditing(category);
     setParentFor(undefined);
+    setKindFor(category.kind);
     setFormOpen(true);
   }
 
@@ -92,32 +97,26 @@ export function CategoriesManager({ categories }: { categories: Category[] }) {
     });
   }
 
-  return (
-    <>
-      <Panel>
-        <CardHeader
-          title="Categorias da casa"
-          description="Todas editáveis e removíveis, inclusive as iniciais. O olho tira a categoria dos totais da casa — útil para gasto de trabalho que passa no cartão pessoal."
-          action={
-            <Button size="sm" onClick={() => openNew()}>
-              <Plus aria-hidden /> Nova
-            </Button>
-          }
-        />
-
-        {parents.length === 0 ? (
+  function lista(itens: Category[], kind: CategoryKind) {
+    return (
+      <>
+        {itens.length === 0 ? (
           <EmptyState
             title="Nenhuma categoria"
-            description="Crie as categorias que fizerem sentido para vocês."
+            description={
+              kind === "income"
+                ? "Crie as categorias de receita: salário, pró-labore, bolsa…"
+                : "Crie as categorias que fizerem sentido para vocês."
+            }
             action={
-              <Button size="sm" onClick={() => openNew()}>
+              <Button size="sm" onClick={() => openNew(kind)}>
                 <Plus aria-hidden /> Criar categoria
               </Button>
             }
           />
         ) : (
           <ul className="space-y-1.5">
-            {parents.map((parent) => {
+            {itens.map((parent) => {
               const children = childrenOf(parent.id);
               return (
                 <li key={parent.id}>
@@ -140,35 +139,38 @@ export function CategoriesManager({ categories }: { categories: Category[] }) {
                         Só categoria de primeiro nível recebe a marca: o corte
                         é sobre o que a casa considera gasto seu, e dividir
                         isso dentro de uma categoria criaria um total que não
-                        fecha com a soma das partes.
+                        fecha com a soma das partes. Receita nunca soma no
+                        gasto, entao nao tem o olho.
                       */}
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        disabled={pending}
-                        aria-label={
-                          parent.excludedFromTotals
-                            ? `Fazer ${parent.name} contar nos totais da casa`
-                            : `Tirar ${parent.name} dos totais da casa`
-                        }
-                        title={
-                          parent.excludedFromTotals
-                            ? "Fora dos totais da casa"
-                            : "Conta nos totais da casa"
-                        }
-                        onClick={() => toggleTotals(parent)}
-                      >
-                        {parent.excludedFromTotals ? (
-                          <EyeOff aria-hidden />
-                        ) : (
-                          <Eye aria-hidden />
-                        )}
-                      </Button>
+                      {kind === "expense" ? (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          disabled={pending}
+                          aria-label={
+                            parent.excludedFromTotals
+                              ? `Fazer ${parent.name} contar nos totais da casa`
+                              : `Tirar ${parent.name} dos totais da casa`
+                          }
+                          title={
+                            parent.excludedFromTotals
+                              ? "Fora dos totais da casa"
+                              : "Conta nos totais da casa"
+                          }
+                          onClick={() => toggleTotals(parent)}
+                        >
+                          {parent.excludedFromTotals ? (
+                            <EyeOff aria-hidden />
+                          ) : (
+                            <Eye aria-hidden />
+                          )}
+                        </Button>
+                      ) : null}
                       <Button
                         variant="ghost"
                         size="icon"
                         aria-label={`Adicionar subcategoria em ${parent.name}`}
-                        onClick={() => openNew(parent.id)}
+                        onClick={() => openNew(kind, parent.id)}
                       >
                         <Plus aria-hidden />
                       </Button>
@@ -233,15 +235,47 @@ export function CategoriesManager({ categories }: { categories: Category[] }) {
             })}
           </ul>
         )}
+      </>
+    );
+  }
+
+  return (
+    <>
+      <Panel>
+        <CardHeader
+          title="Categorias de gasto"
+          description="Todas editáveis e removíveis, inclusive as iniciais. O olho tira a categoria dos totais da casa — útil para gasto de trabalho que passa no cartão pessoal."
+          action={
+            <Button size="sm" onClick={() => openNew("expense")}>
+              <Plus aria-hidden /> Nova
+            </Button>
+          }
+        />
+
+        {lista(gastos, "expense")}
+      </Panel>
+
+      <Panel>
+        <CardHeader
+          title="Categorias de receita"
+          description="Para o dinheiro que entra: salário, pró-labore, bolsa. Aparecem só quando o lançamento é uma receita."
+          action={
+            <Button size="sm" onClick={() => openNew("income")}>
+              <Plus aria-hidden /> Nova
+            </Button>
+          }
+        />
+        {lista(receitas, "income")}
       </Panel>
 
       <CategoryFormDialog
-        key={editing?.id ?? `novo:${parentFor ?? "raiz"}`}
+        key={editing?.id ?? `novo:${kindFor}:${parentFor ?? "raiz"}`}
         open={formOpen}
         onOpenChange={setFormOpen}
         category={editing}
-        parents={parents}
+        parents={kindFor === "income" ? receitas : gastos}
         defaultParentId={parentFor}
+        kind={kindFor}
       />
 
       <ConfirmDialog

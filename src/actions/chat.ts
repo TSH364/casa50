@@ -178,11 +178,14 @@ export async function askHouse(input: z.input<typeof schema>): Promise<ChatReply
     currentMonth: today,
     members: members.map((m) => firstName(m.fullName)),
     categories: view.categories
-      .filter((c) => c.parentId === null && c.isActive)
+      .filter((c) => c.parentId === null && c.isActive && c.kind === "expense")
       .map((c) => {
         const subs = view.categories.filter((s) => s.parentId === c.id && s.isActive).map((s) => s.name);
         return subs.length > 0 ? `${c.name} (subcategorias: ${subs.join(", ")})` : c.name;
       }),
+    incomeCategories: view.categories
+      .filter((c) => c.parentId === null && c.isActive && c.kind === "income")
+      .map((c) => c.name),
     excludedCategories: view.excluded.map((c) => c.name),
     // Cartoes nao vao: nenhuma ferramenta filtra por cartao, e o nome que a
     // importacao cria ("Cartao 6869") carrega o final - que a tela promete

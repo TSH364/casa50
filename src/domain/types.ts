@@ -83,6 +83,8 @@ export interface Card {
   isActive: boolean;
 }
 
+export type CategoryKind = "expense" | "income";
+
 export interface Category {
   id: string;
   houseId: string;
@@ -91,6 +93,11 @@ export interface Category {
   icon: string | null;
   parentId: string | null;
   isActive: boolean;
+  /**
+   * De que lado a categoria esta: gasto (Mercado, Lazer...) ou receita
+   * (Salario, Pro-labore...). Subcategoria e sempre do lado da mae.
+   */
+  kind: CategoryKind;
   /**
    * Quando verdadeiro, os lancamentos desta categoria ficam fora dos totais,
    * medias e previsoes da casa. Continuam visiveis e editaveis em Extratos:

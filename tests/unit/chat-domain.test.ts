@@ -26,7 +26,7 @@ const MEMBROS = [
 ];
 
 const cat = (id: string, name: string, parentId: string | null = null): Category => ({
-  id, houseId: "c", name, color: "#000", icon: null, parentId, isActive: true, excludedFromTotals: false,
+  id, houseId: "c", name, color: "#000", icon: null, parentId, isActive: true, kind: "expense" as const, excludedFromTotals: false,
 });
 const CATS = [cat("ali", "Alimentacao"), cat("tra", "Transporte"), cat("trab", "Trabalho", "ali"), cat("tsh", "TSH")];
 

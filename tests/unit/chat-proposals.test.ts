@@ -19,10 +19,10 @@ const UBER = "aaaaaaaa-0000-4000-8000-000000000012";
 const TRAB = "aaaaaaaa-0000-4000-8000-000000000011";
 
 const CATS = [
-  { id: ALI, houseId: "casa-1", name: "Alimentacao", color: "#f00", icon: null, parentId: null, isActive: true, excludedFromTotals: false },
-  { id: TRA, houseId: "casa-1", name: "Transporte", color: "#00f", icon: null, parentId: null, isActive: true, excludedFromTotals: false },
-  { id: UBER, houseId: "casa-1", name: "Uber", color: "#00f", icon: null, parentId: TRA, isActive: true, excludedFromTotals: false },
-  { id: TRAB, houseId: "casa-1", name: "Trabalho", color: "#f00", icon: null, parentId: ALI, isActive: true, excludedFromTotals: false },
+  { id: ALI, houseId: "casa-1", name: "Alimentacao", color: "#f00", icon: null, parentId: null, isActive: true, kind: "expense" as const, excludedFromTotals: false },
+  { id: TRA, houseId: "casa-1", name: "Transporte", color: "#00f", icon: null, parentId: null, isActive: true, kind: "expense" as const, excludedFromTotals: false },
+  { id: UBER, houseId: "casa-1", name: "Uber", color: "#00f", icon: null, parentId: TRA, isActive: true, kind: "expense" as const, excludedFromTotals: false },
+  { id: TRAB, houseId: "casa-1", name: "Trabalho", color: "#f00", icon: null, parentId: ALI, isActive: true, kind: "expense" as const, excludedFromTotals: false },
 ];
 
 function tx(id: string, p: Partial<Transaction>): Transaction {
@@ -197,6 +197,25 @@ describe("ferramentas de propor", () => {
     await runTool(c, "propor_lancamento", JSON.stringify({ ...args, data: "2026-10-04" }));
     await runTool(c, "propor_lancamento", JSON.stringify({ ...args, tipo: "despesa" }));
     expect(c.proposals).toHaveLength(4);
+  });
+
+  it("receita escolhe entre as categorias de receita; gasto e orçamento, só entre as de gasto", async () => {
+    const BOLSA = "aaaaaaaa-0000-4000-8000-000000000021";
+    const c = ctx();
+    c.categories = [
+      ...CATS,
+      { id: BOLSA, houseId: "casa-1", name: "Bolsa", color: "#36f", icon: null, parentId: null, isActive: true, kind: "income" as const, excludedFromTotals: false },
+    ] as never;
+    await runTool(c, "propor_lancamento", JSON.stringify({ tipo: "receita", descricao: "FAPESP Lari", valor: 5700, categoria: "Bolsa" }));
+    expect(c.proposals[0]).toMatchObject({ fields: { type: "income", categoryId: BOLSA }, summary: { categoryLabel: "Bolsa" } });
+
+    // Categoria de gasto numa receita: nao acha, e lista as de receita.
+    const r = await runTool(c, "propor_lancamento", JSON.stringify({ tipo: "receita", descricao: "Pix", valor: 10, categoria: "Alimentacao" }));
+    expect(r.output).toMatch(/Não achei a categoria de receita "Alimentacao"\. Categorias de receita: Bolsa\./);
+    // E o contrario.
+    const g = await runTool(c, "propor_lancamento", JSON.stringify({ descricao: "Livro", valor: 10, categoria: "Bolsa" }));
+    expect(g.output).toMatch(/Não achei a categoria "Bolsa"/);
+    expect(c.proposals).toHaveLength(1);
   });
 
   it("sem tipo, continua despesa (como antes)", async () => {

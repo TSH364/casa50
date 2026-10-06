@@ -106,9 +106,9 @@ describe("formulário", () => {
   });
 
   const CATS = [
-    { id: ALI, houseId: "c", name: "Alimentacao", color: "#f00", icon: null, parentId: null, isActive: true, excludedFromTotals: false },
-    { id: TRA, houseId: "c", name: "Transporte", color: "#00f", icon: null, parentId: null, isActive: true, excludedFromTotals: false },
-    { id: UBER, houseId: "c", name: "Uber", color: "#00f", icon: null, parentId: TRA, isActive: true, excludedFromTotals: false },
+    { id: ALI, houseId: "c", name: "Alimentacao", color: "#f00", icon: null, parentId: null, isActive: true, kind: "expense" as const, excludedFromTotals: false },
+    { id: TRA, houseId: "c", name: "Transporte", color: "#00f", icon: null, parentId: null, isActive: true, kind: "expense" as const, excludedFromTotals: false },
+    { id: UBER, houseId: "c", name: "Uber", color: "#00f", icon: null, parentId: TRA, isActive: true, kind: "expense" as const, excludedFromTotals: false },
   ];
 
   async function abrir(transaction?: Record<string, unknown>) {

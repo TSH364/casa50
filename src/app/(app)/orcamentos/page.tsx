@@ -67,8 +67,9 @@ export default async function OrcamentosPage({
 
   // Só categorias de primeiro nível recebem orçamento: limitar pai e filha ao
   // mesmo tempo criaria dois números concorrentes para o mesmo gasto.
+  // Orcamento e limite de gasto: as categorias de receita ficam de fora.
   const rows: BudgetRow[] = categories
-    .filter((c) => c.parentId === null)
+    .filter((c) => c.parentId === null && c.kind === "expense")
     .map((category) => {
       const limitCents = limitByCategory.get(category.id) ?? 0;
       const spentCents = spentByCategory.get(category.id) ?? 0;

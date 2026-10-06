@@ -949,7 +949,7 @@ export async function commitImport(input: unknown): Promise<CommitResult> {
  * mesma função que a importação usa.
  *
  * As duas coisas dependem de dado que o arquivo trouxe e que passou a ser
- * guardado nas migrações `20260910000001` (categoria) e `20260910000002`
+ * guardado nas migrações `20260910013714` (categoria) e `20260910114607`
  * (final do cartão). Lançamentos gravados ANTES delas não têm esses campos, e
  * para eles a reanálise faz o que pode: a categoria ainda sai do nome da loja
  * e do tipo, mas o cartão não tem de onde sair - só reimportando o arquivo.

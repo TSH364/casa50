@@ -9,7 +9,7 @@
 -- banco no lugar, sem contar duas vezes.
 --
 -- ONDE O SEGREDO MORA: no Vault, como a chave da IA (ver
--- 20260925000001_chave_de_ia.sql, que explica o desenho e o limite dele). A
+-- 20260925203108_chave_de_ia.sql, que explica o desenho e o limite dele). A
 -- tabela guarda so o que nao e segredo: o Client ID, os Item IDs, os quatro
 -- ultimos caracteres do segredo e a ultima sincronizacao.
 --

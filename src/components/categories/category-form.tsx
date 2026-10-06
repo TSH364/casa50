@@ -9,7 +9,7 @@ import { Dialog, DialogClose, DialogContent } from "@/components/ui/dialog";
 import { Field, Input } from "@/components/ui/field";
 import { Select } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
-import type { Category } from "@/domain/types";
+import type { Category, CategoryKind } from "@/domain/types";
 
 /**
  * Paleta sugerida. É atalho, não restrição: o campo de cor aceita qualquer
@@ -50,6 +50,7 @@ export function CategoryFormDialog({
   category,
   parents,
   defaultParentId,
+  kind = "expense",
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -58,6 +59,8 @@ export function CategoryFormDialog({
   /** Categorias de primeiro nível, para escolher onde encaixar. */
   parents: Category[];
   defaultParentId?: string;
+  /** Gasto ou receita - so na criacao; subcategoria herda da mae. */
+  kind?: CategoryKind;
 }) {
   const isEdit = category !== undefined;
   const action = isEdit ? updateCategory.bind(null, category.id) : createCategory;
@@ -74,7 +77,13 @@ export function CategoryFormDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        title={isEdit ? "Editar categoria" : "Nova categoria"}
+        title={
+          isEdit
+            ? "Editar categoria"
+            : kind === "income"
+              ? "Nova categoria de receita"
+              : "Nova categoria"
+        }
         description={
           isEdit
             ? undefined
@@ -100,9 +109,14 @@ export function CategoryFormDialog({
               maxLength={60}
               autoComplete="off"
               defaultValue={category?.name}
-              placeholder="Mercado, Lazer, Casa…"
+              placeholder={
+                (category?.kind ?? kind) === "income"
+                  ? "Salário, Bolsa, Aluguel recebido…"
+                  : "Mercado, Lazer, Casa…"
+              }
             />
           </Field>
+          {!isEdit ? <input type="hidden" name="kind" value={kind} /> : null}
 
           {!isEdit ? (
             <Field

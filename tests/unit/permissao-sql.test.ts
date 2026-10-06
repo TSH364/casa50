@@ -66,7 +66,7 @@ describe("permissão em função PL/pgSQL", () => {
   it("o padrão antigo existia de fato — o teste pegaria a regressão", () => {
     // A migracao da agenda, de antes da correcao, ainda tem o padrao: e a
     // prova de que a expressao acha o que diz achar.
-    const antiga = readFileSync(join(PASTA, "20260910000003_agenda.sql"), "utf8");
+    const antiga = readFileSync(join(PASTA, "20260910121057_agenda.sql"), "utf8");
     expect(INSEGURO.test(antiga)).toBe(true);
   });
 });

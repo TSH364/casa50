@@ -37,7 +37,7 @@ create policy ai_usage_select on public.ai_usage
 
 -- Inserir: quem e da casa, e so em nome de si mesmo. (Em politica de RLS o
 -- NULL de `is_member` para quem e de fora ja conta como recusa - o cuidado
--- com `is not true` e para PL/pgSQL, ver 20260925000002.)
+-- com `is not true` e para PL/pgSQL, ver 20260925203400.)
 drop policy if exists ai_usage_insert on public.ai_usage;
 create policy ai_usage_insert on public.ai_usage
   for insert to authenticated
