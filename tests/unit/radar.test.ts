@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   avisosDoRadar,
   imagemDaPagina,
+  lerOutras,
+  outrasOfertas,
   ler,
   melhorOferta,
   normalizarNome,
@@ -29,7 +31,7 @@ function oferta(extra: Partial<Offer>): Offer {
 }
 
 function produto(extra: Partial<RadarProduto> = {}): RadarProduto {
-  return { id: "p1", nome: "Air fryer Mondial 4L", metaCents: null, ativo: true, conferidoEm: null, erro: null, melhor: null, imagem: null, ...extra };
+  return { id: "p1", nome: "Air fryer Mondial 4L", metaCents: null, ativo: true, conferidoEm: null, erro: null, melhor: null, imagem: null, outras: [], ...extra };
 }
 
 function preco(cents: number, horasAtras: number, loja = "Amazon"): RadarPreco {
@@ -144,5 +146,44 @@ describe("a foto do produto", () => {
     expect(imagemDaPagina('<link rel="image_src" href="https://cdn.loja.com/l.jpg">', pagina)).toBe("https://cdn.loja.com/l.jpg");
     expect(imagemDaPagina('<meta property="og:image" content="http://cdn.loja.com/inseguro.jpg">', pagina)).toBeNull();
     expect(imagemDaPagina("<html><title>Loja</title></html>", pagina)).toBeNull();
+  });
+});
+
+describe("as outras lojas", () => {
+  it("uma por loja (a mais barata), sem a loja da melhor, sem link de busca, da mais barata à mais cara, até 4", () => {
+    const melhor = oferta({ store: "Carrefour", priceCents: 125_910 });
+    const outras = outrasOfertas(
+      [
+        melhor,
+        oferta({ store: "carrefour ", priceCents: 126_000, url: "https://carrefour.com/2" }),
+        oferta({ store: "Amazon", priceCents: 139_900, url: "https://amazon.com.br/a" }),
+        oferta({ store: "Amazon", priceCents: 129_900, url: "https://amazon.com.br/b", priceSeen: false }),
+        oferta({ store: "Magalu", priceCents: 134_900, url: "https://magalu.com/p" }),
+        oferta({ store: "Kabum", priceCents: 120_000, url: "https://kabum.com.br/busca?q=x", linkKind: "busca" }),
+        oferta({ store: "Casas Bahia", priceCents: 149_900, url: "https://casasbahia.com.br/p" }),
+        oferta({ store: "Fast Shop", priceCents: 159_900, url: "https://fastshop.com.br/p" }),
+        oferta({ store: "Inseguro", priceCents: 99_000, url: "http://inseguro.com/p" }),
+      ],
+      melhor,
+    );
+    expect(outras).toEqual([
+      { loja: "Amazon", cents: 129_900, url: "https://amazon.com.br/b", vistoNaPagina: false },
+      { loja: "Magalu", cents: 134_900, url: "https://magalu.com/p", vistoNaPagina: true },
+      { loja: "Casas Bahia", cents: 149_900, url: "https://casasbahia.com.br/p", vistoNaPagina: true },
+      { loja: "Fast Shop", cents: 159_900, url: "https://fastshop.com.br/p", vistoNaPagina: true },
+    ]);
+  });
+
+  it("do banco, só o que tem formato de oferta", () => {
+    expect(
+      lerOutras([
+        { loja: "Amazon", cents: 129_900, url: "https://amazon.com.br/b", vistoNaPagina: true },
+        { loja: "Sem link", cents: 1 },
+        { loja: "http", cents: 10, url: "http://x.com" },
+        { loja: "Zero", cents: 0, url: "https://x.com" },
+        "lixo",
+      ]),
+    ).toEqual([{ loja: "Amazon", cents: 129_900, url: "https://amazon.com.br/b", vistoNaPagina: true }]);
+    expect(lerOutras(null)).toEqual([]);
   });
 });

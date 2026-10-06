@@ -1,6 +1,6 @@
 import "server-only";
 import { createClient } from "@/lib/supabase/server";
-import type { RadarPreco, RadarProduto } from "@/domain/radar";
+import { lerOutras, type RadarPreco, type RadarProduto } from "@/domain/radar";
 
 /**
  * O Radar como a tela o le: os produtos e, de cada um, as ultimas
@@ -30,6 +30,7 @@ export function mapProduto(r: Record<string, unknown>): RadarProduto {
     conferidoEm: (r.last_checked_at as string | null) ?? null,
     erro: (r.last_error as string | null) ?? null,
     imagem: typeof r.image_url === "string" && r.image_url.startsWith("https://") ? r.image_url : null,
+    outras: lerOutras(r.last_offers),
     melhor:
       cents !== null && r.best_url
         ? {

@@ -108,6 +108,10 @@ describe("cadastrar", () => {
       .find((p) => "last_checked_at" in p)!;
     expect(fechou).toMatchObject({ check_started_at: null, best_cents: 38_900, best_store: "Amazon", last_error: null });
     expect(estado.usos).toEqual([{ feature: "radar" }]);
+    // As outras lojas da busca, para comparar na tela.
+    expect(da("radar_products", "update").map((c) => (c.payload as Record<string, unknown>).last_offers).find(Boolean)).toEqual([
+      { loja: "Magalu", cents: 41_000, url: "https://magalu.com/p", vistoNaPagina: true },
+    ]);
     // A Amazon bloqueou a pagina; a foto veio da segunda oferta.
     expect(da("radar_products", "update").some((c) => (c.payload as Record<string, unknown>).image_url === "https://magalu.com/foto.jpg")).toBe(true);
   });

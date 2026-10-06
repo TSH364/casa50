@@ -9,7 +9,7 @@ import { buscarOfertas } from "@/lib/ofertas";
 import { buscarImagemDoProduto } from "@/lib/imagem-produto";
 import { parseAmountCents } from "@/lib/money";
 import { tabelaAusente } from "@/data/radar";
-import { HORAS_ENTRE_CONFERENCIAS, MAX_POR_RODADA, melhorOferta, normalizarNome } from "@/domain/radar";
+import { HORAS_ENTRE_CONFERENCIAS, MAX_POR_RODADA, melhorOferta, normalizarNome, outrasOfertas } from "@/domain/radar";
 import { requireHouseId } from "./shared";
 
 /**
@@ -216,6 +216,7 @@ async function conferir(supabase: Supabase, houseId: string, produto: { id: stri
       best_url: melhor.url,
       best_title: melhor.title,
     });
+    await guardarOutras(supabase, produto.id, outrasOfertas(busca.offers, melhor));
     await guardarImagem(supabase, produto.id, [melhor.url, ...busca.offers.map((o) => o.url)]);
     return { ok: true, achou: { cents: melhor.priceCents, loja: melhor.store } };
   } catch (e) {
@@ -225,6 +226,20 @@ async function conferir(supabase: Supabase, houseId: string, produto: { id: stri
   } finally {
     if (custo > 0 || detalhes) await recordAiUsage(houseId, "radar", { calls: 1, costUsd: custo, model: modelo, details: detalhes });
   }
+}
+
+/** Erro de coluna ou tabela que ainda nao existe: a migracao nao entrou. */
+function semMigracao(code: string | undefined): boolean {
+  return code === "42703" || code === "42P01" || (code?.startsWith("PGRST2") ?? false);
+}
+
+/**
+ * As outras lojas da conferencia, gravadas a parte: sem a coluna (migracao
+ * ainda nao aplicada), o preco do dia ja esta salvo e so faltam as outras.
+ */
+async function guardarOutras(supabase: Supabase, produtoId: string, outras: readonly unknown[]): Promise<void> {
+  const { error } = await supabase.from("radar_products").update({ last_offers: outras }).eq("id", produtoId);
+  if (error && !semMigracao(error.code)) console.error("[radar] falha ao guardar as outras lojas", { code: error.code });
 }
 
 /**
@@ -238,7 +253,7 @@ async function guardarImagem(supabase: Supabase, produtoId: string, urls: readon
     const imagem = await buscarImagemDoProduto(url);
     if (!imagem) continue;
     const { error } = await supabase.from("radar_products").update({ image_url: imagem }).eq("id", produtoId);
-    if (error && !error.code?.startsWith("PGRST2") && error.code !== "42703") {
+    if (error && !semMigracao(error.code)) {
       console.error("[radar] falha ao guardar a imagem", { code: error.code });
     }
     return;

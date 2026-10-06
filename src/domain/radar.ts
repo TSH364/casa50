@@ -20,6 +20,54 @@ export interface RadarProduto {
   melhor: { cents: Cents; loja: string; url: string; titulo: string | null } | null;
   /** A foto do anuncio (og:image da loja). `null` ate a primeira achada. */
   imagem: string | null;
+  /** As outras lojas da ultima conferencia, da mais barata a mais cara. */
+  outras: RadarOferta[];
+}
+
+export interface RadarOferta {
+  loja: string;
+  cents: Cents;
+  url: string;
+  vistoNaPagina: boolean;
+}
+
+/** Quantas outras lojas a tela mostra. */
+export const MAX_OUTRAS = 4;
+
+/**
+ * As outras lojas que a mesma busca achou, para comparar.
+ *
+ * So anuncio (link de busca da loja nao tem preco conferivel), uma por loja
+ * - a mais barata dela -, sem a loja da melhor oferta, da mais barata a mais
+ * cara. So https.
+ */
+export function outrasOfertas(offers: readonly Offer[], melhor: Offer | null): RadarOferta[] {
+  const porLoja = new Map<string, Offer>();
+  for (const o of offers) {
+    if (o.linkKind === "busca" || o.priceCents <= 0 || !o.url.startsWith("https://")) continue;
+    const chave = o.store.trim().toLowerCase();
+    if (melhor && chave === melhor.store.trim().toLowerCase()) continue;
+    const atual = porLoja.get(chave);
+    if (!atual || o.priceCents < atual.priceCents) porLoja.set(chave, o);
+  }
+  return [...porLoja.values()]
+    .sort((a, b) => a.priceCents - b.priceCents)
+    .slice(0, MAX_OUTRAS)
+    .map((o) => ({ loja: o.store, cents: o.priceCents, url: o.url, vistoNaPagina: o.priceSeen }));
+}
+
+/** Le `last_offers` do banco sem confiar no formato: o que nao bate, cai. */
+export function lerOutras(valor: unknown): RadarOferta[] {
+  if (!Array.isArray(valor)) return [];
+  const out: RadarOferta[] = [];
+  for (const v of valor) {
+    const o = v as Record<string, unknown>;
+    const cents = Number(o?.cents);
+    if (typeof o?.loja !== "string" || typeof o?.url !== "string" || !o.url.startsWith("https://")) continue;
+    if (!Number.isFinite(cents) || cents <= 0) continue;
+    out.push({ loja: o.loja, cents, url: o.url, vistoNaPagina: o.vistoNaPagina === true });
+  }
+  return out.slice(0, MAX_OUTRAS);
 }
 
 export interface RadarPreco {
