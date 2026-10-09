@@ -5,7 +5,7 @@ import Link from "next/link";
 import { CircleAlert, Lightbulb, Sparkles, TrendingDown, TrendingUp } from "lucide-react";
 import { analyzeMonth } from "@/actions/ai-insights";
 import type { SavedAiAnalysis } from "@/data/queries";
-import type { InsightTone } from "@/domain/insights";
+import { repeteObservacao, type Insight, type InsightTone } from "@/domain/insights";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
@@ -40,15 +40,22 @@ export function AiAnalysisCard({
   scope,
   initial,
   enabled,
+  observacoes = [],
 }: {
   month: string;
   scope: "casa" | "tudo";
   initial: SavedAiAnalysis | null;
   enabled: boolean;
+  /** As observacoes do app na mesma tela: a analise que so as repete sai. */
+  observacoes?: Pick<Insight, "fato">[];
 }) {
   const [analise, setAnalise] = useState(initial);
   const [erro, setErro] = useState<string | null>(null);
   const [pending, start] = useTransition();
+
+  // "Alimentacao abaixo da media" aparecia aqui e de novo em O que mudou.
+  const itens = analise?.items.filter((a) => !repeteObservacao(a.evidence, observacoes)) ?? [];
+  const repetidas = (analise?.items.length ?? 0) - itens.length;
 
   function analisar() {
     setErro(null);
@@ -72,7 +79,7 @@ export function AiAnalysisCard({
 
       {analise ? (
         <ul className="space-y-2">
-          {analise.items.map((a, i) => {
+          {itens.map((a, i) => {
             const tom = TOM[a.tone];
             return (
               <li key={i} className={cn("rounded-(--radius-control) border-l-2 bg-surface-2 px-3 py-3", tom.border)}>
@@ -99,6 +106,14 @@ export function AiAnalysisCard({
             );
           })}
         </ul>
+      ) : null}
+
+      {repetidas > 0 ? (
+        <p className="mt-2 text-legenda text-ink-faint">
+          {repetidas === 1
+            ? "1 análise repetia uma observação de O que mudou e ficou de fora."
+            : `${repetidas} análises repetiam observações de O que mudou e ficaram de fora.`}
+        </p>
       ) : null}
 
       {analise && analise.dropped > 0 ? (

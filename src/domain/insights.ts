@@ -60,6 +60,11 @@ export interface Insight {
   evidence: InsightEvidence[];
   /** Atual x referencia, quando o insight e uma comparacao. */
   medida?: InsightMedida;
+  /**
+   * O rotulo do fato da Leitura da IA que diz a mesma coisa (`buildFacts`):
+   * uma analise da IA que so cita fatos assim repete esta observacao.
+   */
+  fato?: string;
   /** Para a tela poder levar ao recorte exato que gerou o insight. */
   href?: string;
   /** Ordena a lista: quanto maior, mais no topo. */
@@ -148,9 +153,9 @@ function categoryComparisons(input: InsightInput): Insight[] {
       },
     ];
 
-    const href = categoryId
-      ? `/extratos?mes=${month}`
-      : undefined;
+    // Abre Extratos ja no recorte que explica a observacao: o mes E a
+    // categoria ("sem" e o filtro de quem nao tem categoria).
+    const href = `/extratos?mes=${month}&categoria=${categoryId ?? "sem"}`;
     const medida: InsightMedida = {
       atualCents: currentCents,
       atualRotulo: "Neste mês",
@@ -167,6 +172,7 @@ function categoryComparisons(input: InsightInput): Insight[] {
         detail: `Gasto ${percent(ratio - 1)} maior que a média dos últimos meses.`,
         evidence,
         medida,
+        fato: `Categoria ${nameOf(categoryId)} no mês`,
         href,
         weight: Math.abs(difference),
       });
@@ -182,6 +188,7 @@ function categoryComparisons(input: InsightInput): Insight[] {
             : `Gasto ${percent(1 - ratio)} menor que a média dos últimos meses.`,
         evidence,
         medida,
+        fato: `Categoria ${nameOf(categoryId)} no mês`,
         href,
         weight: Math.abs(difference) / 2,
       });
@@ -238,6 +245,7 @@ function budgetAlerts(input: InsightInput): Insight[] {
             detail: `O limite do mês foi ultrapassado em ${brl(over)}.`,
             evidence,
             medida,
+            fato: `Orçamento de ${name}`,
             href: `/orcamentos?mes=${month}`,
             weight: 1_000_000 + over,
           }
@@ -249,6 +257,7 @@ function budgetAlerts(input: InsightInput): Insight[] {
             detail: `${percent(ratio)} do orçamento do mês já foi usado.`,
             evidence,
             medida,
+            fato: `Orçamento de ${name}`,
             href: `/orcamentos?mes=${month}`,
             weight: 500_000 + spentCents,
           },
@@ -278,6 +287,7 @@ function recurrenceChanges(input: InsightInput): Insight[] {
         referenciaCents: m.expectedCents,
         referenciaRotulo: "cadastrado",
       },
+      fato: `Conta fixa ${m.recurrence.description}`,
       href: "#recorrencias",
       weight: 200_000 + m.differenceCents,
     }));
@@ -456,4 +466,20 @@ export function historyDepth(
   transactions: readonly Transaction[],
 ): number {
   return new Set(transactions.map((t) => t.invoiceMonth)).size;
+}
+
+/**
+ * A analise da IA so repete o que o app ja disse?
+ *
+ * Repete quando TODO fato que ela cita e o fato de uma observacao do app
+ * (`fato`) ou uma "Observacao do app" passada a ela. Uma que cita tambem
+ * outro fato - a loja que explica a categoria - acrescenta algo e fica.
+ */
+export function repeteObservacao(
+  evidencias: readonly { label: string }[],
+  insights: readonly Pick<Insight, "fato">[],
+): boolean {
+  if (evidencias.length === 0) return false;
+  const cobertos = new Set(insights.map((i) => i.fato).filter((f): f is string => Boolean(f)));
+  return evidencias.every((e) => cobertos.has(e.label) || e.label.startsWith("Observação do app:"));
 }
