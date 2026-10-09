@@ -10,6 +10,7 @@ import {
   KanbanSquare,
   LogOut,
   Mic,
+  Inbox,
   MoreHorizontal,
   Radar,
   ReceiptText,
@@ -36,6 +37,7 @@ const DIREITA = [{ href: "/analise", label: "Análise", Icon: Sparkles }] as con
 const MAIS = [
   { href: "/metas", label: "Metas", Icon: Target },
   { href: "/radar", label: "Radar", Icon: Radar },
+  { href: "/secretario", label: "Secretário", Icon: Inbox },
   { href: "/projetos", label: "Projetos", Icon: Hammer },
   { href: "/tarefas", label: "Tarefas", Icon: KanbanSquare },
   // Fora do "Casa" para ser achado: e onde se da nome aos cartoes.

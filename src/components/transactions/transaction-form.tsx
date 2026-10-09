@@ -83,6 +83,8 @@ export function TransactionFormDialog({
   defaultMonth,
   modelos = [],
   modelo: modeloInicial,
+  rascunho,
+  onSaved,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -95,6 +97,10 @@ export function TransactionFormDialog({
   modelos?: ModeloDeReceita[];
   /** Abre ja preenchido com esta receita (o "Lancar" de uma que falta no mes). */
   modelo?: ModeloDeReceita;
+  /** Lancamento novo ja preenchido com isto (a conta que o secretario achou no e-mail). */
+  rascunho?: Partial<Transaction>;
+  /** Avisado quando o lancamento foi salvo (fechar sem salvar nao avisa). */
+  onSaved?: () => void;
 }) {
   const isEdit = transaction !== undefined;
   // O modelo escolhido; trocar remonta o <form> para os campos nao
@@ -115,7 +121,7 @@ export function TransactionFormDialog({
           isJoint: modelo.isJoint,
           visibility: modelo.visibility,
         }
-      : undefined);
+      : rascunho);
   const action = isEdit
     ? updateTransaction.bind(null, transaction.id)
     : createTransaction;
@@ -179,9 +185,10 @@ export function TransactionFormDialog({
   useEffect(() => {
     if (state.ok) {
       toast.success(isEdit ? "Lançamento atualizado." : "Lançamento adicionado.");
+      onSaved?.();
       onOpenChange(false);
     }
-  }, [state.ok, isEdit, onOpenChange]);
+  }, [state.ok, isEdit, onOpenChange, onSaved]);
 
   const err = state.fieldErrors ?? {};
   // Receita escolhe entre Salario, Pro-labore...; gasto entre Mercado, Lazer...

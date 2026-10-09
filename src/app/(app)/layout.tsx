@@ -8,6 +8,7 @@ import { signOut } from "@/app/entrar/actions";
 import { syncStaleCalendars } from "@/actions/calendar";
 import { syncStaleBanks } from "@/actions/bancos";
 import { syncRadar } from "@/actions/radar";
+import { syncSecretario } from "@/actions/secretario";
 import { Button } from "@/components/ui/button";
 import { buildInfo, buildLabel, versionLabel } from "@/lib/version";
 import { cookies } from "next/headers";
@@ -38,6 +39,8 @@ export default async function AppLayout({
   after(syncStaleBanks);
   // O Radar de produtos: o preco do dia, conferido na primeira abertura.
   after(syncRadar);
+  // O secretario: o Gmail de cada um, lido a cada poucas horas.
+  after(syncSecretario);
 
   const build = buildInfo();
   const tema = parseTheme((await cookies()).get(THEME_COOKIE)?.value);
