@@ -12,7 +12,7 @@ import type { Insight, InsightMedida, InsightTone } from "@/domain/insights";
 
 /** Uma observacao do app, com os numeros que a sustentam (secao 14). */
 
-const TONE: Record<
+export const TONE: Record<
   InsightTone,
   { border: string; icon: string; Icon: typeof TrendingUp; excesso: string; pill: string }
 > = {
@@ -66,14 +66,14 @@ function diferenca(insight: Insight, m: InsightMedida): string {
  * do aviso fica no icone, no titulo e na diferenca escrita - a barra so
  * mostra o tamanho.
  */
-export function MedidaBar({ insight, medida: m }: { insight: Insight; medida: InsightMedida }) {
-  const tone = TONE[insight.tone];
+export function MedidaBar({ tone: tom, medida: m }: { tone: InsightTone; medida: InsightMedida }) {
+  const tone = TONE[tom];
   const escala = Math.max(m.atualCents, m.referenciaCents, 1);
   const pct = (c: number) => `${(c / escala) * 100}%`;
   const base = Math.min(m.atualCents, m.referenciaCents);
   const passou = m.atualCents > m.referenciaCents;
   // Gasto menor que a media e boa noticia; o que cabe no orcamento e so espaco.
-  const sobraBoa = insight.tone === "positive";
+  const sobraBoa = tom === "positive";
 
   return (
     <div className="mt-2.5">
@@ -142,7 +142,7 @@ export function InsightCard({ insight }: { insight: Insight }) {
             ) : null}
           </div>
           <p className="mt-0.5 text-corpo text-ink-muted">{insight.detail}</p>
-          {m ? <MedidaBar insight={insight} medida={m} /> : null}
+          {m ? <MedidaBar tone={insight.tone} medida={m} /> : null}
         </div>
         {insight.href ? (
           <ArrowRight className="mt-0.5 size-4 shrink-0 text-ink-faint" aria-hidden />

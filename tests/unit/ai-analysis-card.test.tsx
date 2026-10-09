@@ -44,7 +44,9 @@ describe("AiAnalysisCard", () => {
     fireEvent.click(screen.getByRole("button", { name: /Analisar o mês com IA/ }));
     expect(await screen.findByText("Delivery triplicou")).toBeTruthy();
     expect(pedidos).toEqual([{ month: "2026-09", scope: "casa" }]);
-    expect(screen.getByText("Categoria Delivery no mês:")).toBeTruthy();
+    // A evidencia vira desenho: o mes contra a media, numa barra.
+    expect(screen.getByText("Delivery")).toBeTruthy();
+    expect(screen.getByRole("img", { name: /No mês: R\$\s600,00; média: R\$\s200,00/ })).toBeTruthy();
     expect(screen.getByText(/1 análise foi descartada/)).toBeTruthy();
     expect(screen.getByText(/Feita em 26\/09 às 14:03/)).toBeTruthy();
     expect(screen.getByRole("button", { name: /Refazer análise/ })).toBeTruthy();
