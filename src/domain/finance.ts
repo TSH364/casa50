@@ -240,6 +240,8 @@ export interface CategoryMatrix {
   categoryIds: (string | null)[];
   /** Total de cada coluna na janela inteira. */
   categoryTotals: Cents[];
+  /** Mediana de cada coluna (so os meses com gasto) - o "usual" da categoria. */
+  categoryMedians: Cents[];
   /** Linhas, do mes mais recente para o mais antigo. */
   rows: MatrixRow[];
   /** Quantos meses da janela tiveram algum gasto. */
@@ -344,6 +346,7 @@ export function categoryMatrix(
   return {
     categoryIds,
     categoryTotals: categoryIds.map((id) => totals.get(id) ?? 0),
+    categoryMedians: categoryIds.map((id) => medians.get(id) ?? 0),
     rows,
     monthsWithData: rows.filter((r) => r.totalCents !== 0).length,
   };

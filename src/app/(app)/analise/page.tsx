@@ -32,7 +32,7 @@ import { InstallmentsCard, NextMonthsCard } from "@/components/forecast/forecast
 import { ProjecaoCard } from "@/components/forecast/projecao-card";
 import { projetar, quandoComprar } from "@/domain/projecao";
 import { carregarRadar } from "@/data/radar";
-import { InsightCard } from "@/components/insights/insight-card";
+import { InsightsDoMes } from "@/components/insights/insights-do-mes";
 import { AiAnalysisCard } from "@/components/insights/ai-analysis";
 
 export const metadata: Metadata = { title: "Análise · Fluxo" };
@@ -172,11 +172,7 @@ export default async function AnalisePage({
           description="Cada observação vem com os números que a sustentam."
         />
         {insights.length > 0 ? (
-          <ul className="space-y-2">
-            {insights.map((insight) => (
-              <InsightCard key={insight.id} insight={insight} />
-            ))}
-          </ul>
+          <InsightsDoMes insights={insights} />
         ) : (
           <div className="py-6 text-center">
             <Sparkles className="mx-auto size-6 text-ink-faint" aria-hidden />

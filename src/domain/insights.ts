@@ -36,6 +36,19 @@ export interface InsightEvidence {
   value: string;
 }
 
+/**
+ * O mesmo numero da evidencia, em forma de comparacao: o valor do mes contra
+ * a referencia (media, limite, valor cadastrado, mes anterior). A tela
+ * desenha a barra do mes e um traco na referencia - a diferenca se ve antes
+ * de se ler.
+ */
+export interface InsightMedida {
+  atualCents: Cents;
+  atualRotulo: string;
+  referenciaCents: Cents;
+  referenciaRotulo: string;
+}
+
 export interface Insight {
   id: string;
   kind: InsightKind;
@@ -45,6 +58,8 @@ export interface Insight {
   detail: string;
   /** Os números que sustentam a frase. Nunca vazio. */
   evidence: InsightEvidence[];
+  /** Atual x referencia, quando o insight e uma comparacao. */
+  medida?: InsightMedida;
   /** Para a tela poder levar ao recorte exato que gerou o insight. */
   href?: string;
   /** Ordena a lista: quanto maior, mais no topo. */
@@ -136,6 +151,12 @@ function categoryComparisons(input: InsightInput): Insight[] {
     const href = categoryId
       ? `/extratos?mes=${month}`
       : undefined;
+    const medida: InsightMedida = {
+      atualCents: currentCents,
+      atualRotulo: "Neste mês",
+      referenciaCents: average,
+      referenciaRotulo: "média",
+    };
 
     if (ratio >= 1.3) {
       insights.push({
@@ -145,6 +166,7 @@ function categoryComparisons(input: InsightInput): Insight[] {
         title: `${nameOf(categoryId)} acima da média`,
         detail: `Gasto ${percent(ratio - 1)} maior que a média dos últimos meses.`,
         evidence,
+        medida,
         href,
         weight: Math.abs(difference),
       });
@@ -156,6 +178,7 @@ function categoryComparisons(input: InsightInput): Insight[] {
         title: `${nameOf(categoryId)} abaixo da média`,
         detail: `Gasto ${percent(1 - ratio)} menor que a média dos últimos meses.`,
         evidence,
+        medida,
         href,
         weight: Math.abs(difference) / 2,
       });
@@ -195,6 +218,13 @@ function budgetAlerts(input: InsightInput): Insight[] {
       },
     ];
 
+    const medida: InsightMedida = {
+      atualCents: spentCents,
+      atualRotulo: "Gasto",
+      referenciaCents: limitCents,
+      referenciaRotulo: "limite",
+    };
+
     insights.push(
       over > 0
         ? {
@@ -204,6 +234,7 @@ function budgetAlerts(input: InsightInput): Insight[] {
             title: `${name} estourou o orçamento`,
             detail: `O limite do mês foi ultrapassado em ${brl(over)}.`,
             evidence,
+            medida,
             href: `/orcamentos?mes=${month}`,
             weight: 1_000_000 + over,
           }
@@ -214,6 +245,7 @@ function budgetAlerts(input: InsightInput): Insight[] {
             title: `${name} perto do limite`,
             detail: `${percent(ratio)} do orçamento do mês já foi usado.`,
             evidence,
+            medida,
             href: `/orcamentos?mes=${month}`,
             weight: 500_000 + spentCents,
           },
@@ -237,6 +269,12 @@ function recurrenceChanges(input: InsightInput): Insight[] {
         { label: "Cobrado", value: brl(m.actualCents ?? 0) },
         { label: "Diferença", value: `+${brl(m.differenceCents)}` },
       ],
+      medida: {
+        atualCents: m.actualCents ?? 0,
+        atualRotulo: "Cobrado",
+        referenciaCents: m.expectedCents,
+        referenciaRotulo: "cadastrado",
+      },
       href: "#recorrencias",
       weight: 200_000 + m.differenceCents,
     }));
@@ -381,6 +419,12 @@ function monthTotal(input: InsightInput): Insight[] {
           value: `${difference > 0 ? "+" : "−"}${percent(Math.abs(difference) / previousCents)}`,
         },
       ],
+      medida: {
+        atualCents: currentCents,
+        atualRotulo: "Este mês",
+        referenciaCents: previousCents,
+        referenciaRotulo: "mês anterior",
+      },
       href: `/extratos?mes=${month}`,
       weight: 50_000,
     },
