@@ -80,3 +80,17 @@ export function monthLabel(month: MonthKey): string {
 export function monthShortLabel(month: MonthKey): string {
   return SHORT.format(new Date(`${month}-01T00:00:00Z`)).replace(".", "");
 }
+
+/**
+ * A data com que um lancamento novo comeca, olhando um mes.
+ *
+ * No mes de hoje, hoje. Num outro mes (a casa abriu marco e tocou em
+ * "Lancar"), o mesmo dia daquele mes - limitado ao ultimo dia dele: comecar
+ * em hoje fazia a compra de marco nascer com data de outubro, e a receita
+ * (que conta pelo dia em que entrou) cair no mes errado.
+ */
+export function dataPadraoNoMes(month: MonthKey, hoje: IsoDate): IsoDate {
+  if (monthOf(hoje) === month) return hoje;
+  const dia = Math.min(Number(hoje.slice(8, 10)), daysInMonth(month));
+  return `${month}-${String(dia).padStart(2, "0")}`;
+}

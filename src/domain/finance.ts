@@ -790,3 +790,30 @@ export function dailySpending(
     fixedCount,
   };
 }
+
+/**
+ * De que lado um lancamento fica no filtro de Extratos.
+ *
+ *   saida   - despesa, tarifa, ajuste e estorno (o estorno e dinheiro de uma
+ *             compra voltando: mora junto das compras, e e la que se procura);
+ *   entrada - receita;
+ *   outro   - pagamento da fatura: nem gasto novo nem receita, so aparece em
+ *             "Tudo".
+ */
+export type LadoDoExtrato = "saida" | "entrada" | "outro";
+
+export function ladoNoExtrato(t: Pick<Transaction, "type">): LadoDoExtrato {
+  switch (t.type) {
+    case "income":
+      return "entrada";
+    case "payment":
+      return "outro";
+    default:
+      return "saida";
+  }
+}
+
+/** O valor do parametro `tipo` da URL de Extratos, ou `null` para "Tudo". */
+export function tipoDoExtrato(valor: string | undefined): Exclude<LadoDoExtrato, "outro"> | null {
+  return valor === "saidas" ? "saida" : valor === "entradas" ? "entrada" : null;
+}

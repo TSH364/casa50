@@ -12,7 +12,7 @@ import type { FormState } from "@/actions/shared";
 import { Dialog, DialogClose, DialogContent } from "@/components/ui/dialog";
 import { Field, Input, Textarea } from "@/components/ui/field";
 import { Select } from "@/components/ui/select";
-import { monthLabel, monthOf, addMonths } from "@/domain/month";
+import { addMonths, dataPadraoNoMes, isMonthKey, monthLabel, monthOf } from "@/domain/month";
 import { DOS_DOIS } from "@/domain/schemas";
 import { categoriasDoLado, ladoDoTipo } from "@/domain/categorias";
 import type { Card, Category, Transaction } from "@/domain/types";
@@ -102,7 +102,11 @@ export function TransactionFormDialog({
   const [tipo, setTipo] = useState<string>(transaction?.type ?? "expense");
   const receita = tipo === "income";
   const outro = tipo !== "expense" && tipo !== "income";
-  const [date, setDate] = useState(transaction?.date ?? todayIso());
+  // Lancamento novo nasce no mes que a tela esta mostrando, nao em hoje
+  // (ver `dataPadraoNoMes`).
+  const [date, setDate] = useState(
+    transaction?.date ?? (isMonthKey(defaultMonth) ? dataPadraoNoMes(defaultMonth, todayIso()) : todayIso()),
+  );
   // Sugestao de categoria pela descricao. So em lancamento NOVO e com a
   // categoria vazia: editar um lancamento nao pode trocar o que alguem ja
   // escolheu.

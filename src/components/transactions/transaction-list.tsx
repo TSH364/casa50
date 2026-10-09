@@ -167,18 +167,32 @@ export function TransactionList({
                 </p>
 
                 <div className="mt-2 flex items-center gap-2">
-                  <CategoryPicker
-                    className="min-w-0 flex-1 sm:max-w-[15rem]"
-                    transactionId={t.id}
-                    description={t.merchantAlias ?? t.description}
-                    // Receita escolhe entre as categorias de receita.
-                    categories={categoriasDoLado(categories, ladoDoTipo(t.type), [
-                      t.categoryId,
-                      t.subcategoryId,
-                    ])}
-                    categoryId={t.categoryId}
-                    subcategoryId={t.subcategoryId}
-                  />
+                  {t.type === "payment" ? (
+                    /*
+                     * Pagamento da fatura nao e gasto: as compras dela ja
+                     * contam uma a uma. Com seletor de categoria e valor na
+                     * mesma linha das compras, ficava a duvida se somava.
+                     */
+                    <p
+                      className="min-w-0 flex-1 rounded-full bg-surface-2 px-3 py-1.5 text-legenda text-ink-muted sm:max-w-[15rem]"
+                      title="É o pagamento da fatura: as compras dela já contam uma a uma."
+                    >
+                      Não soma nos gastos
+                    </p>
+                  ) : (
+                    <CategoryPicker
+                      className="min-w-0 flex-1 sm:max-w-[15rem]"
+                      transactionId={t.id}
+                      description={t.merchantAlias ?? t.description}
+                      // Receita escolhe entre as categorias de receita.
+                      categories={categoriasDoLado(categories, ladoDoTipo(t.type), [
+                        t.categoryId,
+                        t.subcategoryId,
+                      ])}
+                      categoryId={t.categoryId}
+                      subcategoryId={t.subcategoryId}
+                    />
+                  )}
 
                   {/* Sempre visíveis no toque; no desktop, no hover. */}
                   <div className="flex shrink-0 items-center opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100">

@@ -4,7 +4,7 @@ import { PersonFilterNote } from "@/components/person-filter-note";
 import { notFound } from "next/navigation";
 import { getActiveHouse, listMembers } from "@/lib/houses";
 import { listCards, listCategories, listTransactions } from "@/data/queries";
-import { summarizeMonth } from "@/domain/finance";
+import { ladoNoExtrato, summarizeMonth, tipoDoExtrato } from "@/domain/finance";
 import { currentMonth, isMonthKey } from "@/domain/month";
 import { Card, CardHeader } from "@/components/ui/card";
 import { Skeleton } from "@/components/states";
@@ -15,6 +15,7 @@ import { rotuloDoCartao } from "@/domain/cartoes";
 import { SearchBox } from "@/components/search-box";
 import { TransactionList } from "@/components/transactions/transaction-list";
 import { TotaisSeparados } from "@/components/transactions/totais-separados";
+import { FiltroTipo } from "@/components/transactions/filtro-tipo";
 import { NewTransactionButton } from "@/components/transactions/new-transaction-button";
 import { Statements, StatementsSkeleton } from "@/components/statements/card-totals";
 import Link from "next/link";
@@ -51,6 +52,7 @@ async function Listing({
   cardId,
   categoryId,
   search,
+  tipo,
   categories,
   cards,
   members,
@@ -61,17 +63,24 @@ async function Listing({
   cardId: string | null;
   categoryId: string | null;
   search: string | undefined;
+  tipo: "saida" | "entrada" | null;
   categories: Category[];
   cards: CardType[];
   members: MemberSummary[];
 }) {
-  const transactions = await listTransactions(houseId, {
+  const todas = await listTransactions(houseId, {
     month,
     memberId,
     cardId,
     categoryId,
     search,
   });
+  const contagem = {
+    tudo: todas.length,
+    saidas: todas.filter((t) => ladoNoExtrato(t) === "saida").length,
+    entradas: todas.filter((t) => ladoNoExtrato(t) === "entrada").length,
+  };
+  const transactions = tipo ? todas.filter((t) => ladoNoExtrato(t) === tipo) : todas;
   // Total do recorte visível, para o número bater com a lista abaixo dele.
   const summary = summarizeMonth(transactions, month, { memberId, cardId });
 
@@ -84,9 +93,13 @@ async function Listing({
           <TotaisSeparados
             gastoCents={summary.spentCents}
             recebidoCents={summary.incomeCents}
+            mostrar={tipo ?? "tudo"}
           />
         }
       />
+      <div className="mb-3">
+        <FiltroTipo ativo={tipo} contagem={contagem} />
+      </div>
       <TransactionList
         transactions={transactions}
         categories={categories}
@@ -107,6 +120,7 @@ export default async function ExtratosPage({
     cartao?: string;
     categoria?: string;
     busca?: string;
+    tipo?: string;
   }>;
 }) {
   const { active } = await getActiveHouse();
@@ -125,8 +139,9 @@ export default async function ExtratosPage({
   const cardId = params.cartao ?? null;
   const categoryId = params.categoria ?? null;
   const search = params.busca;
+  const tipo = tipoDoExtrato(params.tipo);
 
-  const key = `${month}:${memberId ?? "t"}:${cardId ?? "t"}:${categoryId ?? "t"}:${search ?? ""}`;
+  const key = `${month}:${memberId ?? "t"}:${cardId ?? "t"}:${categoryId ?? "t"}:${search ?? ""}:${tipo ?? "t"}`;
 
   // O recorte em uso, numa linha - o mesmo desenho do Inicio: a pilula diz o
   // que esta valendo e o toque abre os chips.
@@ -214,16 +229,6 @@ export default async function ExtratosPage({
         </FiltrosCompactos>
       </div>
 
-      <Suspense key={`faturas:${month}:${cardId ?? "t"}`} fallback={<StatementsSkeleton />}>
-        <Statements
-          houseId={active.id}
-          month={month}
-          cards={cards}
-          members={members}
-          activeCardId={cardId}
-        />
-      </Suspense>
-
       <Suspense key={key} fallback={<ListSkeleton />}>
         <Listing
           houseId={active.id}
@@ -232,9 +237,23 @@ export default async function ExtratosPage({
           cardId={cardId}
           categoryId={categoryId}
           search={search}
+          tipo={tipo}
           categories={categories}
           cards={cards}
           members={members}
+        />
+      </Suspense>
+
+      {/* Depois da lista, e nao antes: o que a casa abre Extratos para ver sao
+          os lancamentos. Os totais por cartao e as faturas importadas ficam
+          embaixo, a uma rolagem. */}
+      <Suspense key={`faturas:${month}:${cardId ?? "t"}`} fallback={<StatementsSkeleton />}>
+        <Statements
+          houseId={active.id}
+          month={month}
+          cards={cards}
+          members={members}
+          activeCardId={cardId}
         />
       </Suspense>
     </div>
