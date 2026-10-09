@@ -33,11 +33,11 @@ export interface ReceitaRecorrente {
   vezes: number;
 }
 
-function chaveDe(t: Transaction): string | null {
+export function chaveDe(t: Transaction): string | null {
   return merchantCompareKey(t.merchantAlias ?? t.description);
 }
 
-function conta(t: Transaction): boolean {
+export function conta(t: Transaction): boolean {
   return !t.isHidden && t.status !== "cancelled" && t.status !== "missing";
 }
 
@@ -65,6 +65,35 @@ export function receitasRecorrentes(transactions: readonly Transaction[], mesAtu
     .filter(([, v]) => v.meses.size >= MINIMO_REPETICOES)
     .map(([chave, v]) => ({ chave, descricao: v.nome, cents: mediana([...v.meses.values()]), vezes: v.meses.size }))
     .sort((a, b) => b.cents - a.cents);
+}
+
+/**
+ * As receitas recorrentes que ainda nao apareceram entre `doMes` (os
+ * lancamentos de um mes).
+ *
+ * Apareceu = um lancamento com o mesmo nome OU, sem nome igual, de valor
+ * parecido (ate 10%) que nenhuma outra recorrente ja usou. A casa escreve o
+ * mesmo dinheiro de jeitos diferentes ("MCAA Dividendos" num mes, "MCAA" no
+ * outro); so pelo nome, os dividendos contariam duas vezes.
+ */
+export function naoLancadas<R extends Pick<ReceitaRecorrente, "chave" | "cents">>(
+  receitas: readonly R[],
+  doMes: readonly Transaction[],
+): R[] {
+  const lancadas = doMes
+    .filter((t) => t.type === "income" && conta(t))
+    .map((t) => ({ chave: chaveDe(t), cents: incomeCents(t), usada: false }));
+  const semNome: R[] = [];
+  for (const r of receitas) {
+    const mesmoNome = lancadas.filter((l) => l.chave === r.chave);
+    if (mesmoNome.length > 0) mesmoNome.forEach((l) => (l.usada = true));
+    else semNome.push(r);
+  }
+  return semNome.filter((r) => {
+    const parecida = lancadas.find((l) => !l.usada && Math.abs(l.cents - r.cents) <= r.cents * 0.1);
+    if (parecida) parecida.usada = true;
+    return !parecida;
+  });
 }
 
 export type TipoDoMes = "realizado" | "atual" | "previsto";
@@ -123,32 +152,11 @@ export function projetar({
   const previsaoDe = new Map(previsao.map((f) => [f.month, f]));
   const todas = [...transactions, ...futuras];
 
-  /**
-   * Receitas recorrentes que ainda nao apareceram naquele mes.
-   *
-   * Apareceu = um lancamento do mes com o mesmo nome OU, sem nome igual, de
-   * valor parecido (ate 10%) que nenhuma outra recorrente ja usou. A casa
-   * escreve o mesmo dinheiro de jeitos diferentes ("MCAA Dividendos" num mes,
-   * "MCAA" no outro); so pelo nome, os dividendos contariam duas vezes.
-   */
-  const recorrentesFaltando = (mes: MonthKey): Cents => {
-    const lancadas = todas
-      .filter((t) => t.type === "income" && conta(t) && t.invoiceMonth === mes)
-      .map((t) => ({ chave: chaveDe(t), cents: incomeCents(t), usada: false }));
-    let faltando = 0;
-    const semNome: ReceitaRecorrente[] = [];
-    for (const r of receitas) {
-      const mesmoNome = lancadas.filter((l) => l.chave === r.chave);
-      if (mesmoNome.length > 0) mesmoNome.forEach((l) => (l.usada = true));
-      else semNome.push(r);
-    }
-    for (const r of semNome) {
-      const parecida = lancadas.find((l) => !l.usada && Math.abs(l.cents - r.cents) <= r.cents * 0.1);
-      if (parecida) parecida.usada = true;
-      else faltando += r.cents;
-    }
-    return faltando;
-  };
+  const recorrentesFaltando = (mes: MonthKey): Cents =>
+    naoLancadas(
+      receitas,
+      todas.filter((t) => t.invoiceMonth === mes),
+    ).reduce((soma, r) => soma + r.cents, 0);
 
   const meses: MesProjetado[] = [];
   let acumulado = 0;

@@ -112,4 +112,21 @@ describe("lista de lançamentos", () => {
     expect(nbsp(valor("FAPESP Lari").textContent)).toBe("+R$ 5.790,00");
     expect(valor("Estorno loja").className).toContain("text-positive");
   });
+
+  it("pagamento da fatura diz que não soma, sem seletor de categoria", async () => {
+    const { TransactionList } = await import("@/components/transactions/transaction-list");
+    render(
+      <TransactionList
+        transactions={[tx({ description: "Inclusao de Pagamento", amount: 4473.37, type: "payment", origin: "invoice" })]}
+        categories={[]}
+        cards={[]}
+        members={[]}
+        defaultMonth="2026-09"
+      />,
+    );
+    const linha = screen.getByText("Inclusao de Pagamento").closest("li")!;
+    expect(within(linha).getByText(/Não soma nos gastos/)).toBeTruthy();
+    expect(within(linha).queryByText("Sem categoria")).toBeNull();
+    expect(summarizeMonth([tx({ type: "payment", amount: 4473.37 })], "2026-09").spentCents).toBe(0);
+  });
 });

@@ -16,6 +16,7 @@ import {
 import { MonthSwitcher } from "@/components/month-switcher";
 import { FilterChips } from "@/components/filter-chips";
 import { NewTransactionButton } from "@/components/transactions/new-transaction-button";
+import { carregarReceitasDoMes } from "@/data/receitas-do-mes";
 import { FiltrosInicio } from "@/components/home/filtros-inicio";
 import { rotuloDoCartao } from "@/domain/cartoes";
 import { InicioPainel, InicioPainelSkeleton } from "@/components/home/inicio-painel";
@@ -59,12 +60,15 @@ export default async function InicioPage({
   if (!active) notFound();
 
   const params = await searchParams;
-  const [members, cards, view, monthsWithData, user] = await Promise.all([
+  // As receitas de todo mes saem do mes de hoje, em paralelo: sao so os
+  // atalhos do formulario, e o dia/mes quem decide e o proprio formulario.
+  const [members, cards, view, monthsWithData, user, receitas] = await Promise.all([
     listMembers(active.id),
     listCards(active.id),
     houseView(active.id, params.totais),
     listMonthsWithData(active.id),
     getCurrentUser(),
+    carregarReceitasDoMes(active.id, currentMonth()),
   ]);
   const categories = view.categories;
   const excludeCategoryIds = view.excludeCategoryIds;
@@ -144,6 +148,7 @@ export default async function InicioPage({
             defaultMonth={month}
             label="Lançar"
             iconOnly
+            modelos={receitas.modelos}
           />
         </div>
       </header>

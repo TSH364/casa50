@@ -135,6 +135,8 @@ export interface TransactionFilter {
   categoryId?: string | null;
   /** Busca livre em descrição e estabelecimento. */
   search?: string;
+  /** Só um tipo de lançamento (ex.: as receitas, para os modelos de todo mês). */
+  type?: Transaction["type"];
   /**
    * Categorias que não contam nos totais da casa.
    *
@@ -221,6 +223,7 @@ export async function listTransactions(
     }
     if (filtroPessoa) query = query.or(filtroPessoa);
     if (filter.cardId) query = query.eq("card_id", filter.cardId);
+    if (filter.type) query = query.eq("type", filter.type);
     // "sem" é o recorte que mais importa depois de importar uma fatura: é a
     // lista do que ainda falta categorizar.
     if (filter.categoryId === "sem") query = query.is("category_id", null);

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { CreditCard } from "lucide-react";
+import { ChevronDown, CreditCard } from "lucide-react";
 import { listInvoices, listTransactions } from "@/data/queries";
 import { incomeCents, spendingCents } from "@/domain/finance";
 import { formatCents } from "@/lib/money";
@@ -144,12 +144,25 @@ export async function Statements({
         </Panel>
       ) : null}
 
+      {/* Recolhido: e o historico das importacoes (com o "desfazer"), que se
+          abre de vez em quando - nao a cada visita. */}
       <Panel>
-        <CardHeader
-          title="Faturas do mês"
-          description="Cada importação, quem fez e quando — com opção de desfazer."
-        />
-        <InvoiceList invoices={invoices} members={members} />
+        <details className="group">
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-3">
+            <span>
+              <span className="text-destaque font-semibold tracking-tight text-ink">Faturas do mês</span>
+              <span className="mt-0.5 block text-corpo text-ink-faint">
+                {invoices.length === 0
+                  ? "Nenhuma importada neste mês."
+                  : `${invoices.length} importada${invoices.length > 1 ? "s" : ""} · quem fez, quando, e o desfazer`}
+              </span>
+            </span>
+            <ChevronDown className="size-5 shrink-0 text-ink-faint transition-transform group-open:rotate-180" aria-hidden />
+          </summary>
+          <div className="mt-4">
+            <InvoiceList invoices={invoices} members={members} />
+          </div>
+        </details>
       </Panel>
     </>
   );

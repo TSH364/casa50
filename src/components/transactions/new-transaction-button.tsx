@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { TransactionFormDialog } from "./transaction-form";
+import type { ModeloDeReceita } from "@/domain/receitas-do-mes";
 import type { Card, Category } from "@/domain/types";
 import type { MemberSummary } from "@/lib/houses";
 
@@ -15,6 +16,7 @@ export function NewTransactionButton({
   size = "sm",
   label = "Novo lançamento",
   iconOnly = false,
+  modelos = [],
 }: {
   categories: Category[];
   cards: Card[];
@@ -24,6 +26,8 @@ export function NewTransactionButton({
   label?: string;
   /** So o "+", redondo; o rotulo vai para o leitor de tela. */
   iconOnly?: boolean;
+  /** Receitas de todo mes, para o "Preencher com" do formulario. */
+  modelos?: ModeloDeReceita[];
 }) {
   const [open, setOpen] = useState(false);
 
@@ -55,6 +59,7 @@ export function NewTransactionButton({
           cards={cards}
           members={members}
           defaultMonth={defaultMonth}
+          modelos={modelos}
         />
       ) : null}
     </>

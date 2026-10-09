@@ -12,9 +12,11 @@ import type { FormState } from "@/actions/shared";
 import { Dialog, DialogClose, DialogContent } from "@/components/ui/dialog";
 import { Field, Input, Textarea } from "@/components/ui/field";
 import { Select } from "@/components/ui/select";
-import { monthLabel, monthOf, addMonths } from "@/domain/month";
+import { addMonths, dataPadraoNoMes, isMonthKey, monthLabel, monthOf } from "@/domain/month";
 import { DOS_DOIS } from "@/domain/schemas";
 import { categoriasDoLado, ladoDoTipo } from "@/domain/categorias";
+import { dataDoModelo, type ModeloDeReceita } from "@/domain/receitas-do-mes";
+import { formatBRL } from "@/lib/money";
 import type { Card, Category, Transaction } from "@/domain/types";
 import type { MemberSummary } from "@/lib/houses";
 
@@ -79,6 +81,8 @@ export function TransactionFormDialog({
   cards,
   members,
   defaultMonth,
+  modelos = [],
+  modelo: modeloInicial,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -87,22 +91,60 @@ export function TransactionFormDialog({
   cards: Card[];
   members: MemberSummary[];
   defaultMonth: string;
+  /** Receitas de todo mes: viram atalhos "Preencher com" numa receita nova. */
+  modelos?: ModeloDeReceita[];
+  /** Abre ja preenchido com esta receita (o "Lancar" de uma que falta no mes). */
+  modelo?: ModeloDeReceita;
 }) {
   const isEdit = transaction !== undefined;
+  // O modelo escolhido; trocar remonta o <form> para os campos nao
+  // controlados (descricao, valor, quem recebeu) pegarem os valores dele.
+  const [modelo, setModelo] = useState<ModeloDeReceita | undefined>(isEdit ? undefined : modeloInicial);
+  const mesInicial = isMonthKey(defaultMonth) ? defaultMonth : monthOf(todayIso());
+  const inicial: Partial<Transaction> | undefined =
+    transaction ??
+    (modelo
+      ? {
+          type: "income",
+          description: modelo.description,
+          amount: modelo.amount,
+          date: dataDoModelo(modelo, mesInicial),
+          categoryId: modelo.categoryId,
+          subcategoryId: modelo.subcategoryId,
+          memberId: modelo.memberId,
+          isJoint: modelo.isJoint,
+          visibility: modelo.visibility,
+        }
+      : undefined);
   const action = isEdit
     ? updateTransaction.bind(null, transaction.id)
     : createTransaction;
   const [state, formAction] = useActionState<FormState, FormData>(action, {});
 
-  const [categoryId, setCategoryId] = useState(transaction?.categoryId ?? "");
+  const [categoryId, setCategoryId] = useState(inicial?.categoryId ?? "");
   const [subcategoryId, setSubcategoryId] = useState(
-    transaction?.subcategoryId ?? "",
+    inicial?.subcategoryId ?? "",
   );
-  const [visibility, setVisibility] = useState(transaction?.visibility ?? "shared");
-  const [tipo, setTipo] = useState<string>(transaction?.type ?? "expense");
+  const [visibility, setVisibility] = useState(inicial?.visibility ?? "shared");
+  const [tipo, setTipo] = useState<string>(inicial?.type ?? "expense");
   const receita = tipo === "income";
   const outro = tipo !== "expense" && tipo !== "income";
-  const [date, setDate] = useState(transaction?.date ?? todayIso());
+  // Lancamento novo nasce no mes que a tela esta mostrando, nao em hoje
+  // (ver `dataPadraoNoMes`).
+  const [date, setDate] = useState(
+    inicial?.date ?? (isMonthKey(defaultMonth) ? dataPadraoNoMes(defaultMonth, todayIso()) : todayIso()),
+  );
+
+  function preencherCom(m: ModeloDeReceita) {
+    setModelo(m);
+    setTipo("income");
+    setCategoryId(m.categoryId ?? "");
+    setSubcategoryId(m.subcategoryId ?? "");
+    setVisibility(m.visibility);
+    // Mantem o mes que ja esta no formulario; so o dia vem do modelo.
+    setDate(dataDoModelo(m, monthOf(date)));
+    setSugestao(null);
+  }
   // Sugestao de categoria pela descricao. So em lancamento NOVO e com a
   // categoria vazia: editar um lancamento nao pode trocar o que alguem ja
   // escolheu.
@@ -177,6 +219,7 @@ export function TransactionFormDialog({
         footer={<Footer isEdit={isEdit} />}
       >
         <form
+          key={modelo?.chave ?? "novo"}
           id="transaction-form"
           action={formAction}
           className="space-y-4"
@@ -210,6 +253,35 @@ export function TransactionFormDialog({
               );
             })}
           </div>
+          {receita && !isEdit && modelos.length > 0 ? (
+            /*
+             * O salario entra quase igual todo mes: um toque preenche nome,
+             * valor, categoria, quem recebeu e o dia do ultimo mes. A casa
+             * so confere o valor e confirma.
+             */
+            <div>
+              <p className="mb-1.5 text-legenda text-ink-muted">Preencher com uma receita de todo mês</p>
+              <ul className="flex flex-wrap gap-1.5">
+                {modelos.map((m) => (
+                  <li key={m.chave}>
+                    <button
+                      type="button"
+                      aria-pressed={modelo?.chave === m.chave}
+                      onClick={() => preencherCom(m)}
+                      className={
+                        modelo?.chave === m.chave
+                          ? "inline-flex min-h-9 items-center gap-1.5 rounded-full border border-info bg-info/10 px-3 text-legenda text-ink"
+                          : "inline-flex min-h-9 items-center gap-1.5 rounded-full border border-line bg-surface-2 px-3 text-legenda text-ink hover:border-line-strong"
+                      }
+                    >
+                      {m.description}
+                      <span className="tabular text-info">{formatBRL(m.amount)}</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
           {outro ? (
             <Field label="Qual tipo" htmlFor="tipo-outro" error={err.type}>
               <Select
@@ -227,7 +299,7 @@ export function TransactionFormDialog({
               name="description"
               required
               maxLength={200}
-              defaultValue={transaction?.description ?? ""}
+              defaultValue={inicial?.description ?? ""}
               placeholder={receita ? "Salário, Pix recebido, reembolso…" : "Mercado, aluguel, jantar…"}
               aria-invalid={err.description ? true : undefined}
               onBlur={(e) => {
@@ -245,7 +317,7 @@ export function TransactionFormDialog({
                 name="amount"
                 inputMode="decimal"
                 required
-                defaultValue={transaction?.amount ?? ""}
+                defaultValue={inicial?.amount ?? ""}
                 placeholder="0,00"
                 className="tabular"
                 aria-invalid={err.amount ? true : undefined}
@@ -378,7 +450,7 @@ export function TransactionFormDialog({
                 id="memberId"
                 name="memberId"
                 placeholder="—"
-                defaultValue={transaction?.isJoint ? DOS_DOIS : (transaction?.memberId ?? "")}
+                defaultValue={inicial?.isJoint ? DOS_DOIS : (inicial?.memberId ?? "")}
                 options={[
                   ...members.map((m) => ({ value: m.userId, label: m.fullName })),
                   // Com duas pessoas, "Os dois"; com mais, "Todos". Nome de
