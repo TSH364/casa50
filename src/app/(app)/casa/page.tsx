@@ -15,13 +15,21 @@ import { CalendarsManager } from "@/components/calendar/calendars-manager";
 import { PendingInvites } from "@/components/house/pending-invites";
 import { AiSettings } from "@/components/house/ai-settings";
 import { Bancos, type ConexaoResumo } from "@/components/house/bancos";
+import { GmailConexao, type GmailResumo } from "@/components/secretario/gmail-conexao";
+import { carregarSecretario } from "@/data/secretario";
+import { credenciaisGoogle } from "@/lib/gmail";
 import { getAiStatus } from "@/lib/ai-config";
 import { buildInfo, buildLabel } from "@/lib/version";
 
 export const metadata: Metadata = { title: "Casa · Fluxo" };
 
-export default async function CasaPage() {
+export default async function CasaPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ gmail?: string }>;
+}) {
   const { active } = await getActiveHouse();
+  const params = await searchParams;
   const [roster, invites, user, members, calendars, ia] = await Promise.all([
     active ? listRoster(active.id) : Promise.resolve([]),
     listPendingInvitesForMe(),
@@ -53,6 +61,16 @@ export default async function CasaPage() {
   }
   const minhaConexao = conexoes.find((c) => c.memberId === user?.id) ?? null;
 
+  // O Gmail do secretario: o refresh token esta no Vault; aqui, so o estado.
+  const secretario = active ? await carregarSecretario(active.id, 0) : null;
+  const gmails: GmailResumo[] = (secretario?.conexoes ?? []).map((c) => ({
+    memberId: c.memberId,
+    nome: members.find((m) => m.userId === c.memberId)?.fullName.split(" ")[0] ?? "Alguém",
+    email: c.email,
+    lastSyncAt: c.lastSyncAt,
+    lastError: c.lastError,
+  }));
+
   // Só dono e administrador convidam, mudam papel ou removem. O RLS recusaria
   // de qualquer forma; esconder os controles evita oferecer o que vai falhar.
   const canManage =
@@ -83,6 +101,17 @@ export default async function CasaPage() {
           minha={minhaConexao}
           outras={conexoes.filter((c) => c.memberId !== user?.id)}
           podeConectar={active.role !== "viewer"}
+        />
+      ) : null}
+
+      {active && secretario ? (
+        <GmailConexao
+          minha={gmails.find((g) => g.memberId === user?.id) ?? null}
+          outras={gmails.filter((g) => g.memberId !== user?.id)}
+          podeConectar={active.role !== "viewer"}
+          configurado={credenciaisGoogle() !== null}
+          disponivel={secretario.disponivel}
+          aviso={params.gmail}
         />
       ) : null}
 

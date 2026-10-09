@@ -66,6 +66,7 @@ const USO: Record<string, string> = {
   insights: "Análise do mês",
   pesquisa: "Pesquisa de compra",
   radar: "Radar de produtos",
+  secretario: "Secretário (Gmail)",
   voz: "Voz da conversa",
 };
 

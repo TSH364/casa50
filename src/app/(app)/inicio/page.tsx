@@ -17,6 +17,7 @@ import { MonthSwitcher } from "@/components/month-switcher";
 import { FilterChips } from "@/components/filter-chips";
 import { NewTransactionButton } from "@/components/transactions/new-transaction-button";
 import { carregarReceitasDoMes } from "@/data/receitas-do-mes";
+import { SecretarioResumo } from "@/components/secretario/secretario-resumo";
 import { FiltrosInicio } from "@/components/home/filtros-inicio";
 import { rotuloDoCartao } from "@/domain/cartoes";
 import { InicioPainel, InicioPainelSkeleton } from "@/components/home/inicio-painel";
@@ -161,6 +162,12 @@ export default async function InicioPage({
       ) : null}
 
       {memberId ? <PersonFilterNote cards={cards} houseWidePanels /> : null}
+
+      {/* O secretario: so aparece quando ha e-mail pedindo algo. Em Suspense
+          para a leitura dele nunca segurar o Inicio. */}
+      <Suspense fallback={null}>
+        <SecretarioResumo houseId={active.id} />
+      </Suspense>
 
       <Suspense key={`painel:${key}`} fallback={<InicioPainelSkeleton />}>
         <InicioPainel
