@@ -5,7 +5,7 @@ import { notFound } from "next/navigation";
 import { getActiveHouse, listMembers } from "@/lib/houses";
 import { listCards, listCategories, listTransactions } from "@/data/queries";
 import { ladoNoExtrato, summarizeMonth, tipoDoExtrato } from "@/domain/finance";
-import { currentMonth, isMonthKey } from "@/domain/month";
+import { currentMonth, isMonthKey, monthDiff } from "@/domain/month";
 import { Card, CardHeader } from "@/components/ui/card";
 import { Skeleton } from "@/components/states";
 import { MonthSwitcher } from "@/components/month-switcher";
@@ -17,6 +17,8 @@ import { TransactionList } from "@/components/transactions/transaction-list";
 import { TotaisSeparados } from "@/components/transactions/totais-separados";
 import { FiltroTipo } from "@/components/transactions/filtro-tipo";
 import { NewTransactionButton } from "@/components/transactions/new-transaction-button";
+import { ReceitasQueFaltam } from "@/components/transactions/receitas-que-faltam";
+import { carregarReceitasDoMes, type ReceitasDoMes } from "@/data/receitas-do-mes";
 import { Statements, StatementsSkeleton } from "@/components/statements/card-totals";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -56,6 +58,7 @@ async function Listing({
   categories,
   cards,
   members,
+  receitas,
 }: {
   houseId: string;
   month: MonthKey;
@@ -67,6 +70,7 @@ async function Listing({
   categories: Category[];
   cards: CardType[];
   members: MemberSummary[];
+  receitas: ReceitasDoMes;
 }) {
   const todas = await listTransactions(houseId, {
     month,
@@ -100,6 +104,24 @@ async function Listing({
       <div className="mb-3">
         <FiltroTipo ativo={tipo} contagem={contagem} />
       </div>
+      {/* So no recorte da casa inteira: filtrada por cartao ou categoria, a
+          lista nao mostraria a receita lancada, e o aviso pareceria errado.
+          E so ate o mes atual - adiante, a Projecao ja conta com elas. */}
+      {tipo !== "saida" &&
+      !memberId &&
+      !cardId &&
+      !categoryId &&
+      !search?.trim() &&
+      monthDiff(month, currentMonth()) >= 0 ? (
+        <ReceitasQueFaltam
+          faltam={receitas.faltam}
+          modelos={receitas.modelos}
+          month={month}
+          categories={categories}
+          cards={cards}
+          members={members}
+        />
+      ) : null}
       <TransactionList
         transactions={transactions}
         categories={categories}
@@ -127,14 +149,15 @@ export default async function ExtratosPage({
   if (!active) notFound();
 
   const params = await searchParams;
-  const [members, cards, categories] = await Promise.all([
+  const month =
+    params.mes && isMonthKey(params.mes) ? params.mes : currentMonth();
+  const [members, cards, categories, receitas] = await Promise.all([
     listMembers(active.id),
     listCards(active.id),
     listCategories(active.id),
+    carregarReceitasDoMes(active.id, month),
   ]);
 
-  const month =
-    params.mes && isMonthKey(params.mes) ? params.mes : currentMonth();
   const memberId = params.membro ?? null;
   const cardId = params.cartao ?? null;
   const categoryId = params.categoria ?? null;
@@ -177,6 +200,7 @@ export default async function ExtratosPage({
             defaultMonth={month}
             label="Lançar"
             iconOnly
+            modelos={receitas.modelos}
           />
         </div>
       </header>
@@ -238,6 +262,7 @@ export default async function ExtratosPage({
           categoryId={categoryId}
           search={search}
           tipo={tipo}
+          receitas={receitas}
           categories={categories}
           cards={cards}
           members={members}
