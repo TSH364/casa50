@@ -52,7 +52,9 @@ function diferenca(insight: Insight, m: InsightMedida): string {
     return `${Math.round((m.atualCents / m.referenciaCents) * 100)}% do limite`;
   }
   const d = m.atualCents - m.referenciaCents;
-  const pct = m.referenciaCents > 0 ? Math.round((Math.abs(d) / m.referenciaCents) * 100) : null;
+  // Mes negativo (mais estorno que gasto): "117% menor" nao quer dizer nada.
+  const pct =
+    m.referenciaCents > 0 && m.atualCents >= 0 ? Math.round((Math.abs(d) / m.referenciaCents) * 100) : null;
   return `${d >= 0 ? "+" : "−"}${formatCents(Math.abs(d))}${pct !== null ? ` · ${pct}%` : ""}`;
 }
 
@@ -68,10 +70,15 @@ function diferenca(insight: Insight, m: InsightMedida): string {
  */
 export function MedidaBar({ tone: tom, medida: m }: { tone: InsightTone; medida: InsightMedida }) {
   const tone = TONE[tom];
-  const escala = Math.max(m.atualCents, m.referenciaCents, 1);
+  // A barra comeca no zero. Mes com mais estorno que gasto fica negativo
+  // (Viagens: -R$ 234,17): o valor escrito diz isso, e a barra fica vazia em
+  // vez de vazar do cartao para a esquerda.
+  const atual = Math.max(0, m.atualCents);
+  const referencia = Math.max(0, m.referenciaCents);
+  const escala = Math.max(atual, referencia, 1);
   const pct = (c: number) => `${(c / escala) * 100}%`;
-  const base = Math.min(m.atualCents, m.referenciaCents);
-  const passou = m.atualCents > m.referenciaCents;
+  const base = Math.min(atual, referencia);
+  const passou = atual > referencia;
   // Gasto menor que a media e boa noticia; o que cabe no orcamento e so espaco.
   const sobraBoa = tom === "positive";
 
@@ -94,22 +101,22 @@ export function MedidaBar({ tone: tom, medida: m }: { tone: InsightTone; medida:
           // 2px de folga entre o cinza e o excesso: dois pedacos, nao um so.
           <span
             className={cn("absolute inset-y-0 rounded-r-full", tone.excesso)}
-            style={{ left: `calc(${pct(m.referenciaCents)} + 2px)`, right: 0 }}
+            style={{ left: `calc(${pct(referencia)} + 2px)`, right: 0 }}
           />
-        ) : m.atualCents < m.referenciaCents ? (
+        ) : atual < referencia ? (
           <span
             className={cn(
               "absolute inset-y-0 rounded-r-full border border-dashed",
               sobraBoa ? "border-positive bg-positive-soft" : "border-line-strong",
             )}
-            style={{ left: `calc(${pct(m.atualCents)} + 2px)`, right: 0 }}
+            style={{ left: atual > 0 ? `calc(${pct(atual)} + 2px)` : 0, right: 0 }}
           />
         ) : null}
         {/* O traco da referencia, um pouco maior que a barra. */}
         <span
           aria-hidden
           className="absolute -inset-y-1 w-0.5 -translate-x-1/2 rounded-full bg-ink"
-          style={{ left: pct(m.referenciaCents) }}
+          style={{ left: pct(referencia) }}
         />
       </div>
       <div className="mt-1.5 flex items-baseline justify-between gap-3 text-legenda">

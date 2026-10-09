@@ -1,7 +1,7 @@
 import type { Budget, Category, MonthKey, Transaction } from "./types";
 import type { Cents } from "@/lib/money";
 import { toCents } from "@/lib/money";
-import { addMonths, monthDiff, monthRange } from "./month";
+import { addMonths, monthDiff, monthRange, monthShortLabel } from "./month";
 import { spendingCents, totalsByCategory } from "./finance";
 import { installmentSeries, type RecurrenceMatch } from "./forecast";
 import { EVENT_KIND_LABEL, type MonthPressure } from "./calendar";
@@ -176,7 +176,10 @@ function categoryComparisons(input: InsightInput): Insight[] {
         kind: "category_drop",
         tone: "positive",
         title: `${nameOf(categoryId)} abaixo da média`,
-        detail: `Gasto ${percent(1 - ratio)} menor que a média dos últimos meses.`,
+        detail:
+          currentCents < 0
+            ? "Os estornos passaram dos gastos neste mês."
+            : `Gasto ${percent(1 - ratio)} menor que a média dos últimos meses.`,
         evidence,
         medida,
         href,
@@ -308,7 +311,7 @@ function endingInstallments(input: InsightInput): Insight[] {
       evidence: [
         ...ending.slice(0, 3).map((s) => ({
           label: s.description,
-          value: `${brl(s.installmentCents)}/mês · última em ${s.endsOn}`,
+          value: `${brl(s.installmentCents)}/mês · última em ${monthShortLabel(s.endsOn)}/${s.endsOn.slice(2, 4)}`,
         })),
         { label: "Total liberado por mês", value: brl(freed) },
       ],

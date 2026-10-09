@@ -89,6 +89,25 @@ describe("o cartão da observação", () => {
     expect(screen.getByText("Sofá")).toBeTruthy();
   });
 
+  it("mês negativo (mais estorno que gasto): a barra não vaza para fora e a etiqueta não diz 117%", async () => {
+    const { InsightCard } = await import("@/components/insights/insight-card");
+    const { container } = render(
+      <ul>
+        <InsightCard
+          insight={exemplo({
+            kind: "category_drop", tone: "positive", title: "Viagens abaixo da média",
+            medida: { atualCents: -23_417, atualRotulo: "Neste mês", referenciaCents: 134_556, referenciaRotulo: "média" },
+          })}
+        />
+      </ul>,
+    );
+    const lefts = [...container.querySelectorAll<HTMLElement>("[style]")].map((e) => e.style.left).filter(Boolean);
+    expect(lefts.some((l) => l.includes("-"))).toBe(false);
+    expect(nbsp(container.textContent)).toContain("−R$ 1.579,73");
+    expect(container.textContent).not.toContain("117%");
+    expect(nbsp(container.textContent)).toContain("Neste mês −R$ 234,17".replace("−", "-"));
+  });
+
   it("agrupa em pede atenção e boas notícias, com a contagem", async () => {
     const { InsightsDoMes } = await import("@/components/insights/insights-do-mes");
     const { rerender } = render(
