@@ -32,7 +32,9 @@ import { InstallmentsCard, NextMonthsCard } from "@/components/forecast/forecast
 import { ProjecaoCard } from "@/components/forecast/projecao-card";
 import { projetar, quandoComprar } from "@/domain/projecao";
 import { carregarRadar } from "@/data/radar";
-import { InsightCard } from "@/components/insights/insight-card";
+import { InsightsDoMes } from "@/components/insights/insights-do-mes";
+import { ResumoDoMes } from "@/components/insights/resumo-do-mes";
+import { AtalhosDaAnalise } from "@/components/insights/atalhos-da-analise";
 import { AiAnalysisCard } from "@/components/insights/ai-analysis";
 
 export const metadata: Metadata = { title: "Análise · Fluxo" };
@@ -46,9 +48,10 @@ export const maxDuration = 60;
  *
  * Eram duas telas - Insights e Previsao - que respondiam a mesma pergunta
  * de lados diferentes ("como estamos?"), e a casa pulava de uma para a outra.
- * A ordem segue a leitura: a IA resume, o app mostra o que mudou, a agenda
- * explica o mes, e depois vem o que ja esta comprometido. A matriz fica por
- * ultimo, como o terreno onde conferir tudo.
+ * A ordem vai da resposta ao detalhe: o mes em quatro numeros, o que o app
+ * viu, o que a IA acrescenta (sem repetir o app), a projecao, a agenda que
+ * explica o mes, o que ja esta comprometido e, por ultimo, a matriz - o
+ * terreno onde conferir tudo. Atalhos no topo levam a cada bloco.
  */
 export default async function AnalisePage({
   searchParams,
@@ -152,64 +155,83 @@ export default async function AnalisePage({
 
       <TotalsNote view={view} month={month} />
 
-      <AiAnalysisCard
-        key={`${month}:${scope}`}
-        month={month}
-        scope={scope}
-        initial={analise}
-        enabled={ia.source !== null}
+      <AtalhosDaAnalise
+        itens={[
+          { id: "resumo", rotulo: "Resumo" },
+          { id: "o-que-mudou", rotulo: "O que mudou" },
+          { id: "leitura-ia", rotulo: "Leitura da IA" },
+          ...(projecao ? [{ id: "projecao", rotulo: "Projeção" }] : []),
+          { id: "agenda", rotulo: "Agenda" },
+          { id: "recorrencias", rotulo: "Contas fixas" },
+          { id: "parcelas", rotulo: "Parcelas" },
+          { id: "categorias", rotulo: "Categorias" },
+        ]}
       />
 
+      {/* Da resposta ao detalhe: os numeros do mes, o que o app viu, o que a IA acrescenta. */}
+      <section id="resumo" className="scroll-mt-28">
+        <ResumoDoMes transactions={transactions} month={month} emAndamento={ehMesAtual} />
+      </section>
+
+      <section id="o-que-mudou" className="scroll-mt-28">
+        <Card>
+          <CardHeader
+            title={`O que mudou em ${monthLabel(month)}`}
+            description="Cada observação vem com os números que a sustentam."
+          />
+          {insights.length > 0 ? (
+            <InsightsDoMes insights={insights} />
+          ) : (
+            <div className="py-6 text-center">
+              <Sparkles className="mx-auto size-6 text-ink-faint" aria-hidden />
+              <p className="mt-3 text-sm text-ink">
+                {depth < 2 ? "Ainda não dá para comparar." : "Nada fora do comum neste mês."}
+              </p>
+              <p className="mx-auto mt-1 max-w-sm text-corpo text-ink-faint">
+                {depth < 2
+                  ? `Há ${depth} ${depth === 1 ? "mês" : "meses"} de histórico. Comparar com um mês só produziria alarme falso, então o app prefere ficar calado até ter base.`
+                  : "Os gastos ficaram dentro do padrão dos meses anteriores, e nenhum orçamento passou de 80%."}
+              </p>
+            </div>
+          )}
+          {insights.length > 0 ? (
+            <p className="mt-3 text-legenda text-ink-faint">
+              Comparações usam até 6 meses de histórico. Variações abaixo de R$ 50 não geram observação — seriam
+              ruído, não informação.
+            </p>
+          ) : null}
+        </Card>
+      </section>
+
+      <section id="leitura-ia" className="scroll-mt-28">
+        <AiAnalysisCard
+          key={`${month}:${scope}`}
+          month={month}
+          scope={scope}
+          initial={analise}
+          enabled={ia.source !== null}
+          observacoes={insights.map((i) => ({ fato: i.fato }))}
+        />
+      </section>
+
       {projecao ? (
-        <section id="projecao" className="scroll-mt-20">
+        <section id="projecao" className="scroll-mt-28">
           <ProjecaoCard projecao={projecao} atual={month} compras={compras} />
         </section>
       ) : null}
 
-      <Card>
-        <CardHeader
-          title={`O que mudou em ${monthLabel(month)}`}
-          description="Cada observação vem com os números que a sustentam."
-        />
-        {insights.length > 0 ? (
-          <ul className="space-y-2">
-            {insights.map((insight) => (
-              <InsightCard key={insight.id} insight={insight} />
-            ))}
-          </ul>
-        ) : (
-          <div className="py-6 text-center">
-            <Sparkles className="mx-auto size-6 text-ink-faint" aria-hidden />
-            <p className="mt-3 text-sm text-ink">
-              {depth < 2 ? "Ainda não dá para comparar." : "Nada fora do comum neste mês."}
-            </p>
-            <p className="mx-auto mt-1 max-w-sm text-corpo text-ink-faint">
-              {depth < 2
-                ? `Há ${depth} ${depth === 1 ? "mês" : "meses"} de histórico. Comparar com um mês só produziria alarme falso, então o app prefere ficar calado até ter base.`
-                : "Os gastos ficaram dentro do padrão dos meses anteriores, e nenhum orçamento passou de 80%."}
-            </p>
-          </div>
-        )}
-        {insights.length > 0 ? (
-          <p className="mt-3 text-legenda text-ink-faint">
-            Comparações usam até 6 meses de histórico. Variações abaixo de R$ 50 não geram observação — seriam
-            ruído, não informação.
-          </p>
-        ) : null}
-      </Card>
-
       {/* A agenda explica um mês fora do padrão. */}
-      <section id="agenda" className="scroll-mt-20">
+      <section id="agenda" className="scroll-mt-28">
         <Suspense fallback={<AgendaPanelSkeleton />}>
           <AgendaPanel houseId={active.id} month={month} excludeCategoryIds={excludeCategoryIds} />
         </Suspense>
       </section>
 
-      <section id="proximos-meses" className="scroll-mt-20">
+      <section id="proximos-meses" className="scroll-mt-28">
         <NextMonthsCard forecast={forecast} />
       </section>
 
-      <section id="recorrencias" className="scroll-mt-20">
+      <section id="recorrencias" className="scroll-mt-28">
         <RecurrencesPanel
           matches={matches}
           candidates={candidates}
@@ -220,7 +242,7 @@ export default async function AnalisePage({
         />
       </section>
 
-      <section id="parcelas" className="scroll-mt-20">
+      <section id="parcelas" className="scroll-mt-28">
         <InstallmentsCard running={running} categories={categories} cards={cards} />
       </section>
 
@@ -228,9 +250,11 @@ export default async function AnalisePage({
         Os insights dizem o que mudou; a matriz mostra o terreno de onde
         saíram, para o casal conferir a conclusão em vez de acreditar nela.
       */}
-      <Suspense key={`matriz:${month}`} fallback={<CategoryMatrixSkeleton />}>
-        <CategoryMatrix houseId={active.id} month={month} excludeCategoryIds={excludeCategoryIds} />
-      </Suspense>
+      <section id="categorias" className="scroll-mt-28">
+        <Suspense key={`matriz:${month}`} fallback={<CategoryMatrixSkeleton />}>
+          <CategoryMatrix houseId={active.id} month={month} excludeCategoryIds={excludeCategoryIds} />
+        </Suspense>
+      </section>
     </div>
   );
 }

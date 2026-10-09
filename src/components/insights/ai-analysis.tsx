@@ -5,10 +5,12 @@ import Link from "next/link";
 import { CircleAlert, Lightbulb, Sparkles, TrendingDown, TrendingUp } from "lucide-react";
 import { analyzeMonth } from "@/actions/ai-insights";
 import type { SavedAiAnalysis } from "@/data/queries";
-import type { InsightTone } from "@/domain/insights";
+import { repeteObservacao, type Insight, type InsightTone } from "@/domain/insights";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
+import { EvidenciasDaIa } from "./evidencias-ia";
+import { plural } from "@/domain/evidencia";
 
 /**
  * A leitura do mes feita por IA (secao 14).
@@ -18,11 +20,11 @@ import { cn } from "@/lib/utils";
  * mesma, com a data em que foi feita.
  */
 
-const TOM: Record<InsightTone, { border: string; icon: string; Icon: typeof TrendingUp }> = {
-  positive: { border: "border-l-positive", icon: "text-positive", Icon: TrendingDown },
-  neutral: { border: "border-l-line-strong", icon: "text-ink-muted", Icon: Sparkles },
-  attention: { border: "border-l-attention", icon: "text-attention", Icon: TrendingUp },
-  danger: { border: "border-l-danger", icon: "text-danger", Icon: CircleAlert },
+const TOM: Record<InsightTone, { border: string; icon: string; soft: string; Icon: typeof TrendingUp }> = {
+  positive: { border: "border-l-positive", icon: "text-positive", soft: "bg-positive-soft", Icon: TrendingDown },
+  neutral: { border: "border-l-line-strong", icon: "text-ink-muted", soft: "bg-surface-3", Icon: Sparkles },
+  attention: { border: "border-l-attention", icon: "text-attention", soft: "bg-attention-soft", Icon: TrendingUp },
+  danger: { border: "border-l-danger", icon: "text-danger", soft: "bg-danger-soft", Icon: CircleAlert },
 };
 
 const QUANDO = new Intl.DateTimeFormat("pt-BR", {
@@ -38,15 +40,22 @@ export function AiAnalysisCard({
   scope,
   initial,
   enabled,
+  observacoes = [],
 }: {
   month: string;
   scope: "casa" | "tudo";
   initial: SavedAiAnalysis | null;
   enabled: boolean;
+  /** As observacoes do app na mesma tela: a analise que so as repete sai. */
+  observacoes?: Pick<Insight, "fato">[];
 }) {
   const [analise, setAnalise] = useState(initial);
   const [erro, setErro] = useState<string | null>(null);
   const [pending, start] = useTransition();
+
+  // "Alimentacao abaixo da media" aparecia aqui e de novo em O que mudou.
+  const itens = analise?.items.filter((a) => !repeteObservacao(a.evidence, observacoes)) ?? [];
+  const repetidas = (analise?.items.length ?? 0) - itens.length;
 
   function analisar() {
     setErro(null);
@@ -70,36 +79,41 @@ export function AiAnalysisCard({
 
       {analise ? (
         <ul className="space-y-2">
-          {analise.items.map((a, i) => {
+          {itens.map((a, i) => {
             const tom = TOM[a.tone];
             return (
               <li key={i} className={cn("rounded-(--radius-control) border-l-2 bg-surface-2 px-3 py-3", tom.border)}>
                 <div className="flex items-start gap-2.5">
-                  <tom.Icon className={cn("mt-0.5 size-4 shrink-0", tom.icon)} aria-hidden />
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium text-ink">{a.title}</p>
-                    <p className="mt-0.5 text-corpo text-ink-muted">{a.text}</p>
-                    {a.suggestion ? (
-                      <p className="mt-1.5 flex items-start gap-1.5 text-corpo text-ink">
-                        <Lightbulb className="mt-0.5 size-3.5 shrink-0 text-attention" aria-hidden />
-                        <span>{a.suggestion}</span>
-                      </p>
-                    ) : null}
-                  </div>
+                  <span className={cn("flex size-7 shrink-0 items-center justify-center rounded-full", tom.soft)}>
+                    <tom.Icon className={cn("size-4", tom.icon)} aria-hidden />
+                  </span>
+                  <p className="min-w-0 flex-1 pt-1 text-sm font-semibold text-ink">{plural(a.title)}</p>
                 </div>
-                {/* A evidencia vem dos fatos do app, nao do texto da IA. */}
-                <dl className="mt-2.5 space-y-0.5 border-t border-line pt-2">
-                  {a.evidence.map((e) => (
-                    <div key={e.label} className="flex flex-wrap items-baseline gap-x-1.5">
-                      <dt className="text-legenda text-ink-faint">{e.label}:</dt>
-                      <dd className="tabular text-legenda font-medium text-ink-muted">{e.value}</dd>
-                    </div>
-                  ))}
-                </dl>
+                {/* O texto na largura toda: recuado sob o icone, no celular sobravam cinco palavras por linha. */}
+                <p className="mt-1.5 text-corpo text-ink-muted">{plural(a.text)}</p>
+                {/* A evidencia vem dos fatos do app, nao do texto da IA - e vira desenho. */}
+                <EvidenciasDaIa evidence={a.evidence} tone={a.tone} />
+                {a.suggestion ? (
+                  <div className="mt-2.5 flex items-start gap-2 rounded-(--radius-control) border border-dashed border-line-strong px-3 py-2">
+                    <Lightbulb className="mt-0.5 size-4 shrink-0 text-attention" aria-hidden />
+                    <p className="text-corpo text-ink">
+                      <span className="mr-1 font-medium">Sugestão:</span>
+                      {plural(a.suggestion)}
+                    </p>
+                  </div>
+                ) : null}
               </li>
             );
           })}
         </ul>
+      ) : null}
+
+      {repetidas > 0 ? (
+        <p className="mt-2 text-legenda text-ink-faint">
+          {repetidas === 1
+            ? "1 análise repetia uma observação de O que mudou e ficou de fora."
+            : `${repetidas} análises repetiam observações de O que mudou e ficaram de fora.`}
+        </p>
       ) : null}
 
       {analise && analise.dropped > 0 ? (
