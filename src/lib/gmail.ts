@@ -7,11 +7,16 @@ import type { MensagemGmailBruta } from "@/domain/secretario";
  * conta, listar mensagens e ler uma. Roda no servidor: o Client Secret e os
  * tokens nunca vao para o navegador.
  *
- * Permissao pedida: `gmail.readonly`. O app LE; nao manda, nao apaga, nao
- * marca como lido.
+ * Permissoes pedidas, so de leitura: `gmail.readonly` (o app nao manda, nao
+ * apaga, nao marca como lido) e `spreadsheets.readonly` (a planilha de notas
+ * fiscais que o Gemini da casa preenche - ver `domain/notas.ts`).
  */
 
-const ESCOPO = "https://www.googleapis.com/auth/gmail.readonly";
+const ESCOPO = [
+  "https://www.googleapis.com/auth/gmail.readonly",
+  "https://www.googleapis.com/auth/spreadsheets.readonly",
+].join(" ");
+const SHEETS = "https://sheets.googleapis.com/v4/spreadsheets";
 const AUTH = "https://accounts.google.com/o/oauth2/v2/auth";
 const TOKEN = "https://oauth2.googleapis.com/token";
 const API = "https://gmail.googleapis.com/gmail/v1/users/me";
@@ -111,20 +116,34 @@ export async function tokenDeAcesso(
 }
 
 async function pedir<T>(caminho: string, accessToken: string): Promise<T> {
+  return pedirUrl<T>(`${API}${caminho}`, accessToken, "Gmail");
+}
+
+async function pedirUrl<T>(url: string, accessToken: string, servico: "Gmail" | "Planilhas"): Promise<T> {
   let r: Response;
   try {
-    r = await fetch(`${API}${caminho}`, {
+    r = await fetch(url, {
       headers: { authorization: `Bearer ${accessToken}`, accept: "application/json" },
       signal: AbortSignal.timeout(LIMITE_MS),
       cache: "no-store",
     });
   } catch {
-    throw new GmailError("O Gmail não respondeu. Tente de novo em instantes.");
+    throw new GmailError(`O Google (${servico}) não respondeu. Tente de novo em instantes.`);
   }
-  if (r.status === 401 || r.status === 403) {
-    throw new GmailError("O Gmail recusou a leitura. Conecte o Gmail de novo em Casa.", true);
+  if (r.status === 401) {
+    throw new GmailError("O Google recusou a leitura. Conecte o Google de novo em Casa.", true);
   }
-  if (!r.ok) throw new GmailError(`O Gmail respondeu com erro (${r.status}).`);
+  if (r.status === 403) {
+    // Sem a permissao (a conexao e de antes das planilhas) ou sem acesso ao arquivo.
+    throw new GmailError(
+      servico === "Planilhas"
+        ? "Sem acesso à planilha. Conecte o Google de novo em Casa (para dar acesso às planilhas) e confira se a planilha é da mesma conta."
+        : "O Gmail recusou a leitura. Conecte o Google de novo em Casa.",
+      true,
+    );
+  }
+  if (r.status === 404) throw new GmailError(`O Google não achou ${servico === "Planilhas" ? "a planilha" : "o e-mail"}.`);
+  if (!r.ok) throw new GmailError(`O Google (${servico}) respondeu com erro (${r.status}).`);
   return (await r.json()) as T;
 }
 
@@ -143,4 +162,27 @@ export async function listarMensagens(accessToken: string, busca: string, maximo
 
 export async function lerMensagem(accessToken: string, id: string): Promise<MensagemGmailBruta> {
   return pedir<MensagemGmailBruta>(`/messages/${encodeURIComponent(id)}?format=full`, accessToken);
+}
+
+/**
+ * As linhas da planilha de notas: a aba "Notas Fiscais" quando existe, senao
+ * a primeira. Valores crus (numero e numero), datas como texto.
+ */
+export async function lerPlanilha(accessToken: string, planilhaId: string): Promise<unknown[][]> {
+  const id = encodeURIComponent(planilhaId);
+  const meta = await pedirUrl<{ sheets?: { properties?: { title?: string } }[] }>(
+    `${SHEETS}/${id}?fields=sheets.properties.title`,
+    accessToken,
+    "Planilhas",
+  );
+  const abas = (meta.sheets ?? []).map((s) => s.properties?.title ?? "").filter(Boolean);
+  const aba = abas.find((t) => /notas? fisca/i.test(t)) ?? abas[0];
+  if (!aba) return [];
+  const q = new URLSearchParams({ valueRenderOption: "UNFORMATTED_VALUE", dateTimeRenderOption: "FORMATTED_STRING" });
+  const r = await pedirUrl<{ values?: unknown[][] }>(
+    `${SHEETS}/${id}/values/${encodeURIComponent(`'${aba.replace(/'/g, "''")}'!A1:Z3000`)}?${q}`,
+    accessToken,
+    "Planilhas",
+  );
+  return r.values ?? [];
 }

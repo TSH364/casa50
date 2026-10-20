@@ -19,6 +19,10 @@ vi.mock("@/actions/secretario", () => ({
   lerEmailsAgora: vi.fn(async () => ({ novos: 0, erros: [] })),
   desconectarGmail: vi.fn(async () => ({})),
 }));
+vi.mock("@/actions/notas", () => ({
+  salvarPlanilhaDeNotas: vi.fn(async () => ({ ok: true })),
+  lerNotasAgora: vi.fn(async () => ({ novas: 3, ligadas: 2 })),
+}));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }) }));
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 vi.mock("@/actions/transactions", () => ({ createTransaction: vi.fn(), updateTransaction: vi.fn() }));

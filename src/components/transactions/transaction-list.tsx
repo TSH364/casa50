@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
-import { Pencil, Trash2 } from "lucide-react";
+import { FileText, Pencil, Trash2 } from "lucide-react";
 import { deleteTransaction } from "@/actions/transactions";
 import { TransactionFormDialog } from "./transaction-form";
 import { CategoryPicker } from "./category-picker";
@@ -16,6 +16,7 @@ import { categoriasDoLado, ladoDoTipo } from "@/domain/categorias";
 import { monthShortLabel } from "@/domain/month";
 import { cn } from "@/lib/utils";
 import type { Card, Category, Transaction } from "@/domain/types";
+import type { NotaResumo } from "@/domain/notas";
 import type { MemberSummary } from "@/lib/houses";
 
 const TYPE_LABEL: Record<Transaction["type"], string> = {
@@ -51,12 +52,15 @@ export function TransactionList({
   cards,
   members,
   defaultMonth,
+  notas = {},
 }: {
   transactions: Transaction[];
   categories: Category[];
   cards: Card[];
   members: MemberSummary[];
   defaultMonth: string;
+  /** As notas fiscais ligadas a cada compra (planilha do Gemini). */
+  notas?: Record<string, NotaResumo[]>;
 }) {
   const [editing, setEditing] = useState<Transaction | undefined>();
   const [deleting, setDeleting] = useState<Transaction | undefined>();
@@ -165,6 +169,30 @@ export function TransactionList({
                 <p className="mt-0.5 truncate text-legenda text-ink-faint">
                   {details.join(" · ")}
                 </p>
+
+                {notas[t.id]?.length ? (
+                  /* O que foi comprado, pela nota fiscal: a fatura so diz "MERCADOLIVRE". */
+                  <p className="mt-1 flex min-w-0 items-center gap-1.5 text-legenda text-ink-muted">
+                    <FileText className="size-3.5 shrink-0 text-ink-faint" aria-hidden />
+                    <span className="min-w-0 truncate" title={notas[t.id]!.map((n) => n.produto).join(" · ")}>
+                      {notas[t.id]![0]!.produto}
+                      {notas[t.id]!.length > 1 ? ` +${notas[t.id]!.length - 1}` : ""}
+                    </span>
+                    {notas[t.id]![0]!.linkEmail ? (
+                      <a
+                        href={notas[t.id]![0]!.linkEmail!}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="shrink-0 text-brand hover:underline"
+                        aria-label={`Abrir o e-mail da nota ${notas[t.id]![0]!.numero ?? ""}`.trim()}
+                        title={notas[t.id]![0]!.numero ?? undefined}
+                      >
+                        {/* So "nota": o numero (ate 20 digitos no Mercado Livre) espremia o produto. */}
+                        nota
+                      </a>
+                    ) : null}
+                  </p>
+                ) : null}
 
                 <div className="mt-2 flex items-center gap-2">
                   {t.type === "payment" ? (

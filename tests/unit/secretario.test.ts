@@ -174,7 +174,9 @@ describe("o cliente do Gmail", () => {
   it("pede só leitura, com refresh token", async () => {
     const { urlDeAutorizacao } = await import("@/lib/gmail");
     const u = new URL(urlDeAutorizacao("cid", "https://casa50.app/api/gmail/retorno", "st"));
-    expect(u.searchParams.get("scope")).toBe("https://www.googleapis.com/auth/gmail.readonly");
+    expect(u.searchParams.get("scope")).toBe(
+      "https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/spreadsheets.readonly",
+    );
     expect(u.searchParams.get("access_type")).toBe("offline");
     expect(u.searchParams.get("prompt")).toBe("consent");
     expect(u.searchParams.get("state")).toBe("st");

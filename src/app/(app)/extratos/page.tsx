@@ -19,6 +19,8 @@ import { FiltroTipo } from "@/components/transactions/filtro-tipo";
 import { NewTransactionButton } from "@/components/transactions/new-transaction-button";
 import { ReceitasQueFaltam } from "@/components/transactions/receitas-que-faltam";
 import { carregarReceitasDoMes, type ReceitasDoMes } from "@/data/receitas-do-mes";
+import { comprasPeloProduto, notasDasCompras } from "@/data/notas";
+import { createClient } from "@/lib/supabase/server";
 import { Statements, StatementsSkeleton } from "@/components/statements/card-totals";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -72,19 +74,31 @@ async function Listing({
   members: MemberSummary[];
   receitas: ReceitasDoMes;
 }) {
-  const todas = await listTransactions(houseId, {
+  const supabase = await createClient();
+  let todas = await listTransactions(houseId, {
     month,
     memberId,
     cardId,
     categoryId,
     search,
   });
+  // A busca acha tambem pelo produto da nota fiscal ligada a compra.
+  const pelaNota = search ? await comprasPeloProduto(supabase, houseId, search) : new Set<string>();
+  if (pelaNota.size > 0) {
+    const ja = new Set(todas.map((t) => t.id));
+    const doMes = await listTransactions(houseId, { month, memberId, cardId, categoryId });
+    todas = [...todas, ...doMes.filter((t) => pelaNota.has(t.id) && !ja.has(t.id))].sort((a, b) =>
+      b.date.localeCompare(a.date),
+    );
+  }
   const contagem = {
     tudo: todas.length,
     saidas: todas.filter((t) => ladoNoExtrato(t) === "saida").length,
     entradas: todas.filter((t) => ladoNoExtrato(t) === "entrada").length,
   };
   const transactions = tipo ? todas.filter((t) => ladoNoExtrato(t) === tipo) : todas;
+  // O que a nota fiscal diz de cada compra (planilha do Gemini, ver `domain/notas`).
+  const notas = await notasDasCompras(supabase, houseId, transactions.map((t) => t.id));
   // Total do recorte visível, para o número bater com a lista abaixo dele.
   const summary = summarizeMonth(transactions, month, { memberId, cardId });
 
@@ -124,6 +138,7 @@ async function Listing({
       ) : null}
       <TransactionList
         transactions={transactions}
+        notas={notas}
         categories={categories}
         cards={cards}
         members={members}

@@ -8,6 +8,7 @@ import { recordAiUsage } from "@/lib/ai-usage";
 import { chatCompletion, OpenRouterError } from "@/lib/openrouter";
 import { GmailError, credenciaisGoogle, lerMensagem, listarMensagens, tokenDeAcesso } from "@/lib/gmail";
 import { tabelaAusente } from "@/data/radar";
+import { casarPendentes, planilhasDaCasa, sincronizarPlanilha } from "@/data/notas";
 import { DEFAULT_CHAT_PAID_MODEL } from "@/domain/ai-models";
 import {
   HORAS_ENTRE_LEITURAS,
@@ -88,11 +89,9 @@ async function ler(supabase: Supabase, houseId: string, quais: "todas" | Set<str
   if (conexoes.length === 0) return { novos: 0, erros: [] };
 
   const apiKey = await getAiKey(houseId);
-  if (!apiKey) {
-    const msg = "A IA não está configurada nesta casa: o secretário precisa dela para separar os e-mails.";
-    for (const c of conexoes) await supabase.rpc("mark_email_sync", { p_connection: c.id, p_error: msg });
-    return { novos: 0, erros: [msg] };
-  }
+  const semIa = "A IA não está configurada nesta casa: o secretário precisa dela para separar os e-mails.";
+  const planilhas = await planilhasDaCasa(supabase, houseId);
+  let leuPlanilha = false;
 
   const agora = new Date();
   const hoje = agora.toISOString().slice(0, 10);
@@ -105,6 +104,27 @@ async function ler(supabase: Supabase, houseId: string, quais: "todas" | Set<str
   for (const c of conexoes) {
     try {
       const token = await tokenDeAcesso(c.refresh_token, cred);
+
+      // A planilha de notas fiscais (Gemini), quando ligada: nao depende da IA do app.
+      const planilha = planilhas.get(c.id);
+      if (planilha) {
+        try {
+          await sincronizarPlanilha(supabase, houseId, c.id, planilha, token);
+          leuPlanilha = true;
+        } catch (e) {
+          await supabase.rpc("mark_nf_sync", {
+            p_connection: c.id,
+            p_error: e instanceof GmailError ? e.message : "Falha ao ler a planilha.",
+          });
+        }
+      }
+
+      if (!apiKey) {
+        erros.push(semIa);
+        await supabase.rpc("mark_email_sync", { p_connection: c.id, p_error: semIa });
+        continue;
+      }
+
       const ids = await listarMensagens(token, buscaDoGmail(c.last_sync_at, agora), MAX_POR_LEITURA);
 
       // O que ja foi lido numa vez anterior (a janela volta um dia de proposito).
@@ -205,6 +225,13 @@ async function ler(supabase: Supabase, houseId: string, quais: "todas" | Set<str
   }
 
   if (chamadas > 0) await recordAiUsage(houseId, "secretario", { calls: chamadas, costUsd: custo, model: modelo });
+  if (leuPlanilha) {
+    try {
+      await casarPendentes(supabase, houseId);
+    } catch {
+      console.error("[notas] falha ao casar notas");
+    }
+  }
   revalidatePath("/secretario");
   if (novos > 0) revalidatePath("/inicio");
   return { novos, erros };
