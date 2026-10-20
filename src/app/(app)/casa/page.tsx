@@ -17,6 +17,7 @@ import { AiSettings } from "@/components/house/ai-settings";
 import { Bancos, type ConexaoResumo } from "@/components/house/bancos";
 import { GmailConexao, type GmailResumo } from "@/components/secretario/gmail-conexao";
 import { carregarSecretario } from "@/data/secretario";
+import { estadoDasNotas } from "@/data/notas";
 import { credenciaisGoogle } from "@/lib/gmail";
 import { getAiStatus } from "@/lib/ai-config";
 import { buildInfo, buildLabel } from "@/lib/version";
@@ -63,6 +64,12 @@ export default async function CasaPage({
 
   // O Gmail do secretario: o refresh token esta no Vault; aqui, so o estado.
   const secretario = active ? await carregarSecretario(active.id, 0) : null;
+  const notas = active && secretario?.conexoes.length ? await estadoDasNotas(await createClient(), active.id) : null;
+  const minhaConexaoGoogle = secretario?.conexoes.find((c) => c.memberId === user?.id);
+  const minhasNotas =
+    notas && minhaConexaoGoogle
+      ? { ...(notas.planilhas[minhaConexaoGoogle.id] ?? { sheetId: null, lastSyncAt: null, lastError: null }), total: notas.total, ligadas: notas.ligadas }
+      : null;
   const gmails: GmailResumo[] = (secretario?.conexoes ?? []).map((c) => ({
     memberId: c.memberId,
     nome: members.find((m) => m.userId === c.memberId)?.fullName.split(" ")[0] ?? "Alguém",
@@ -112,6 +119,7 @@ export default async function CasaPage({
           configurado={credenciaisGoogle() !== null}
           disponivel={secretario.disponivel}
           aviso={params.gmail}
+          notas={minhasNotas}
         />
       ) : null}
 

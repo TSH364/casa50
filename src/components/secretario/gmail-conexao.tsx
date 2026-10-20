@@ -8,6 +8,7 @@ import { desconectarGmail } from "@/actions/secretario";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader } from "@/components/ui/card";
 import { ConfirmDialog } from "@/components/ui/dialog";
+import { PlanilhaDeNotas } from "./planilha-de-notas";
 
 export interface GmailResumo {
   memberId: string;
@@ -48,6 +49,7 @@ export function GmailConexao({
   configurado,
   disponivel,
   aviso,
+  notas = null,
 }: {
   minha: GmailResumo | null;
   outras: GmailResumo[];
@@ -55,6 +57,8 @@ export function GmailConexao({
   configurado: boolean;
   disponivel: boolean;
   aviso: string | undefined;
+  /** A planilha de notas fiscais da minha conexao; `null` antes da migracao das notas. */
+  notas?: { sheetId: string | null; lastSyncAt: string | null; lastError: string | null; total: number; ligadas: number } | null;
 }) {
   const router = useRouter();
   const [confirmando, setConfirmando] = useState(false);
@@ -74,7 +78,7 @@ export function GmailConexao({
     <Card>
       <div id="gmail" className="scroll-mt-20" />
       <CardHeader
-        title="Gmail · Secretário"
+        title="Google · Secretário e notas"
         description="O app lê o Gmail e separa o que pede algo: contas, pedidos, compromissos e comprovantes. Só lê: não manda, não apaga, não marca como lido."
       />
       {aviso && AVISO[aviso] ? (
@@ -116,6 +120,8 @@ export function GmailConexao({
           ) : null}
         </div>
       ) : null}
+      {minha && notas && configurado && podeConectar ? <PlanilhaDeNotas {...notas} /> : null}
+
       <p className="mt-3 text-legenda text-ink-faint">
         Fica guardado de cada e-mail importante só o remetente, o assunto, um resumo, o valor e as datas, visíveis para a
         casa. O texto do e-mail vai à IA para ser separado e não é guardado.
