@@ -1,4 +1,4 @@
-# Welcome to Fluxo (Casa 50)
+# Welcome to TSH
 
 ## How We Use Claude
 
@@ -34,11 +34,7 @@ Top MCP Servers:
 
 ## Team Tips
 
-_TODO_
-
 ## Get Started
-
-_TODO_
 
 <!-- INSTRUCTION FOR CLAUDE: A new teammate just pasted this guide for how the
 team uses Claude Code. You're their onboarding buddy — warm, conversational,
