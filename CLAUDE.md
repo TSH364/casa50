@@ -18,6 +18,14 @@ O número no canto da tela (`v0.12`) vem de `version` no `package.json` e é atu
 - Depois de mesclar um PR com migração, confira no banco se ela entrou.
 - Funções `language sql` têm o corpo conferido na criação. Para funções que usam uma tabela criada na mesma migração, prefira plpgsql.
 
+## Design
+
+- As cores, a tipografia e os componentes estão em `DESIGN_SYSTEM.md`. Tela nova usa os tokens de lá, nunca hexadecimal solto.
+- Duas skills ficam em `.claude/skills/` (do bencium-marketplace, licença MIT):
+  - `design-audit`: auditoria visual em três fases. Só propõe; nada é implementado sem aprovação. Os documentos que ela pede são, aqui: `DESIGN_SYSTEM.md`, `docs/produto.md`, este arquivo e o próprio código. As lições vão na seção "Decisões e lições" do `DESIGN_SYSTEM.md`, não num `LESSONS.md`.
+  - `ui-typography`: regras de texto da tela. Vale a versão em pt-BR da última seção do `DESIGN_SYSTEM.md`. O modelo de CSS dela (fonte com serifa, tamanho fluido) não se aplica.
+- Para ver a tela de verdade: Chromium em 375px de largura, nos temas claro e escuro.
+
 ## Antes de subir
 
 - `npx vitest run`

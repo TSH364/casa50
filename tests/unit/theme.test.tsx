@@ -53,10 +53,12 @@ describe("globals.css", () => {
   const sistema = css.slice(css.indexOf(':root[data-theme="system"]'));
 
   // Os que nao mudam de proposito: a rampa do calendario, a tinta sobre ela e
-  // o fundo da Dori (preta, precisa do indigo claro nos dois temas).
+  // o fundo da Dori (preta, precisa do indigo claro nos dois temas) e as
+  // cores das metas no Inicio (tinta escura por cima nos dois temas).
   const FIXOS = new Set([
     "--color-day-1", "--color-day-2", "--color-day-3", "--color-day-4",
     "--color-on-day-dark", "--color-on-day-light", "--color-doria",
+    "--color-meta", "--color-meta-feita", "--color-on-meta",
   ]);
 
   it("o claro redefine todo token de cor do escuro (menos os fixos)", () => {

@@ -54,7 +54,7 @@ export function FiltrosCompactos({
         aria-haspopup="dialog"
         aria-label={`Filtros: ${resumo}. Tocar para mudar.`}
         className={cn(
-          "flex min-h-9 max-w-[60%] items-center gap-1.5 rounded-full border px-3 text-legenda font-medium transition-colors",
+          "flex min-h-11 max-w-[60%] items-center gap-1.5 rounded-full border px-3.5 text-legenda font-medium transition-colors",
           ativo ? "border-brand bg-brand-soft text-ink" : "border-line bg-surface text-ink-muted hover:text-ink",
           className,
         )}

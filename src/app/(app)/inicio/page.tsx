@@ -17,7 +17,6 @@ import { MonthSwitcher } from "@/components/month-switcher";
 import { FilterChips } from "@/components/filter-chips";
 import { NewTransactionButton } from "@/components/transactions/new-transaction-button";
 import { carregarReceitasDoMes } from "@/data/receitas-do-mes";
-import { SecretarioResumo } from "@/components/secretario/secretario-resumo";
 import { FiltrosInicio } from "@/components/home/filtros-inicio";
 import { rotuloDoCartao } from "@/domain/cartoes";
 import { InicioPainel, InicioPainelSkeleton } from "@/components/home/inicio-painel";
@@ -133,7 +132,7 @@ export default async function InicioPage({
   ) : null;
 
   return (
-    <div className="mx-auto max-w-3xl space-y-5">
+    <div className="mx-auto max-w-3xl space-y-4">
       <header>
         <p className="truncate text-corpo text-ink-muted">
           {saudacao}
@@ -163,12 +162,6 @@ export default async function InicioPage({
 
       {memberId ? <PersonFilterNote cards={cards} houseWidePanels /> : null}
 
-      {/* O secretario: so aparece quando ha e-mail pedindo algo. Em Suspense
-          para a leitura dele nunca segurar o Inicio. */}
-      <Suspense fallback={null}>
-        <SecretarioResumo houseId={active.id} />
-      </Suspense>
-
       <Suspense key={`painel:${key}`} fallback={<InicioPainelSkeleton />}>
         <InicioPainel
           houseId={active.id}
@@ -182,7 +175,11 @@ export default async function InicioPage({
         />
       </Suspense>
 
-      <h2 className="pt-2 text-titulo font-semibold tracking-tight text-ink">O mês em detalhe</h2>
+      {/* Rotulo de grupo, nao titulo de secao: os cartoes abaixo sao dele (h3). */}
+      <div className="flex items-center gap-3 pt-3">
+        <h2 className="text-legenda font-semibold uppercase tracking-[0.08em] text-ink-faint">O mês em detalhe</h2>
+        <span className="h-px flex-1 bg-line" aria-hidden />
+      </div>
 
       <Suspense key={`fluxo:${key}`} fallback={<FlowMapSkeleton />}>
         <FlowMap

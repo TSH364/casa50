@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { doriBarra } from "@/domain/home";
 import { DoriRitmo } from "@/components/home/dori-ritmo";
-import { AvisoAba } from "@/components/home/aviso-aba";
+import { AvisoLinha } from "@/components/home/aviso-linha";
 import { Barras } from "@/components/home/barras";
 
 vi.mock("next/link", () => ({
@@ -16,7 +16,8 @@ vi.mock("next/link", () => ({
 /**
  * O novo Inicio na tela: a barra da Dori diz o que mostra (leitor de tela),
  * marca o ritmo so quando ele existe, e cada estado tem o seu texto; o aviso
- * nao depende so da cor; e as barras dizem a porcentagem.
+ * nao depende so da cor e a acao dele e alvo de toque; e as barras dizem a
+ * porcentagem.
  */
 
 const HOJE = new Date(2026, 8, 15, 12);
@@ -46,10 +47,27 @@ describe("barra da Dori", () => {
 describe("aviso e barras", () => {
   it("o aviso diz o assunto por escrito, não só pela cor", () => {
     render(
-      <AvisoAba aviso={{ tipo: "passou", aba: "Orçamento", texto: "Lazer passou R$ 120,00 do limite.", acao: "Ver os gastos", href: "/extratos?categoria=c2" }} />,
+      <ul>
+        <AvisoLinha aviso={{ tipo: "passou", aba: "Orçamento", texto: "Lazer passou R$ 120,00 do limite.", acao: "Ver os gastos", href: "/extratos?categoria=c2" }} />
+      </ul>,
     );
     expect(screen.getByText("Orçamento")).toBeTruthy();
-    expect(screen.getByRole("link", { name: /Ver os gastos/ }).getAttribute("href")).toBe("/extratos?categoria=c2");
+    const acao = screen.getByRole("link", { name: /Ver os gastos/ });
+    expect(acao.getAttribute("href")).toBe("/extratos?categoria=c2");
+    // 44px de altura: a acao e texto, mas e alvo de toque.
+    expect(acao.className).toContain("min-h-11");
+  });
+
+  it("o aviso dos e-mails mostra a linha de detalhe e leva ao Secretário", () => {
+    render(
+      <ul>
+        <AvisoLinha
+          aviso={{ tipo: "email", aba: "E-mails", texto: "2 e-mails pedem algo de vocês.", detalhe: "Condomínio de outubro, R$ 850,00 · e mais 1", acao: "Abrir o Secretário", href: "/secretario" }}
+        />
+      </ul>,
+    );
+    expect(screen.getByText("Condomínio de outubro, R$ 850,00 · e mais 1")).toBeTruthy();
+    expect(screen.getByRole("link", { name: /Abrir o Secretário/ }).getAttribute("href")).toBe("/secretario");
   });
 
   it("barra de meta: porcentagem acessível e situação escrita", () => {
@@ -61,5 +79,16 @@ describe("aviso e barras", () => {
     const barraMeta = screen.getByRole("progressbar", { name: "Viagem" });
     expect(barraMeta.getAttribute("aria-valuenow")).toBe("100");
     expect(screen.getByText("Meta alcançada")).toBeTruthy();
+  });
+
+  it("barra de meta com os tokens: cor lisa e a tinta pedida", () => {
+    render(
+      <Barras
+        itens={[{ id: "m2", nome: "Reserva", razao: 0.62, detalhe: "R$ 6,2 mil de R$ 10 mil", cor: "var(--color-meta)", tinta: "var(--color-on-meta)" }]}
+      />,
+    );
+    const preenchido = screen.getByText("62%") as HTMLElement;
+    expect(preenchido.style.background).toBe("var(--color-meta)");
+    expect(preenchido.style.color).toBe("var(--color-on-meta)");
   });
 });

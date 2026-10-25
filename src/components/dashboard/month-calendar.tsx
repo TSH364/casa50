@@ -12,7 +12,7 @@ import type { Category, MonthKey } from "@/domain/types";
 export function MonthCalendarSkeleton() {
   return (
     <Card>
-      <CardHeader title="Dia a dia" />
+      <CardHeader nivel={3} title="Dia a dia" />
       <Skeleton className="h-56 w-full" />
     </Card>
   );
@@ -157,7 +157,7 @@ export async function MonthCalendar({
 
   return (
     <Card>
-      <CardHeader
+      <CardHeader nivel={3}
         title="Dia a dia"
         description={
           comGasto.length > 0

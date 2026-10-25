@@ -39,7 +39,7 @@ export function NewTransactionButton({
           onClick={() => setOpen(true)}
           aria-label={label}
           title={label}
-          className="rounded-full shadow-[0_6px_16px_rgba(61,69,189,0.28)] [&_svg]:size-5"
+          className="rounded-full [&_svg]:size-5"
         >
           <Plus aria-hidden />
         </Button>

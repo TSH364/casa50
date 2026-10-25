@@ -20,15 +20,19 @@ export function CardHeader({
   title,
   action,
   description,
+  nivel = 2,
 }: {
   title: string;
   description?: string;
   action?: React.ReactNode;
+  /** 3 quando o cartao fica sob um titulo de grupo (o "O mes em detalhe" do Inicio). */
+  nivel?: 2 | 3;
 }) {
+  const Titulo = nivel === 3 ? "h3" : "h2";
   return (
     <div className="mb-4 flex items-start justify-between gap-3">
       <div className="min-w-0">
-        <h2 className="text-destaque font-semibold tracking-tight text-ink">{title}</h2>
+        <Titulo className="text-destaque font-semibold tracking-tight text-ink">{title}</Titulo>
         {description ? (
           <p className="mt-0.5 text-corpo text-ink-faint">{description}</p>
         ) : null}

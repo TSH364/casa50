@@ -84,7 +84,7 @@ export async function FlowMap({
 
   return (
     <Card>
-      <CardHeader
+      <CardHeader nivel={3}
         title="Mapa de fluxo"
         description={
           memberName

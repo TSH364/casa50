@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { doriBarra, escolherAvisos, montarRamos, tintaSobre } from "@/domain/home";
+import { avisoDosEmails, doriBarra, escolherAvisos, montarRamos, tintaSobre } from "@/domain/home";
 
 /**
  * As regras do novo Inicio.
@@ -105,5 +105,28 @@ describe("tinta sobre a cor da categoria", () => {
     expect(tintaSobre("#5FD3A6")).toBe("#08090c");
     expect(tintaSobre("#3d45bd")).toBe("#ffffff");
     expect(tintaSobre("não é cor")).toBe("#08090c");
+  });
+});
+
+describe("aviso dos e-mails", () => {
+  it("sem e-mail pendente, nenhum aviso", () => {
+    expect(avisoDosEmails([])).toBeNull();
+  });
+
+  it("conta primeiro no detalhe, com o valor, e quantos faltam", () => {
+    const aviso = avisoDosEmails([
+      { tipo: "acao", resumo: "Assinar o contrato", amountCents: null },
+      { tipo: "conta", resumo: "Condomínio de outubro", amountCents: 85_000 },
+    ])!;
+    expect(aviso.tipo).toBe("email");
+    expect(aviso.texto).toBe("2 e-mails pedem algo de vocês.");
+    expect(aviso.detalhe).toMatch(/^Condomínio de outubro, R\$\s850,00 · e mais 1$/);
+    expect(aviso.href).toBe("/secretario");
+  });
+
+  it("um e-mail só: singular e sem 'e mais'", () => {
+    const aviso = avisoDosEmails([{ tipo: "acao", resumo: "Assinar o contrato", amountCents: null }])!;
+    expect(aviso.texto).toBe("1 e-mail pede algo de vocês.");
+    expect(aviso.detalhe).toBe("Assinar o contrato");
   });
 });

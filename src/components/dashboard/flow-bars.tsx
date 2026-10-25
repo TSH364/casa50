@@ -37,7 +37,7 @@ export function FlowBars({
   return (
     <>
       <p className="mb-2 flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-        <span className="tabular text-lg font-semibold text-ink">
+        <span className="tabular text-titulo font-semibold text-ink">
           {formatCents(atual?.cents ?? 0)}
         </span>
         <span className="text-legenda text-ink-faint">

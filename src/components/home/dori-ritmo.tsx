@@ -28,7 +28,7 @@ export function DoriRitmo({ barra }: { barra: DoriBarra }) {
         <div
           className={cn(
             "absolute inset-x-0 top-[26px] h-8 rounded-full",
-            semBarra ? "border-[1.5px] border-dashed border-line-strong" : "bg-dori-trilho shadow-[inset_0_1px_3px_rgba(0,0,0,0.18)]",
+            semBarra ? "border-[1.5px] border-dashed border-line-strong" : "bg-dori-trilho",
           )}
         />
 
