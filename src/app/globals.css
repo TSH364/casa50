@@ -43,6 +43,11 @@
      escuro; validadas para daltonismo nos dois temas. */
   --color-chart-in: #3d8fe6;
   --color-chart-out: #e0484c;
+  /* Metas no Inicio: as mesmas nos dois temas, com tinta escura por cima
+     (6,4:1 e 10,3:1). Eram hexadecimais soltos no componente. */
+  --color-meta: #7c86ff;
+  --color-meta-feita: #35d29a;
+  --color-on-meta: #08090c;
   --color-attention: #f2b23c;
   --color-attention-soft: #3a2e13;
   --color-danger: #f2686b;

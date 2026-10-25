@@ -15,7 +15,8 @@ import type { AvisoDoRadar } from "./radar";
  *     abaixo do previsto;
  *   * no comeco do mes a barra nao infla (abaixo de 15%, so a cabeca), e
  *     acima de 100% ela para na ponta e o excesso vira texto;
- *   * os avisos sao no maximo dois, do mais grave ao menor.
+ *   * os avisos sao no maximo dois, do mais grave ao menor (os e-mails do
+ *     secretario, quando ha, vem antes deles, numa linha so).
  */
 
 // ---------------------------------------------------------------------------
@@ -109,15 +110,39 @@ export function doriBarra({
 // Avisos
 // ---------------------------------------------------------------------------
 
-export type AvisoTipo = "passou" | "orcamento" | "conta" | "radar";
+export type AvisoTipo = "passou" | "orcamento" | "conta" | "radar" | "email";
 
 export interface Aviso {
   tipo: AvisoTipo;
-  /** O nome da aba. */
+  /** O rotulo do assunto, em caixa alta acima do texto. */
   aba: string;
   texto: string;
+  /** Uma linha menor embaixo do texto, quando ha. */
+  detalhe?: string;
   acao: string;
   href: string;
+}
+
+/**
+ * Os e-mails do secretario como um aviso so do Inicio: quantos pedem algo e
+ * o primeiro deles (conta primeiro: custa dinheiro e tem prazo). Sem e-mail
+ * pendente, nada.
+ */
+export function avisoDosEmails(
+  pendentes: readonly { tipo: string; resumo: string; amountCents: Cents | null }[],
+): Aviso | null {
+  const n = pendentes.length;
+  if (n === 0) return null;
+  const primeiro = [...pendentes].sort((a, b) => Number(b.tipo === "conta") - Number(a.tipo === "conta"))[0]!;
+  const valor = primeiro.amountCents === null ? "" : `, ${formatCents(primeiro.amountCents)}`;
+  return {
+    tipo: "email",
+    aba: "E-mails",
+    texto: n === 1 ? "1 e-mail pede algo de vocês." : `${n} e-mails pedem algo de vocês.`,
+    detalhe: `${primeiro.resumo}${valor}${n > 1 ? ` · e mais ${n - 1}` : ""}`,
+    acao: "Abrir o Secretário",
+    href: "/secretario",
+  };
 }
 
 export function escolherAvisos(
@@ -240,13 +265,6 @@ function luminancia([r, g, b]: [number, number, number]): number {
     return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
   };
   return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
-}
-
-/** A cor um pouco mais escura, para o comeco do degrade da faixa. */
-export function escurecer(hex: string, fator = 0.12): string {
-  const c = canais(hex);
-  if (!c) return hex;
-  return `#${c.map((v) => Math.round(v * (1 - fator)).toString(16).padStart(2, "0")).join("")}`;
 }
 
 /**

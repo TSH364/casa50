@@ -2,28 +2,33 @@ import Link from "next/link";
 import { listBudgets, listGoals, listRecurrences, listTransactions } from "@/data/queries";
 import { budgetProgress, spendingCents, summarizeMonth, totalsByCategory } from "@/domain/finance";
 import { forecastMonths, goalProgress, reconcileRecurrences, recurrencesFor } from "@/domain/forecast";
-import { doriBarra, escolherAvisos, montarRamos } from "@/domain/home";
+import { avisoDosEmails, doriBarra, escolherAvisos, montarRamos } from "@/domain/home";
 import { ehProvisorio } from "@/domain/provisorios";
 import { avisosDoRadar } from "@/domain/radar";
 import { carregarRadar } from "@/data/radar";
+import { carregarSecretario } from "@/data/secretario";
 import { addMonths, currentMonth, monthLabel } from "@/domain/month";
 import { formatCents, formatCentsCompact, toCents } from "@/lib/money";
 import { Skeleton } from "@/components/states";
 import type { Category, MonthKey } from "@/domain/types";
 import { DoriRitmo } from "./dori-ritmo";
-import { AvisoAba } from "./aviso-aba";
+import { AvisoLinha } from "./aviso-linha";
 import { Ramos } from "./ramos";
 import { Barras, type BarraItem } from "./barras";
 
-/** As metas usam cores de estado, fixas nos dois temas (texto escuro sobre elas). */
-const COR_META = "#7c86ff";
-const COR_META_FEITA = "#35d29a";
+/** O cartao do Inicio: o mesmo do `Card` (borda, sem sombra), que nos dois temas se separa do fundo. */
+const CARTAO = "rounded-(--radius-card) border border-line bg-surface p-4 sm:p-5";
 
+/**
+ * Uma secao do Inicio, num cartao. O titulo tem o tamanho do `CardHeader`;
+ * a linha dele tem 44px para o link ao lado ser alvo de toque, e a margem
+ * negativa devolve o espaco que isso acrescenta em cima.
+ */
 function Secao({ titulo, acao, children }: { titulo: string; acao?: React.ReactNode; children: React.ReactNode }) {
   return (
-    <section className="space-y-3">
-      <div className="flex items-baseline justify-between gap-3">
-        <h2 className="text-titulo font-semibold tracking-tight text-ink">{titulo}</h2>
+    <section className={CARTAO}>
+      <div className="-mt-2.5 mb-1.5 flex min-h-11 items-center justify-between gap-3">
+        <h2 className="text-destaque font-semibold tracking-tight text-ink">{titulo}</h2>
         {acao}
       </div>
       {children}
@@ -33,7 +38,7 @@ function Secao({ titulo, acao, children }: { titulo: string; acao?: React.ReactN
 
 function LinkSecao({ href, children }: { href: string; children: React.ReactNode }) {
   return (
-    <Link href={href} className="text-corpo font-medium text-brand hover:underline">
+    <Link href={href} className="inline-flex min-h-11 items-center text-corpo font-medium text-brand hover:underline">
       {children}
     </Link>
   );
@@ -41,21 +46,22 @@ function LinkSecao({ href, children }: { href: string; children: React.ReactNode
 
 export function InicioPainelSkeleton() {
   return (
-    <div className="space-y-6">
-      <div className="rounded-[20px] bg-surface p-5 shadow-[0_8px_24px_rgba(20,23,40,0.08)]">
+    <div className="space-y-4">
+      <div className={CARTAO}>
         <Skeleton className="h-4 w-28" />
         <Skeleton className="mt-2 h-10 w-44" />
         <Skeleton className="mt-5 h-8 w-full rounded-full" />
         <Skeleton className="mt-6 h-10 w-full" />
       </div>
-      <Skeleton className="h-64 w-full" />
+      <Skeleton className="h-64 w-full rounded-(--radius-card)" />
     </div>
   );
 }
 
 /**
  * O Inicio da nova interface: o gasto do mes com a Dori, o que pede atencao
- * (logo abaixo, e so quando ha), para onde foi o dinheiro e as metas.
+ * (logo abaixo, e so quando ha - os e-mails do secretario entram ai), para
+ * onde foi o dinheiro e as metas.
  *
  * Busca tudo de uma vez e calcula com as regras de `domain/home.ts`; os
  * componentes so desenham.
@@ -80,7 +86,7 @@ export async function InicioPainel({
   categories: Category[];
   hasData: boolean;
 }) {
-  const [txs, recorrentes, orcamentos, { goals }, radar] = await Promise.all([
+  const [txs, recorrentes, orcamentos, { goals }, radar, secretario] = await Promise.all([
     listTransactions(houseId, {
       fromMonth: addMonths(month, -3),
       toMonth: month,
@@ -93,6 +99,8 @@ export async function InicioPainel({
     listGoals(houseId),
     // O Radar nunca derruba o Inicio: sem ele, so faltam os avisos dele.
     carregarRadar(houseId, 5).catch(() => ({ disponivel: false, itens: [] })),
+    // Nem o secretario: sem ele, falta so a linha dos e-mails.
+    carregarSecretario(houseId, 20).catch(() => ({ disponivel: false, pendentes: [] })),
   ]);
 
   const agora = new Date();
@@ -137,6 +145,9 @@ export async function InicioPainel({
             .map((m) => ({ nome: m.recurrence.description })),
         })
       : [];
+  // Os e-mails valem em qualquer mes: o que pedem e para agora.
+  const avisoEmails = secretario.disponivel ? avisoDosEmails(secretario.pendentes) : null;
+  if (avisoEmails) avisos.unshift(avisoEmails);
 
   const { ramos, totalCents } = montarRamos(
     totais.map((t) => {
@@ -164,7 +175,8 @@ export async function InicioPainel({
       nome: g.name,
       razao: p.ratio,
       detalhe: `${formatCentsCompact(p.currentCents)} de ${formatCentsCompact(p.targetCents)}`,
-      cor: p.isComplete ? COR_META_FEITA : COR_META,
+      cor: p.isComplete ? "var(--color-meta-feita)" : "var(--color-meta)",
+      tinta: "var(--color-on-meta)",
       situacao: p.isComplete
         ? { texto: "Meta alcançada", tom: "positive" as const }
         : p.onTrack === false
@@ -175,13 +187,10 @@ export async function InicioPainel({
   const mes = monthLabel(month).split(" ")[0]!.replace(/^./, (c) => c.toUpperCase());
 
   return (
-    <div className="space-y-7">
-      <section
-        aria-label="Gasto do mês"
-        className="space-y-3 rounded-[20px] bg-surface p-5 shadow-[0_8px_24px_rgba(20,23,40,0.08)]"
-      >
+    <div className="space-y-4">
+      <section aria-label="Gasto do mês" className={`space-y-3 ${CARTAO}`}>
         <div>
-          <div className="flex min-h-9 items-center justify-between gap-3">
+          <div className="flex min-h-11 items-center justify-between gap-3">
             <p className="text-corpo text-ink-muted">Gasto do mês</p>
             {filtros}
           </div>
@@ -191,7 +200,6 @@ export async function InicioPainel({
         {esperado !== null ? (
           <p className="text-corpo text-ink-muted">
             de <span className="tabular font-medium text-ink">{formatCents(esperado)}</span> previstos.
-            {barra.ritmo !== null ? " A setinha marca onde ela deveria estar hoje." : null}
           </p>
         ) : null}
         {aguardandoCents > 0 ? (
@@ -199,10 +207,10 @@ export async function InicioPainel({
             Inclui <span className="tabular">{formatCents(aguardandoCents)}</span> lançados no mês, aguardando a fatura.
           </p>
         ) : null}
-        <dl className="grid grid-cols-3 gap-2 border-t border-line pt-3.5">
+        <dl className="grid grid-cols-3 gap-2 border-t border-line pt-3">
           <div>
             <dt className="text-legenda text-ink-faint">Receitas</dt>
-            <dd className="tabular text-destaque font-semibold text-positive">{formatCentsCompact(resumo.incomeCents)}</dd>
+            <dd className="tabular text-destaque font-semibold text-info">{formatCentsCompact(resumo.incomeCents)}</dd>
           </div>
           <div>
             <dt className="text-legenda text-ink-faint">Saldo</dt>
@@ -219,11 +227,11 @@ export async function InicioPainel({
 
       {avisos.length > 0 ? (
         <Secao titulo="Pede atenção">
-          <div className="space-y-3">
+          <ul>
             {avisos.map((a) => (
-              <AvisoAba key={a.texto} aviso={a} />
+              <AvisoLinha key={a.texto} aviso={a} />
             ))}
-          </div>
+          </ul>
         </Secao>
       ) : null}
 

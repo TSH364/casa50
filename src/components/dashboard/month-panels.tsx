@@ -125,7 +125,7 @@ export async function MonthPanels({
   return (
     <>
       <Card>
-        <CardHeader
+        <CardHeader nivel={3}
           title="Assinaturas e recorrências"
           description={
             matches.length > 0
@@ -179,7 +179,7 @@ export async function MonthPanels({
       </Card>
 
       <Card>
-        <CardHeader
+        <CardHeader nivel={3}
           title="Parcelas comprometidas"
           description="Próximos três meses."
           action={<SeeAll href="/analise#parcelas" label="Detalhes" />}
@@ -195,10 +195,10 @@ export async function MonthPanels({
                 key={c.month}
                 className="rounded-(--radius-control) bg-surface-2 px-3 py-2.5 text-center"
               >
-                <p className="text-legenda uppercase tracking-[0.06em] text-ink-faint">
+                <p className="text-legenda uppercase tracking-[0.08em] text-ink-faint">
                   {monthShortLabel(c.month)}
                 </p>
-                <p className="tabular mt-1 text-sm font-semibold text-ink">
+                <p className="tabular mt-1 text-corpo font-semibold text-ink">
                   {formatCents(c.totalCents)}
                 </p>
               </li>
@@ -208,7 +208,7 @@ export async function MonthPanels({
       </Card>
 
       <Card>
-        <CardHeader
+        <CardHeader nivel={3}
           title="Conciliação"
           description="Estornos, IOF, tarifas e anuidade."
         />
@@ -222,7 +222,7 @@ export async function MonthPanels({
               <dt className="text-legenda text-ink-faint">
                 Tarifas ({fees.length})
               </dt>
-              <dd className="tabular mt-0.5 text-sm font-medium text-danger">
+              <dd className="tabular mt-0.5 text-corpo font-medium text-danger">
                 {formatCents(feeCents)}
               </dd>
             </div>
@@ -230,7 +230,7 @@ export async function MonthPanels({
               <dt className="text-legenda text-ink-faint">
                 Estornos ({refunds.length})
               </dt>
-              <dd className="tabular mt-0.5 text-sm font-medium text-positive">
+              <dd className="tabular mt-0.5 text-corpo font-medium text-positive">
                 −{formatCents(refundCents)}
               </dd>
             </div>
@@ -239,7 +239,7 @@ export async function MonthPanels({
       </Card>
 
       <Card>
-        <CardHeader
+        <CardHeader nivel={3}
           title="Orçamentos"
           description={
             budgetRows.length > 0

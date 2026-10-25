@@ -165,8 +165,8 @@ export function CalendarGrid({
       {selecionado ? (
         <div className="mt-3 rounded-(--radius-control) bg-surface-2 px-3 py-2.5">
           <p className="flex flex-wrap items-baseline justify-between gap-2">
-            <span className="text-sm text-ink">Dia {selecionado.day}</span>
-            <span className="tabular text-sm font-medium text-ink">
+            <span className="text-corpo text-ink">Dia {selecionado.day}</span>
+            <span className="tabular text-corpo font-medium text-ink">
               {selecionado.totalCents > 0
                 ? formatCents(selecionado.totalCents)
                 : "sem gasto"}

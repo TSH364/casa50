@@ -1,4 +1,4 @@
-import { escurecer, tintaSobre } from "@/domain/home";
+import { tintaSobre } from "@/domain/home";
 
 export interface BarraItem {
   id: string;
@@ -6,8 +6,10 @@ export interface BarraItem {
   /** 0 a 1; passa de 1 quando estourou. */
   razao: number;
   detalhe: string;
-  /** Cor da barra: a da categoria, ou a de estado para metas. */
+  /** Cor da barra: a da categoria (hexadecimal), ou um token para metas. */
   cor: string;
+  /** A tinta da porcentagem; sem ela, a que der mais contraste com `cor`. */
+  tinta?: string;
   /** Linha de situacao embaixo, quando ha. */
   situacao?: { texto: string; tom: "danger" | "attention" | "positive" } | null;
 }
@@ -21,6 +23,7 @@ const TOM = {
 /**
  * Barra grossa com a porcentagem dentro: metas e orcamentos. A cor diz a
  * categoria; a situacao ("Perto do limite", "Meta alcancada") vem escrita.
+ * Cor lisa, sem degrade nem sombra (DESIGN_SYSTEM.md).
  */
 export function Barras({ itens }: { itens: BarraItem[] }) {
   return (
@@ -35,7 +38,7 @@ export function Barras({ itens }: { itens: BarraItem[] }) {
               <span className="tabular shrink-0 text-legenda text-ink-faint">{b.detalhe}</span>
             </div>
             <div
-              className="h-8 rounded-full bg-surface-3 shadow-[inset_0_1px_3px_rgba(0,0,0,0.12)]"
+              className="h-8 rounded-full bg-surface-3"
               role="progressbar"
               aria-label={b.nome}
               aria-valuemin={0}
@@ -47,8 +50,8 @@ export function Barras({ itens }: { itens: BarraItem[] }) {
                 className="tabular flex h-8 items-center rounded-full pl-3.5 text-corpo font-bold"
                 style={{
                   width: `${largura * 100}%`,
-                  background: `linear-gradient(90deg, ${escurecer(b.cor)}, ${b.cor})`,
-                  color: tintaSobre(b.cor),
+                  background: b.cor,
+                  color: b.tinta ?? tintaSobre(b.cor),
                 }}
               >
                 {pct}%
