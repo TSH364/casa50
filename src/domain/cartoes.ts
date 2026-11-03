@@ -24,3 +24,35 @@ export function rotuloDoCartao(card: { name: string; lastFour: string | null }):
   if (temNomeAutomatico(card)) return card.lastFour ? `Cartão ···· ${card.lastFour}` : card.name;
   return card.lastFour ? `${card.name} ···· ${card.lastFour}` : card.name;
 }
+
+const semAcento = (s: string) =>
+  s
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+
+/**
+ * O cartao de um arquivo que nao traz o final - o CSV do Nubank so tem data,
+ * descricao e valor. O banco vem do nome do arquivo ("Nubank_2026-11-04.csv"),
+ * e o cartao e o unico ativo da casa daquele banco: pela instituicao
+ * cadastrada, ou pelo nome ("Nubank Vini").
+ *
+ * Dois cartoes do mesmo banco: nenhum. Chutar um deles poria a fatura de uma
+ * pessoa no cartao da outra; a tela pede para escolher.
+ */
+export function cartaoDoBanco<T extends { name: string; institution: string | null; isActive: boolean }>(
+  cards: readonly T[],
+  banco: string | null,
+): T | null {
+  if (!banco) return null;
+  const alvo = semAcento(banco);
+  if (!alvo) return null;
+  const doBanco = cards.filter((c) => {
+    if (!c.isActive) return false;
+    if (c.institution && semAcento(c.institution) === alvo) return true;
+    return ` ${semAcento(c.name)} `.includes(` ${alvo} `);
+  });
+  return doBanco.length === 1 ? doBanco[0]! : null;
+}

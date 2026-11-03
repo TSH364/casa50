@@ -38,6 +38,7 @@ import {
 } from "@/domain/jev";
 import type { BuiltQuestions, MerchantAsk } from "@/domain/jev";
 import { casarProvisorios, janelaDasLinhas, type Provisorio } from "@/domain/provisorios";
+import { cartaoDoBanco } from "@/domain/cartoes";
 
 /**
  * Gravação da importação (secao 6).
@@ -549,14 +550,22 @@ const commitSchema = reviewSchema.extend({
   institution: z.string().max(80).nullable(),
   format: z.enum(["csv", "xlsx", "pdf"]),
   reportedTotalCents: z.number().int().nullable(),
+  /**
+   * O arquivo nao traz o final do cartao e a tela ficou no cartao do banco
+   * (`institution`): a gravacao acha esse cartao, ou o cria.
+   */
+  cartaoDoBanco: z.boolean().optional(),
 });
 
 export interface CommitResult {
   error?: string;
   invoiceId?: string;
   summary?: ImportSummary;
-  /** Cartoes que esta importacao criou, com o nome automatico: a tela pede o nome. */
-  cartoesNovos?: { id: string; lastFour: string }[];
+  /**
+   * Cartoes que esta importacao criou, com o nome automatico: a tela pede o
+   * nome. `lastFour` nulo e o cartao criado pelo banco do arquivo (Nubank).
+   */
+  cartoesNovos?: { id: string; lastFour: string | null }[];
 }
 
 /**
@@ -636,6 +645,52 @@ async function ensureCardsForLastFours(
 }
 
 /**
+ * O cartao do banco de um arquivo sem final de cartao (o CSV do Nubank so
+ * tem data, descricao e valor): o unico cartao ativo da casa daquele banco
+ * (`cartaoDoBanco`), ou um novo, com o nome do banco.
+ *
+ * Com dois cartoes do mesmo banco, nenhum: a fatura de uma pessoa nao pode
+ * cair no cartao da outra por chute. Ai a tela pede para escolher.
+ *
+ * Como `ensureCardsForLastFours`, so na GRAVACAO: criar cartao e escrita.
+ */
+async function ensureCardForInstitution(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  houseId: string,
+  institution: string,
+): Promise<{ error?: string; cardId: string | null; created: boolean }> {
+  const { data, error } = await supabase
+    .from("cards")
+    .select("id, name, institution, is_active")
+    .eq("house_id", houseId);
+  if (error) {
+    console.error("[importacao] falha ao ler cartoes", { code: error.code });
+    return { error: "Não foi possível verificar os cartões.", cardId: null, created: false };
+  }
+  const lista = (data ?? []).map((c) => ({
+    id: c.id as string,
+    name: String(c.name ?? ""),
+    institution: (c.institution as string | null) ?? null,
+    isActive: Boolean(c.is_active),
+  }));
+  const achado = cartaoDoBanco(lista, institution);
+  if (achado) return { cardId: achado.id, created: false };
+  // Mais de um do banco: ambiguo, nao cria um terceiro.
+  if (lista.some((c) => cartaoDoBanco([c], institution))) return { cardId: null, created: false };
+
+  const { data: novo, error: insertError } = await supabase
+    .from("cards")
+    .insert({ house_id: houseId, name: institution, institution })
+    .select("id")
+    .single();
+  if (insertError || !novo) {
+    console.error("[importacao] falha ao criar cartao do banco", { code: insertError?.code });
+    return { error: "Não foi possível criar o cartão da fatura.", cardId: null, created: false };
+  }
+  return { cardId: novo.id as string, created: true };
+}
+
+/**
  * Importar sem mexer confirma os palpites do Jev; os de certeza alta viram
  * regra (ver `regrasDoJev`). A regra leva `confidence` < 1 - a marca de que
  * veio do Jev -, e nunca passa por cima de uma regra que ja exista: essa foi
@@ -701,15 +756,33 @@ export async function commitImport(input: unknown): Promise<CommitResult> {
   const cards = await ensureCardsForLastFours(supabase, houseId, finais);
   if (cards.error) return { error: cards.error };
 
+  // Arquivo sem final de cartao (Nubank): o cartao vem do banco do arquivo.
+  let cartaoDoArquivo = data.cardId;
+  let cartaoDoBancoCriado: string | null = null;
+  if (cartaoDoArquivo === null && finais.length === 0 && data.cartaoDoBanco && data.institution) {
+    const doBanco = await ensureCardForInstitution(supabase, houseId, data.institution);
+    if (doBanco.error) return { error: doBanco.error };
+    cartaoDoArquivo = doBanco.cardId;
+    if (doBanco.created) cartaoDoBancoCriado = doBanco.cardId;
+  }
+
+  // Os cartoes que ESTA importacao criou: se ela falhar, saem junto - os que
+  // ja existiam ficam (apagar um deles seria destruir cadastro do casal).
+  const cartoesCriados = [...cards.createdIds, ...(cartaoDoBancoCriado ? [cartaoDoBancoCriado] : [])];
+  const desfazerCartoes = async () => {
+    if (cartoesCriados.length === 0) return;
+    await supabase.from("cards").delete().eq("house_id", houseId).in("id", cartoesCriados);
+  };
+
   const cardIdFor = (d: { cardId: string | null; cardLastFour: string | null }) =>
     d.cardId ??
     (d.cardLastFour ? (cards.byLastFour.get(d.cardLastFour) ?? null) : null) ??
-    data.cardId;
+    cartaoDoArquivo;
 
   // A fatura aponta para um cartão só; com vários no arquivo ela fica sem, e
   // cada lançamento leva o seu.
   const invoiceCardId =
-    data.cardId ?? (cards.byLastFour.size === 1
+    cartaoDoArquivo ?? (cards.byLastFour.size === 1
       ? ([...cards.byLastFour.values()][0] ?? null)
       : null);
 
@@ -736,6 +809,7 @@ export async function commitImport(input: unknown): Promise<CommitResult> {
   if (invoiceError || !invoice) {
     // A unique parcial em (house_id, file_hash) barra reimportar o mesmo
     // arquivo; vale uma mensagem específica em vez do erro cru.
+    await desfazerCartoes();
     if (invoiceError?.code === "23505") {
       return { error: "Este arquivo já foi importado nesta casa." };
     }
@@ -888,15 +962,7 @@ export async function commitImport(input: unknown): Promise<CommitResult> {
     // deixar um registro de importação vazio no histórico. Os cartões criados
     // agora há pouco vão junto - "nada foi importado" precisa ser verdade.
     await supabase.from("invoices").delete().eq("id", invoice.id);
-    // Só os criados nesta importação: `byLastFour` também traz cartões que já
-    // existiam, e apagar um deles seria destruir cadastro do casal.
-    if (cards.createdIds.length > 0) {
-      await supabase
-        .from("cards")
-        .delete()
-        .eq("house_id", houseId)
-        .in("id", cards.createdIds);
-    }
+    await desfazerCartoes();
     return { error: "Não foi possível gravar os lançamentos. Nada foi importado." };
   }
 
@@ -923,9 +989,10 @@ export async function commitImport(input: unknown): Promise<CommitResult> {
   revalidatePath("/importar");
 
   const criados = new Set(cards.createdIds);
-  const cartoesNovos = [...cards.byLastFour]
+  const cartoesNovos: { id: string; lastFour: string | null }[] = [...cards.byLastFour]
     .filter(([, id]) => criados.has(id))
     .map(([lastFour, id]) => ({ id, lastFour }));
+  if (cartaoDoBancoCriado) cartoesNovos.push({ id: cartaoDoBancoCriado, lastFour: null });
 
   return { invoiceId: invoice.id, summary, cartoesNovos };
 }
@@ -946,7 +1013,8 @@ export async function commitImport(input: unknown): Promise<CommitResult> {
  * Usa exatamente a mesma decisão da importação, `resolveCategoryId`: regra
  * aprendida, nome da loja, categoria que o banco mandou e tipo. O cartão sai
  * do final guardado no lançamento, criando o cartão se ainda não existir -
- * mesma função que a importação usa.
+ * mesma função que a importação usa. Sem final (o CSV do Nubank não traz),
+ * sai do banco da fatura (`ensureCardForInstitution`).
  *
  * As duas coisas dependem de dado que o arquivo trouxe e que passou a ser
  * guardado nas migrações `20260910013714` (categoria) e `20260910114607`
@@ -964,7 +1032,7 @@ export interface ReclassifyResult {
   cardsLinked?: number;
   /** Cartões que precisaram ser criados para isso. */
   cardsCreated?: number;
-  /** Sem categoria E sem o final guardado - só reimportando. */
+  /** Continuam sem cartão: sem o final guardado e sem banco que diga qual é. */
   withoutStoredCard?: number;
   /** Lançamentos que ganharam subcategoria (já tinham categoria). */
   subcategorized?: number;
@@ -1044,9 +1112,42 @@ export async function reclassifyInvoice(
     }
   }
 
-  const withoutStoredCard = rows.filter(
-    (r) => r.card_id === null && r.card_last_four === null,
-  ).length;
+  // Sem final guardado: o arquivo nao trazia (o CSV do Nubank so tem data,
+  // descricao e valor). O cartao sai do banco da fatura, como na importacao.
+  const semFinal = rows.filter((r) => r.card_id === null && r.card_last_four === null);
+  let ligadosPeloBanco = 0;
+  if (semFinal.length > 0) {
+    const { data: fatura } = await supabase
+      .from("invoices")
+      .select("institution, card_id")
+      .eq("house_id", houseId)
+      .eq("id", invoiceId)
+      .maybeSingle();
+    const banco = (fatura?.institution as string | null) ?? null;
+    if (banco) {
+      const doBanco = await ensureCardForInstitution(supabase, houseId, banco);
+      if (doBanco.error) return { error: doBanco.error };
+      if (doBanco.cardId) {
+        const { error } = await supabase
+          .from("transactions")
+          .update({ card_id: doBanco.cardId })
+          .in("id", semFinal.map((r) => r.id as string))
+          .is("card_id", null);
+        if (error) {
+          console.error("[importacao] falha ao ligar cartao do banco", { code: error.code });
+          return { error: "Não foi possível ligar os cartões." };
+        }
+        if (fatura?.card_id === null) {
+          await supabase.from("invoices").update({ card_id: doBanco.cardId }).eq("id", invoiceId).is("card_id", null);
+        }
+        ligadosPeloBanco = semFinal.length;
+        cardsLinked += semFinal.length;
+        if (doBanco.created) cardsCreated += 1;
+      }
+    }
+  }
+
+  const withoutStoredCard = semFinal.length - ligadosPeloBanco;
 
   // ---------------------------------------------------------- categorias
   //
