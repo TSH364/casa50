@@ -23,6 +23,7 @@ import type {
 } from "@/importers/types";
 import { Button } from "@/components/ui/button";
 import { NomearCartao } from "@/components/cards/nomear-cartao";
+import { cartaoDoBanco } from "@/domain/cartoes";
 import { Card, CardHeader } from "@/components/ui/card";
 import { Field } from "@/components/ui/field";
 import { Select } from "@/components/ui/select";
@@ -34,6 +35,12 @@ import type { Card as CardType } from "@/domain/types";
 import type { MemberSummary } from "@/lib/houses";
 
 type Step = "arquivo" | "conferir" | "revisar" | "pronto";
+
+/**
+ * Valor do seletor de cartao para "o cartao do banco do arquivo, que ainda
+ * nao existe": a gravacao cria (ver `cartaoDoBanco` em actions/import).
+ */
+const CARTAO_DO_BANCO = "__banco__";
 
 const TYPE_LABEL: Record<string, string> = {
   expense: "Despesa",
@@ -113,7 +120,7 @@ export function ImportWizard({
   const [notes, setNotes] = useState<string[]>([]);
   const [invoiceId, setInvoiceId] = useState<string | null>(null);
   // Cartoes que a importacao acabou de criar, ainda com o nome automatico.
-  const [cartoesNovos, setCartoesNovos] = useState<{ id: string; lastFour: string }[]>([]);
+  const [cartoesNovos, setCartoesNovos] = useState<{ id: string; lastFour: string | null }[]>([]);
 
   function reset() {
     setStep("arquivo");
@@ -131,6 +138,7 @@ export function ImportWizard({
     setAmountColumn("");
     setSignOverride("");
     setCardByLastFour({});
+    setCardId("");
   }
 
   /**
@@ -172,6 +180,15 @@ export function ImportWizard({
       if (match) auto[lastFour] = match.id;
     }
     setCardByLastFour(auto);
+
+    // Sem final no arquivo (o CSV do Nubank so tem data, descricao e valor):
+    // o cartao sai do banco - o unico cartao da casa daquele banco, ou um
+    // novo com o nome dele. Com dois do mesmo banco, fica para escolher.
+    if (!result.drafts.some((d) => d.cardLastFour) && result.institution) {
+      const doBanco = cartaoDoBanco(cards, result.institution);
+      const ambiguo = !doBanco && cards.some((c) => cartaoDoBanco([c], result.institution));
+      setCardId((atual) => atual || (doBanco ? doBanco.id : ambiguo ? "" : CARTAO_DO_BANCO));
+    }
     return result;
   }
 
@@ -181,7 +198,7 @@ export function ImportWizard({
       ...d,
       cardId: d.cardLastFour
         ? (cardByLastFour[d.cardLastFour] ?? null)
-        : (cardId || null),
+        : cartaoEscolhido,
     }));
   }
 
@@ -294,6 +311,7 @@ export function ImportWizard({
         institution: parsed.institution,
         format: "csv",
         reportedTotalCents: null,
+        cartaoDoBanco: fileCards.length === 0 && cardId === CARTAO_DO_BANCO,
       });
       if (result.error) {
         toast.error(result.error);
@@ -342,6 +360,16 @@ export function ImportWizard({
       value: c.id,
       label: c.lastFour ? `${c.name} ···· ${c.lastFour}` : c.name,
     }));
+  const banco = parsed?.institution ?? null;
+  // O cartao do banco ainda nao existe (nem ha dois dele, o que seria
+  // ambiguo): a opcao de cria-lo vem primeiro.
+  const podeCriarDoBanco =
+    banco !== null && !cards.some((c) => cartaoDoBanco([c], banco));
+  const opcoesSemFinal = podeCriarDoBanco
+    ? [{ value: CARTAO_DO_BANCO, label: `Criar o cartão “${banco}”` }, ...cardOptions]
+    : cardOptions;
+  const cartaoEscolhido = cardId && cardId !== CARTAO_DO_BANCO ? cardId : null;
+  const reconhecidoPeloBanco = banco !== null && cartaoEscolhido !== null && cartaoDoBanco(cards, banco)?.id === cartaoEscolhido;
   // A fatura em si só aponta para um cartão. Com vários no arquivo ela fica
   // sem cartão e cada lançamento leva o seu.
   const invoiceCardId =
@@ -349,7 +377,7 @@ export function ImportWizard({
       ? (cardByLastFour[fileCards[0]!] ?? null)
       : fileCards.length > 1
         ? null
-        : cardId || null;
+        : cartaoEscolhido;
 
   // ------------------------------------------------------------------ passos
   if (step === "arquivo") {
@@ -448,14 +476,20 @@ export function ImportWizard({
               <Field
                 label="Cartão"
                 htmlFor="card"
-                hint="O arquivo não traz os 4 últimos dígitos — escolha manualmente."
+                hint={
+                  cardId === CARTAO_DO_BANCO
+                    ? `O arquivo não traz o final do cartão. Ao confirmar, o cartão “${banco}” é criado, e você dá o nome que quiser.`
+                    : reconhecidoPeloBanco
+                      ? `Reconhecido pelo banco do arquivo (${banco}).`
+                      : "O arquivo não traz os 4 últimos dígitos — escolha o cartão."
+                }
               >
                 <Select
                   id="card"
                   placeholder="Sem cartão"
                   value={cardId}
                   onChange={(e) => setCardId(e.target.value)}
-                  options={cardOptions}
+                  options={opcoesSemFinal}
                 />
               </Field>
             ) : (
@@ -751,7 +785,7 @@ export function ImportWizard({
             </p>
             {cartoesNovos.map((c) => (
               <div key={c.id}>
-                <p className="text-legenda text-ink-faint">Final {c.lastFour}</p>
+                <p className="text-legenda text-ink-faint">{c.lastFour ? `Final ${c.lastFour}` : `Cartão do ${banco ?? "banco"}`}</p>
                 <NomearCartao
                   cardId={c.id}
                   lastFour={c.lastFour}

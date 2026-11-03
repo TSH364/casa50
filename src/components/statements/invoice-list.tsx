@@ -64,7 +64,7 @@ export function InvoiceList({
       if (result.remaining) pendencias.push(`${result.remaining} sem categoria`);
       if (result.withoutStoredCard) {
         pendencias.push(
-          `${result.withoutStoredCard} sem cartão — esses foram importados antes de o app guardar o final, e só reimportando o arquivo`,
+          `${result.withoutStoredCard} sem cartão — o arquivo não diz qual é; escolha no extrato, lançamento a lançamento`,
         );
       }
 
