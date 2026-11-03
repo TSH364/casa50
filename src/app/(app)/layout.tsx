@@ -9,6 +9,7 @@ import { syncStaleCalendars } from "@/actions/calendar";
 import { syncStaleBanks } from "@/actions/bancos";
 import { syncRadar } from "@/actions/radar";
 import { syncSecretario } from "@/actions/secretario";
+import { syncHomeAssistant } from "@/actions/home-assistant";
 import { Button } from "@/components/ui/button";
 import { buildInfo, buildLabel, versionLabel } from "@/lib/version";
 import { cookies } from "next/headers";
@@ -41,6 +42,8 @@ export default async function AppLayout({
   after(syncRadar);
   // O secretario: o Gmail de cada um, lido a cada poucas horas.
   after(syncSecretario);
+  // O resumo que o Home Assistant le, quando ele esta ligado.
+  after(syncHomeAssistant);
 
   const build = buildInfo();
   const tema = parseTheme((await cookies()).get(THEME_COOKIE)?.value);

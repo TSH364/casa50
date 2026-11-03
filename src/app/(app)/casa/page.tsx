@@ -21,6 +21,9 @@ import { estadoDasNotas } from "@/data/notas";
 import { credenciaisGoogle } from "@/lib/gmail";
 import { getAiStatus } from "@/lib/ai-config";
 import { buildInfo, buildLabel } from "@/lib/version";
+import { HomeAssistantCard } from "@/components/house/home-assistant";
+import { estadoHA } from "@/data/home-assistant";
+import { siteUrl } from "@/lib/env";
 
 export const metadata: Metadata = { title: "Casa · Fluxo" };
 
@@ -61,6 +64,9 @@ export default async function CasaPage({
     }
   }
   const minhaConexao = conexoes.find((c) => c.memberId === user?.id) ?? null;
+
+  // O Home Assistant: so o estado - o codigo nunca volta do banco.
+  const ha = active ? await estadoHA(active.id) : null;
 
   // O Gmail do secretario: o refresh token esta no Vault; aqui, so o estado.
   const secretario = active ? await carregarSecretario(active.id, 0) : null;
@@ -121,6 +127,10 @@ export default async function CasaPage({
           aviso={params.gmail}
           notas={minhasNotas}
         />
+      ) : null}
+
+      {active && ha ? (
+        <HomeAssistantCard estado={ha} podeConfigurar={active.role !== "viewer"} base={siteUrl()} />
       ) : null}
 
       {active ? (
