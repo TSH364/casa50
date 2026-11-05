@@ -2,8 +2,11 @@ import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { publicEnv } from "@/lib/env";
 
-/** Rotas que nao exigem sessao. */
-const PUBLIC_PATHS = ["/entrar", "/criar-conta", "/auth", "/recuperar-senha"];
+/**
+ * Rotas que nao exigem sessao. `/api/ha` e o Home Assistant, que chega com o
+ * codigo da casa no cabecalho, e nao com login (ver `app/api/ha/shared.ts`).
+ */
+const PUBLIC_PATHS = ["/entrar", "/criar-conta", "/auth", "/recuperar-senha", "/api/ha"];
 
 export async function middleware(request: NextRequest) {
   let response = NextResponse.next({ request });

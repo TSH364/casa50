@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
+import { EnergiaCard } from "@/components/insights/energia-card";
 import { notFound } from "next/navigation";
 import { Sparkles } from "lucide-react";
 import { getActiveHouse, listMembers } from "@/lib/houses";
@@ -219,6 +220,11 @@ export default async function AnalisePage({
           <ProjecaoCard projecao={projecao} atual={month} compras={compras} />
         </section>
       ) : null}
+
+      {/* O consumo de energia do Home Assistant: so aparece quando ha leitura. */}
+      <Suspense fallback={null}>
+        <EnergiaCard houseId={active.id} />
+      </Suspense>
 
       {/* A agenda explica um mês fora do padrão. */}
       <section id="agenda" className="scroll-mt-28">
