@@ -1,5 +1,5 @@
 import "server-only";
-import { spendingCents, withoutExcludedCategories } from "@/domain/finance";
+import { limitesDoMes, spendingCents, withoutExcludedCategories } from "@/domain/finance";
 import { buildBoard } from "@/domain/tasks";
 import { savedAnalysisSchema, type AiAnalysis } from "@/domain/ai-insights";
 import { merchantLabel } from "@/domain/merchants";
@@ -460,6 +460,11 @@ export async function listRecurrences(houseId: string): Promise<Recurrence[]> {
   return (data ?? []).map(mapRecurrence);
 }
 
+/**
+ * Os limites que valem no mes: para cada categoria, o mais recente definido
+ * ate ele (`limitesDoMes`). O limite de setembro continua valendo em
+ * novembro se ninguem mudou; zero e "sem limite daqui em diante".
+ */
 export async function listBudgets(
   houseId: string,
   month: MonthKey,
@@ -469,10 +474,10 @@ export async function listBudgets(
     .from("budgets")
     .select(BUDGET_COLUMNS)
     .eq("house_id", houseId)
-    .eq("month", fromMonthKey(month));
+    .lte("month", fromMonthKey(month));
 
   if (error) fail("os orçamentos", error);
-  return (data ?? []).map(mapBudget);
+  return limitesDoMes((data ?? []).map(mapBudget), month);
 }
 
 export interface GoalDeposit {

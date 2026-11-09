@@ -6,6 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import {
   ChartColumnStacked,
   CreditCard,
+  Gauge,
   Hammer,
   House,
   KanbanSquare,
@@ -39,6 +40,8 @@ const MAIS = [
   // O grafico e a lista do que entra e sai em cada mes, passado e futuro.
   { href: "/meses", label: "Mês a mês", Icon: ChartColumnStacked },
   { href: "/metas", label: "Metas", Icon: Target },
+  // Os limites de gasto por categoria (tambem na tela de Categorias).
+  { href: "/orcamentos", label: "Orçamentos", Icon: Gauge },
   { href: "/radar", label: "Radar", Icon: Radar },
   { href: "/secretario", label: "Secretário", Icon: Inbox },
   { href: "/projetos", label: "Projetos", Icon: Hammer },

@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { getActiveHouse } from "@/lib/houses";
-import { countWithoutSubcategory, listCategories } from "@/data/queries";
+import { countWithoutSubcategory, listBudgets, listCategories } from "@/data/queries";
+import { currentMonth } from "@/domain/month";
+import { toCents } from "@/lib/money";
 import { getAiStatus } from "@/lib/ai-config";
 import { JevSubcategories } from "@/components/categories/jev-subcategories";
 import { CategoriesManager } from "@/components/categories/categories-manager";
@@ -16,10 +18,13 @@ export default async function CategoriasPage() {
   const { active } = await getActiveHouse();
   if (!active) notFound();
 
-  const [categories, ai] = await Promise.all([
+  const mes = currentMonth();
+  const [categories, ai, budgets] = await Promise.all([
     listCategories(active.id),
     getAiStatus(active.id),
+    listBudgets(active.id, mes),
   ]);
+  const limites = Object.fromEntries(budgets.map((b) => [b.categoryId, toCents(b.limitAmount)]));
 
   // O Jev so aparece com chave, e so para categorias que tem subcategorias -
   // sem elas nao ha entre o que escolher.
@@ -58,7 +63,7 @@ export default async function CategoriasPage() {
         />
       ) : null}
 
-      <CategoriesManager categories={categories} />
+      <CategoriesManager categories={categories} limites={limites} mes={mes} />
     </div>
   );
 }

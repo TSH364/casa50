@@ -3,6 +3,7 @@ import { merchantKey } from "./merchants";
 import type { FixedChargeReason } from "./recurring";
 import { addMonths, daysInMonth, daysRemaining } from "./month";
 import type {
+  Budget,
   ForecastStatus,
   IsoDate,
   MonthKey,
@@ -409,6 +410,25 @@ export interface BudgetProgress {
   daysLeft: number;
   /** Quanto da para gastar por dia ate o fim do mes sem estourar. */
   dailyPaceCents: Cents;
+}
+
+/**
+ * Os limites que valem num mes: para cada categoria, o definido mais recente
+ * ate ele. O limite e continuo - vale do mes em que foi definido em diante,
+ * ate ser mudado -, e um mes pode ter o seu proprio sem mexer nos outros.
+ * Zero e "sem limite daqui em diante": a categoria sai da lista.
+ *
+ * Cada limite volta com o `month` pedido, como se fosse dele: quem le um
+ * orcamento quer o do mes que esta olhando.
+ */
+export function limitesDoMes(budgets: readonly Budget[], month: MonthKey): Budget[] {
+  const vigente = new Map<string, Budget>();
+  for (const b of budgets) {
+    if (b.month > month) continue;
+    const atual = vigente.get(b.categoryId);
+    if (!atual || b.month > atual.month) vigente.set(b.categoryId, b);
+  }
+  return [...vigente.values()].filter((b) => b.limitAmount > 0).map((b) => ({ ...b, month }));
 }
 
 export function budgetProgress(
