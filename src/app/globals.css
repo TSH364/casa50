@@ -48,6 +48,11 @@
   --color-meta: #7c86ff;
   --color-meta-feita: #35d29a;
   --color-on-meta: #08090c;
+  /* Series do grafico "Mes a mes" (parcelas e contas fixas); a receita usa
+     chart-in. Validadas com o validador de paleta (CVD e visao normal) junto
+     com chart-in, no escuro sobre surface e no claro sobre o branco. */
+  --color-serie-parcelas: #d95926;
+  --color-serie-fixas: #199e70;
   --color-attention: #f2b23c;
   --color-attention-soft: #3a2e13;
   --color-danger: #f2686b;
@@ -199,6 +204,8 @@
   --color-info: #1f5fbf;
   --color-chart-in: #1f5fbf;
   --color-chart-out: #9c272c;
+  --color-serie-parcelas: #eb6834;
+  --color-serie-fixas: #1baf7a;
   --color-attention: #704600;
   --color-attention-soft: #faebcc;
   --color-danger: #9c272c;
@@ -231,6 +238,8 @@
     --color-info: #1f5fbf;
     --color-chart-in: #1f5fbf;
     --color-chart-out: #9c272c;
+  --color-serie-parcelas: #eb6834;
+  --color-serie-fixas: #1baf7a;
     --color-attention: #704600;
     --color-attention-soft: #faebcc;
     --color-danger: #9c272c;

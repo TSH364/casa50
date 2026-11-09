@@ -4,6 +4,7 @@ import { useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
+  ChartColumnStacked,
   CreditCard,
   Hammer,
   House,
@@ -35,6 +36,8 @@ const DIREITA = [{ href: "/analise", label: "Análise", Icon: Sparkles }] as con
 
 /** O que o celular guarda no "Mais": telas que se abrem menos. */
 const MAIS = [
+  // O grafico e a lista do que entra e sai em cada mes, passado e futuro.
+  { href: "/meses", label: "Mês a mês", Icon: ChartColumnStacked },
   { href: "/metas", label: "Metas", Icon: Target },
   { href: "/radar", label: "Radar", Icon: Radar },
   { href: "/secretario", label: "Secretário", Icon: Inbox },
