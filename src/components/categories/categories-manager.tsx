@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
 import { Eye, EyeOff, Pencil, Plus, Trash2 } from "lucide-react";
+import { LimiteDaCategoria } from "./limite-da-categoria";
 import {
   countCategoryUsage,
   deleteCategory,
@@ -15,7 +16,17 @@ import { ConfirmDialog } from "@/components/ui/dialog";
 import { EmptyState } from "@/components/states";
 import type { Category, CategoryKind } from "@/domain/types";
 
-export function CategoriesManager({ categories }: { categories: Category[] }) {
+export function CategoriesManager({
+  categories,
+  limites = {},
+  mes,
+}: {
+  categories: Category[];
+  /** O limite de gasto que vale no mes, por categoria (centavos). */
+  limites?: Record<string, number>;
+  /** O mes a partir do qual um limite novo vale. */
+  mes?: string;
+}) {
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<Category | undefined>();
   const [parentFor, setParentFor] = useState<string | undefined>();
@@ -120,20 +131,22 @@ export function CategoriesManager({ categories }: { categories: Category[] }) {
               const children = childrenOf(parent.id);
               return (
                 <li key={parent.id}>
-                  <div className="flex items-center gap-3 rounded-(--radius-control) bg-surface-2 px-3 py-2.5">
+                  <div className="flex flex-wrap items-center gap-x-3 rounded-(--radius-control) bg-surface-2 px-3 py-2.5">
                     <span
                       className="size-3 shrink-0 rounded-full"
                       style={{ backgroundColor: parent.color }}
                       aria-hidden
                     />
-                    <span className="min-w-0 flex-1 truncate text-sm text-ink">
-                      {parent.name}
-                      {parent.excludedFromTotals ? (
-                        <span className="ml-2 rounded-full bg-surface-3 px-2 py-0.5 align-middle text-legenda font-normal text-ink-faint">
-                          fora dos totais
-                        </span>
-                      ) : null}
-                    </span>
+                    <div className="min-w-0 flex-1">
+                      <span className="block truncate text-corpo text-ink">
+                        {parent.name}
+                        {parent.excludedFromTotals ? (
+                          <span className="ml-2 rounded-full bg-surface-3 px-2 py-0.5 align-middle text-legenda font-normal text-ink-faint">
+                            fora dos totais
+                          </span>
+                        ) : null}
+                      </span>
+                    </div>
                     <div className="flex shrink-0 items-center">
                       {/*
                         Só categoria de primeiro nível recebe a marca: o corte
@@ -191,6 +204,18 @@ export function CategoriesManager({ categories }: { categories: Category[] }) {
                         <Trash2 aria-hidden />
                       </Button>
                     </div>
+                    {/* Limite e de gasto: so as categorias de gasto, e so as de
+                        primeiro nivel. Linha propria, com a largura toda. */}
+                    {kind === "expense" && mes ? (
+                      <div className="basis-full pl-6">
+                        <LimiteDaCategoria
+                          categoryId={parent.id}
+                          nome={parent.name}
+                          limiteCents={limites[parent.id] ?? 0}
+                          mes={mes}
+                        />
+                      </div>
+                    ) : null}
                   </div>
 
                   {children.length > 0 ? (

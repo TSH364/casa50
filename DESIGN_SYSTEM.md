@@ -43,6 +43,7 @@ Use sempre o token (`bg-surface-2`, `text-ink-muted`, `border-line`), nunca o he
 | `danger` / `-soft` | excesso, erro | `#f2686b` / `#3c1c20` | `#9c272c` / `#fbe1e2` |
 | `danger-fill` | fundo do botão de perigo | `#c9383c` | `#9c272c` |
 | `doria` | a Dori (botão central, avatar) | `#7c86ff` nos dois | |
+| `serie-parcelas` / `serie-fixas` | gráfico Mês a mês: parcelas e contas fixas | `#d95926` / `#199e70` | `#eb6834` / `#1baf7a` |
 | `meta` / `meta-feita` | barra de meta em andamento / alcançada | `#7c86ff` / `#35d29a` nos dois | |
 | `on-meta` | porcentagem sobre a barra de meta | `#08090c` nos dois | |
 
@@ -61,6 +62,12 @@ elas em `surface-2`.
 - **Barra de medida** (`MedidaBar` em `components/insights/insight-card.tsx`): cinza até a
   referência, o excesso na cor do tom, o que falta para a referência tracejado. A geometria
   nunca sai do cartão (mês negativo fica em zero).
+- **Mês a mês** (`components/meses/grafico-dos-meses.tsx`): coluna empilhada por mês com o que
+  sai (parcelas em `serie-parcelas`, contas fixas em `serie-fixas`, dia a dia em `ink-faint`) e um
+  traço de 2px em `chart-in` na altura do que entra. Previsto é tracejado com fundo claro da mesma
+  cor. As três cores com `chart-in` passaram no validador de paleta (CVD e visão normal) nos dois
+  temas; o verde-água fica abaixo de 3:1 no claro, então a legenda e a lista de cada mês são
+  obrigatórias.
 - **Faixas e barras de categoria** (`Ramos`, `Barras` no Início): cor lisa, sem degradê e sem
   sombra. A porcentagem usa a tinta que der mais contraste com a cor (`tintaSobre`); a faixa
   tem no mínimo 44px, para a porcentagem caber.

@@ -8,7 +8,9 @@ import type { FormState } from "./shared";
 import { fromMonthKey } from "@/data/mappers";
 import { isMonthKey } from "@/domain/month";
 import { addMonths, monthRange } from "@/domain/month";
-import { suggestBudget, totalsByCategory } from "@/domain/finance";
+import { limitesDoMes, suggestBudget, totalsByCategory } from "@/domain/finance";
+import { mapBudget, BUDGET_COLUMNS } from "@/data/mappers";
+import type { MonthKey } from "@/domain/types";
 import { listTransactions } from "@/data/queries";
 import { houseView } from "@/lib/house-view";
 
@@ -18,7 +20,72 @@ import { houseView } from "@/lib/house-view";
  * O orçamento é do mês, não da categoria: mudar o limite de dezembro não
  * mexe em novembro. Isso permite ajustar um mês atípico sem reescrever a
  * história — e é por isso que a chave é (categoria, mês).
+ *
+ * E é contínuo: o limite vale do mês em que foi definido em diante, até ser
+ * mudado (`limitesDoMes`). Tirar o limite grava zero no mês quando um limite
+ * anterior voltaria a valer (`tirarLimites`).
  */
+
+type Supabase = Awaited<ReturnType<typeof createClient>>;
+
+/** Erro de quando a migração do limite contínuo ainda não entrou (zero recusado). */
+const SEM_MIGRACAO = "Para tirar um limite que vem de meses anteriores, falta aplicar a atualização do banco dos limites.";
+
+/**
+ * Tira o limite destas categorias do mês em diante.
+ *
+ * Apagar a linha do mês não basta: o limite de um mês anterior voltaria a
+ * valer. Então, onde um limite anterior seguiria valendo, grava zero - "sem
+ * limite daqui em diante". Os meses seguintes que têm limite próprio ficam.
+ */
+async function tirarLimites(
+  supabase: Supabase,
+  houseId: string,
+  month: string,
+  categoryIds: readonly string[],
+  userId: string | null,
+): Promise<{ error?: string }> {
+  if (categoryIds.length === 0) return {};
+  const { error: delError } = await supabase
+    .from("budgets")
+    .delete()
+    .eq("house_id", houseId)
+    .eq("month", fromMonthKey(month))
+    .in("category_id", [...categoryIds]);
+  if (delError) {
+    console.error("[orcamentos] falha ao remover", { code: delError.code });
+    return { error: "Não foi possível remover o orçamento." };
+  }
+
+  const { data: anteriores, error: readError } = await supabase
+    .from("budgets")
+    .select(BUDGET_COLUMNS)
+    .eq("house_id", houseId)
+    .lt("month", fromMonthKey(month))
+    .in("category_id", [...categoryIds]);
+  if (readError) {
+    console.error("[orcamentos] falha ao ler os anteriores", { code: readError.code });
+    return { error: "Não foi possível remover o orçamento." };
+  }
+  const aindaValem = limitesDoMes((anteriores ?? []).map(mapBudget), month as MonthKey);
+  if (aindaValem.length === 0) return {};
+
+  const { error } = await supabase.from("budgets").upsert(
+    aindaValem.map((b) => ({
+      house_id: houseId,
+      category_id: b.categoryId,
+      month: fromMonthKey(month),
+      limit_amount: 0,
+      created_by: userId,
+    })),
+    { onConflict: "house_id,category_id,month" },
+  );
+  if (error) {
+    console.error("[orcamentos] falha ao gravar o fim do limite", { code: error.code });
+    return { error: error.code === "23514" ? SEM_MIGRACAO : "Não foi possível remover o orçamento." };
+  }
+  return {};
+}
 
 const setSchema = z.object({
   categoryId: z.string().uuid(),
@@ -45,19 +112,11 @@ export async function setBudget(input: unknown): Promise<FormState> {
   const supabase = await createClient();
 
   if (limitCents === 0) {
-    const { error } = await supabase
-      .from("budgets")
-      .delete()
-      .eq("house_id", houseId)
-      .eq("category_id", categoryId)
-      .eq("month", fromMonthKey(month));
-
-    if (error) {
-      console.error("[orcamentos] falha ao remover", { code: error.code });
-      return { error: "Não foi possível remover o orçamento." };
-    }
+    const tirado = await tirarLimites(supabase, houseId, month, [categoryId], user?.id ?? null);
+    if (tirado.error) return { error: tirado.error };
     revalidatePath("/orcamentos");
     revalidatePath("/inicio");
+    revalidatePath("/categorias");
     return { ok: true };
   }
 
@@ -81,6 +140,7 @@ export async function setBudget(input: unknown): Promise<FormState> {
 
   revalidatePath("/orcamentos");
   revalidatePath("/inicio");
+  revalidatePath("/categorias");
   return { ok: true };
 }
 
@@ -197,16 +257,8 @@ export async function applyBudgetChanges(input: unknown): Promise<FormState & { 
   }
 
   if (removals.length > 0) {
-    const { error } = await supabase
-      .from("budgets")
-      .delete()
-      .eq("house_id", houseId)
-      .eq("month", fromMonthKey(month))
-      .in("category_id", removals);
-    if (error) {
-      console.error("[orcamentos] falha ao remover na realocação", { code: error.code });
-      return { error: "Não foi possível aplicar a realocação." };
-    }
+    const tirado = await tirarLimites(supabase, houseId, month, removals, user?.id ?? null);
+    if (tirado.error) return { error: tirado.error };
   }
 
   revalidatePath("/orcamentos");

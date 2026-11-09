@@ -47,8 +47,14 @@ export function ProjecaoCard({
     <Card>
       {/* 1. A resposta */}
       <header>
-        <h2 className="text-destaque font-semibold tracking-tight text-ink">Projeção</h2>
-        <p className="mt-3 text-corpo text-ink-muted">
+        <div className="-mt-2.5 flex min-h-11 items-center justify-between gap-3">
+          <h2 className="text-destaque font-semibold tracking-tight text-ink">Projeção</h2>
+          {/* O detalhe de cada mes, item por item, fica na tela propria. */}
+          <Link href="/meses" className="inline-flex min-h-11 items-center text-corpo font-medium text-brand hover:underline">
+            Mês a mês →
+          </Link>
+        </div>
+        <p className="mt-1 text-corpo text-ink-muted">
           {sobra >= 0 ? "Deve sobrar" : "Deve faltar"} de {monthShortLabel(atual)} a {ultimo ? monthShortLabel(ultimo.month) : ""}
         </p>
         <p className={cn("tabular text-[2rem] font-semibold leading-tight tracking-tight", sobra >= 0 ? "text-ink" : "text-danger")}>
