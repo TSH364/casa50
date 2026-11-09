@@ -103,7 +103,11 @@ export function AppNav({
               <ItemBarra {...i} ativo={isActive(i.href)} />
             </li>
           ))}
-          <li className="flex flex-1 justify-center">
+          {/*
+            Largura fixa no meio e as quatro pontas iguais: assim os dois lados
+            ficam espelhados e o circulo nao encosta em Extratos e Analise.
+          */}
+          <li className="flex w-[84px] shrink-0 justify-center">
             <BotaoDoria ativo={isActive("/conversa")} />
           </li>
           {DIREITA.map((i) => (
@@ -285,11 +289,13 @@ function BotaoDoria({ ativo }: { ativo: boolean }) {
         if (segurou.current) return;
         router.push(`/conversa?modo=${ultimoModo()}`);
       }}
+      // -mt-6 poe o nome "Dor.IA" na mesma linha dos outros quatro. O selo do
+      // microfone fica embaixo, no centro, para nao pesar para um lado.
       className="-mt-6 flex select-none flex-col items-center gap-1 text-legenda font-bold text-ink [-webkit-touch-callout:none]"
     >
-      <span className="relative flex size-16 items-center justify-center rounded-full border-4 border-surface bg-doria shadow-[0_8px_20px_rgba(124,134,255,0.45)]">
-        <DoriMark size={44} />
-        <span className="absolute -bottom-0.5 -right-1 flex size-[22px] items-center justify-center rounded-full bg-ink text-canvas">
+      <span className="relative flex size-14 items-center justify-center rounded-full border-4 border-surface bg-doria shadow-[0_6px_16px_rgba(124,134,255,0.4)]">
+        <DoriMark size={38} />
+        <span className="absolute -bottom-1.5 left-1/2 flex size-5 -translate-x-1/2 items-center justify-center rounded-full border-2 border-surface bg-ink text-canvas">
           <Mic className="size-3" aria-hidden />
         </span>
       </span>
